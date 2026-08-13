@@ -14,6 +14,7 @@
 [![tests](https://img.shields.io/badge/tests-61%20passing-brightgreen.svg)](test)
 [![typescript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](src)
 [![type](https://img.shields.io/badge/type-cordis%20bundle-8a5cf6.svg)](cordis.patch.yml)
+[![repo](https://img.shields.io/badge/repo-PerryLink%2Fdsh--auto--review-181717.svg)](https://github.com/PerryLink/dsh-auto-review)
 
 **人类零操作。** 请求交给 AI 审查代理，裁决 = allow/deny + 理由 + 风险等级，且每个决策都能从会话日志完整重建：`approval/asked` → `autoReview/verdict` → `approval/decided`。
 
@@ -82,7 +83,7 @@ dsh --profile web               # 重启生效
 # 2. git 源（钉住 commit；自包含 prepare 负责构建）
 #    pnpm ≥ 10 默认阻止生命周期构建：先把提示的 allowBuilds 键
 #    加入 profile 的 pnpm-workspace.yaml。
-dsh plugin --profile web add "github:<owner>/dsh-auto-review#<commit>"
+dsh plugin --profile web add "github:PerryLink/dsh-auto-review#<commit>"
 
 # 3. 本地 link（开发调试）
 dsh plugin --profile web add link:/path/to/dsh-auto-review

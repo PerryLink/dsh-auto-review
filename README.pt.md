@@ -14,6 +14,7 @@ Quando uma ação do agente cruza o limite do sandbox, um **subagente revisor so
 [![tests](https://img.shields.io/badge/tests-61%20passing-brightgreen.svg)](test)
 [![typescript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](src)
 [![type](https://img.shields.io/badge/type-cordis%20bundle-8a5cf6.svg)](cordis.patch.yml)
+[![repo](https://img.shields.io/badge/repo-PerryLink%2Fdsh--auto--review-181717.svg)](https://github.com/PerryLink/dsh-auto-review)
 
 **Zero operações humanas.** A solicitação vai ao revisor de IA, o veredicto é allow/deny + motivo + nível de risco, e toda decisão pode ser reconstruída a partir do log da sessão: `approval/asked` → `autoReview/verdict` → `approval/decided`.
 
@@ -82,7 +83,7 @@ dsh --profile web               # reiniciar
 # 2. fonte git (fixe o commit; o `prepare` autocontido compila)
 #    pnpm ≥ 10 bloqueia builds de ciclo de vida: adicione primeiro a chave
 #    allowBuilds impressa ao pnpm-workspace.yaml do perfil.
-dsh plugin --profile web add "github:<owner>/dsh-auto-review#<commit>"
+dsh plugin --profile web add "github:PerryLink/dsh-auto-review#<commit>"
 
 # 3. link local (desenvolvimento)
 dsh plugin --profile web add link:/path/to/dsh-auto-review

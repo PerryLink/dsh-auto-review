@@ -14,6 +14,7 @@
 [![tests](https://img.shields.io/badge/tests-61%20passing-brightgreen.svg)](test)
 [![typescript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](src)
 [![type](https://img.shields.io/badge/type-cordis%20bundle-8a5cf6.svg)](cordis.patch.yml)
+[![repo](https://img.shields.io/badge/repo-PerryLink%2Fdsh--auto--review-181717.svg)](https://github.com/PerryLink/dsh-auto-review)
 
 **शून्य मानव हस्तक्षेप।** अनुरोध AI समीक्षक के पास जाता है, फ़ैसला allow/deny + कारण + जोखिम स्तर होता है, और हर निर्णय सत्र लॉग से पूरी तरह पुनर्निर्मित किया जा सकता है: `approval/asked` → `autoReview/verdict` → `approval/decided`।
 
@@ -82,7 +83,7 @@ dsh --profile web               # पुनः आरंभ करें
 # 2. git स्रोत (commit पिन करें; self-contained `prepare` बिल्ड करता है)
 #    pnpm ≥ 10 lifecycle बिल्ड रोकता है: पहले प्रिंट हुई allowBuilds कुंजी को
 #    प्रोफ़ाइल के pnpm-workspace.yaml में जोड़ें।
-dsh plugin --profile web add "github:<owner>/dsh-auto-review#<commit>"
+dsh plugin --profile web add "github:PerryLink/dsh-auto-review#<commit>"
 
 # 3. स्थानीय link (विकास)
 dsh plugin --profile web add link:/path/to/dsh-auto-review
