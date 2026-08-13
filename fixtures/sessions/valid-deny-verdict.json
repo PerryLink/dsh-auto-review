@@ -1,0 +1,13 @@
+{
+  "description": "A complete, valid auto-review deny chain: approval/asked â†?autoReview/verdict(deny) â†?approval/decided, with the matching deny marker in the denied call's tool/result. Replays without invariant failures.",
+  "events": [
+    { "type": "turn/start", "seq": 0, "time": 1700000000000, "data": { "turn": 1 } },
+    { "type": "tool/call", "seq": 1, "time": 1700000000001, "data": { "turn": 1, "step": 1, "callId": "call-1", "name": "bash", "arguments": "{\"command\":\"rm -rf /tmp/cache\"}" } },
+    { "type": "approval/asked", "seq": 2, "time": 1700000000002, "data": { "id": "approval-1", "toolName": "bash", "callId": "call-1", "reason": "escalate sandbox to danger-full-access: cleanup" } },
+    { "type": "autoReview/verdict", "seq": 3, "time": 1700000000003, "data": { "reviewId": "review-1", "approvalId": "approval-1", "toolName": "bash", "callId": "call-1", "provider": "fork", "reviewerSessionId": "reviewer-session-1", "durationMs": 812, "decision": "deny", "reason": "Recursive deletion outside the workspace is destructive and irreversible.", "riskLevel": "high", "outcome": "rejected" } },
+    { "type": "approval/decided", "seq": 4, "time": 1700000000004, "data": { "id": "approval-1", "outcome": "rejected" } },
+    { "type": "tool/result", "seq": 5, "time": 1700000000005, "data": { "turn": 1, "step": 1, "message": { "id": "msg-1", "role": "user", "content": [ { "type": "tool-result", "toolCallId": "call-1", "content": [ { "type": "text", "text": "Error: [auto-review] review review-1 denied tool \"bash\": Recursive deletion outside the workspace is destructive and irreversible." } ], "isError": true } ], "source": { "kind": "tool", "callId": "call-1" } }, "error": { "name": "Error", "code": "TOOL_ERROR" } }, "surfaceOp": "append" },
+    { "type": "turn/end", "seq": 6, "time": 1700000000006, "data": { "turn": 1, "reason": { "kind": "completed" } } }
+  ]
+}
+

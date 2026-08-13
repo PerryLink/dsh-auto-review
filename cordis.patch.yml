@@ -1,0 +1,20 @@
+# dsh-auto-review bundle patch: mount the auto-review answerer. `name` is the
+# package name, resolved through the profile's node_modules. An id-targeted
+# override replaces the whole config row — restate every key when overriding.
+- insert:
+    - id: auto-review
+      name: dsh-auto-review
+      config:
+        toolsPolicy:
+          # Tools NOT listed fall back to the schema default `human`
+          # (delegate to the human answerer — the chain is never short-circuited).
+          overrides:
+            bash: ai
+            write: ai
+            edit: ai
+    # OPTIONAL invariant companion — uncomment and add to YOUR profile patch
+    # layer only in compositions that provide the `invariants` service
+    # (agent-spine apps such as headless/ACP). The plain web profile has no
+    # invariants service, so this row would sit PENDING there and fail boot:
+    # - id: auto-review-invariant
+    #   name: dsh-auto-review/invariant

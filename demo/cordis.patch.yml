@@ -1,0 +1,19 @@
+# Demo patch: mounts dsh-auto-review (source) into a source-launched web
+# instance without touching any profile file. file:// URLs are required: the
+# ESM loader rejects bare Windows drive-letter paths.
+#
+# The directory-picker override pins the official browser-operable `browse`
+# backend (headless automation cannot drive the win32 native OS chooser the
+# auto resolver selects).
+- id: directory-picker
+  name: '@deepseek-ai/dsh-host-directory-picker-browse'
+- insert:
+    - id: auto-review
+      name: file:///D:/deepseek-harness/Project/Plugins/dsh-auto-review/src/index.ts
+      config:
+        toolsPolicy:
+          overrides:
+            bash: ai
+            pwsh: ai
+            write: ai
+            edit: ai

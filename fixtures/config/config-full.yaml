@@ -1,0 +1,29 @@
+# dsh-auto-review — full configuration example (cordis.yml config block).
+# Paste under the plugin row's `config:` key; an id-targeted override
+# REPLACES the whole row, so restate every key you need.
+enableByDefault: true
+
+toolsPolicy:
+  default: human        # unlisted tools: delegate to the human answerer (next())
+  overrides:
+    bash: ai            # AI reviewer decides
+    write: ai
+    edit: ai
+    read: human         # read-only anyway; force the human chain if it ever asks
+
+riskRules:
+  # First match wins, and risk rules win over toolsPolicy.overrides.
+  - pattern: '(?i)(rm\\s+(-[a-z]+\\s+)*/|git\\s+push\\s+--force|curl\\s+.*\\|\\s*(ba)?sh)'
+    policy: never
+  - pattern: '(?i)(sudo|chmod\\s+777)'
+    policy: human
+
+reviewerProvider: fork        # the in-process fork subagent backend
+reviewerModel: null           # omit or null: inherit the session agent's route
+reviewerTimeoutMs: 60000
+reviewerTools: [read, glob, grep]   # read-only allow-list for the reviewer child
+fallbackPolicy: rejected      # fail closed on reviewer failure
+maxReviewsPerTurn: 10
+reasonMaxChars: 2000
+reviewerGuidance: >
+  Prefer denying anything that touches files outside the workspace root.

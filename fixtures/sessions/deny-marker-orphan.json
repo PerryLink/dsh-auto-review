@@ -1,0 +1,9 @@
+{
+  "description": "INVALID: a tool/result carries the auto-review deny marker but no autoReview/verdict with that reviewId exists. Violates model-visible ‚ü?logged ‚Ä?the invariant companion must fail this log.",
+  "events": [
+    { "type": "turn/start", "seq": 0, "time": 1700000000000, "data": { "turn": 1 } },
+    { "type": "tool/result", "seq": 1, "time": 1700000000001, "data": { "turn": 1, "step": 1, "message": { "id": "msg-1", "role": "user", "content": [ { "type": "tool-result", "toolCallId": "call-9", "content": [ { "type": "text", "text": "Error: [auto-review] review review-orphan denied tool \"bash\": never recorded" } ], "isError": true } ], "source": { "kind": "tool", "callId": "call-9" } }, "error": { "name": "Error", "code": "TOOL_ERROR" } }, "surfaceOp": "append" },
+    { "type": "turn/end", "seq": 2, "time": 1700000000002, "data": { "turn": 1, "reason": { "kind": "completed" } } }
+  ]
+}
+

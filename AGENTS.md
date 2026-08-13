@@ -1,0 +1,30 @@
+# AGENTS.md
+
+Standalone DeepSeek Harness plugin repository (`dsh-auto-review`). Development follows the dsh-plugin-guide skill and the official plugin contract; this file records repo-local decisions.
+
+## Layout
+
+- `src/index.ts` — function-plugin contract (`name`/`inject`/`Config`/`apply`; NO default export — the Loader unwraps `exports.default ?? exports`).
+- `src/config.ts` — Schemastery schema + explicit `resolveConfig` (no hidden `?? default` in `run()` paths).
+- `src/runtime.ts` — `approval/request` answerer, `tools/post-execute` deny-reason injection, `/auto-review` command.
+- `src/review.ts` — reviewer subagent orchestration, prompt, sanitization, verdict parsing.
+- `src/events.ts` — `autoReview/state` + `autoReview/verdict` SessionEventMap members (declaration merging) and pure folds.
+- `src/invariant.ts` — invariant companion, exported as `dsh-auto-review/invariant`. Shipped commented-out in the bundle patch: it needs the `invariants` service, which spine compositions (headless/ACP) provide but the plain web profile does not.
+- `test/` — vitest; real `Context` + real `Session`/`ApprovalService`/`InvariantRegistry` from the `0.1.0-rc.6` peers, scripted subagent/commands/tools mocks.
+- `fixtures/` — replayable session logs (invariant specs) + config examples.
+
+## Hard rules applied here
+
+- Waterfall listeners (`approval/request`, `tools/post-execute`) always call `next()` unless they claim the request.
+- Model-visible ⟺ logged: the only model-visible plugin content is the injected deny reason; it embeds the verdict `reviewId` marker and the invariant companion enforces marker ⟺ verdict.
+- Fail closed: every reviewer failure path resolves through `fallbackPolicy`, default `rejected`.
+- The `never` approval policy is enforced inside the core service; this plugin never tries to bypass it.
+- No agent-loop changes; the plugin only uses documented seams (approval answerer, subagents, commands, tools/post-execute, invariants).
+
+## Build
+
+`typescript` + `tsdown` are regular `dependencies` on purpose: pnpm does not install devDependencies of git-hosted packages, and the git channel's `prepare` must build with production dependencies alone. `scripts/prepare.mjs` is the single build entry (tsc declarations → `lib/types`, tsdown bundles → `lib/index.js` + `lib/invariant.js`).
+
+## Checks
+
+`pnpm run typecheck && pnpm test && pnpm run build && pnpm run verify:self-contained && pnpm pack`.

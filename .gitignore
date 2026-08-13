@@ -1,0 +1,10 @@
+node_modules/
+lib/
+coverage/
+*.tsbuildinfo
+*.tgz
+.pnpm-store/
+dist/
+.DS_Store
+.playwright-mcp/
+demo/boot.log

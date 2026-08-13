@@ -1,0 +1,17 @@
+# dsh-auto-review — strict lockdown example: humans decide everything by
+# default, destructive patterns are hard-denied, and reviewer failures fall
+# back to the human chain instead of failing closed.
+enableByDefault: true
+
+toolsPolicy:
+  default: human
+  overrides:
+    bash: ai
+
+riskRules:
+  - pattern: '(?i)(killall|pkill|taskkill|Stop-Process)'
+    policy: never
+
+reviewerTimeoutMs: 30000
+fallbackPolicy: delegate
+maxReviewsPerTurn: 5

@@ -1,0 +1,144 @@
+/**
+ * Package-owned invariant companion for `dsh-auto-review`:
+ *
+ * 1. Every `autoReview/verdict` audit event references an `approval/asked`
+ *    event that precedes it in the same session, at most one verdict exists
+ *    per asked event, and payload fields obey the closed vocabularies
+ *    (decision/reason/riskLevel/outcome/fallback).
+ * 2. Model-visible ⟺ logged: every `tool/result` carrying the deny marker
+ *    links to a recorded `deny` verdict with a matching call id.
+ *
+ * @module dsh-auto-review/invariant
+ */
+
+import type { Context } from '@deepseek-ai/cordis'
+import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
+import type { InvariantFailure, InvariantInstaller } from '@deepseek-ai/dsh-invariants'
+import { AUTO_REVIEW_FALLBACKS, DENY_MARKER_PATTERN } from './events.ts'
+
+const PACKAGE_NAME = 'dsh-auto-review'
+
+/** Cordis companion plugin name. */
+export const name = 'auto-review-invariant'
+/** Service required before the companion can reserve package ownership. */
+export const inject = ['invariants']
+
+const DECISIONS: readonly string[] = ['allow', 'deny']
+const RISK_LEVELS: readonly string[] = ['low', 'medium', 'high']
+const OUTCOMES: readonly string[] = ['allowed-once', 'rejected', 'cancelled', 'unavailable']
+
+interface VerdictRecord {
+  readonly callId: string | undefined
+  readonly decision: string | undefined
+}
+
+/* jscpd:ignore-start -- package companions share replay and dispatch plumbing */
+/** Install verdict-chain and deny-marker validation over loaded logs and newly appended events. */
+const install: InvariantInstaller = Object.assign((ctx: Context, fail: InvariantFailure) => {
+  // Install-scoped so a dispose/re-register cycle re-sweeps from a clean slate.
+  const askedIds = new WeakMap<Session, Map<string, number>>()
+  const verdicts = new WeakMap<Session, Map<string, VerdictRecord>>()
+
+  const validateEvent = (session: Session, event: SessionEvent): void => {
+    if (event.type === 'approval/asked') {
+      let ids = askedIds.get(session)
+      if (ids === undefined) {
+        ids = new Map<string, number>()
+        askedIds.set(session, ids)
+      }
+      ids.set(event.data.id, (ids.get(event.data.id) ?? 0) + 1)
+      return
+    }
+    if (event.type === 'autoReview/verdict') {
+      const data = event.data
+      const fallback = data.fallback
+      if (fallback === undefined) {
+        if (data.decision === undefined || !DECISIONS.includes(data.decision)) {
+          fail(`autoReview/verdict ${JSON.stringify(data.reviewId)} has invalid decision ${JSON.stringify(data.decision)}`)
+        }
+        if (typeof data.reason !== 'string' || data.reason.length === 0) {
+          fail(`autoReview/verdict ${JSON.stringify(data.reviewId)} has no reviewer reason`)
+        }
+        if (data.riskLevel !== undefined && !RISK_LEVELS.includes(data.riskLevel)) {
+          fail(`autoReview/verdict ${JSON.stringify(data.reviewId)} has invalid riskLevel ${JSON.stringify(data.riskLevel)}`)
+        }
+      } else {
+        if (!AUTO_REVIEW_FALLBACKS.includes(fallback)) {
+          fail(`autoReview/verdict ${JSON.stringify(data.reviewId)} has invalid fallback ${JSON.stringify(fallback)}`)
+        }
+        if (data.decision !== undefined || data.reason !== undefined || data.riskLevel !== undefined) {
+          fail(`autoReview/verdict ${JSON.stringify(data.reviewId)} carries verdict fields alongside fallback ${JSON.stringify(fallback)}`)
+        }
+      }
+      if (data.outcome !== undefined && !OUTCOMES.includes(data.outcome)) {
+        fail(`autoReview/verdict ${JSON.stringify(data.reviewId)} has invalid outcome ${JSON.stringify(data.outcome)}`)
+      }
+      if (!Number.isSafeInteger(data.durationMs) || data.durationMs < 0) {
+        fail(`autoReview/verdict ${JSON.stringify(data.reviewId)} has invalid durationMs ${String(data.durationMs)}`)
+      }
+      const count = askedIds.get(session)?.get(data.approvalId) ?? 0
+      if (count < 1) {
+        fail(`autoReview/verdict ${JSON.stringify(data.reviewId)} references no prior approval/asked ${JSON.stringify(data.approvalId)}`)
+      }
+      let verdictsForSession = verdicts.get(session)
+      if (verdictsForSession === undefined) {
+        verdictsForSession = new Map<string, VerdictRecord>()
+        verdicts.set(session, verdictsForSession)
+      }
+      if (verdictsForSession.has(data.reviewId)) {
+        fail(`autoReview/verdict repeats reviewId ${JSON.stringify(data.reviewId)}`)
+      }
+      verdictsForSession.set(data.reviewId, {
+        callId: data.callId,
+        decision: data.decision,
+      })
+      return
+    }
+    if (event.type === 'tool/result') {
+      const block = event.data.message.content[0]
+      if (block === undefined || block.type !== 'tool-result') {
+        // Not a tool-result projection this invariant owns; skip.
+        return
+      }
+      const text = block.content
+        .filter(item => item.type === 'text')
+        .map(item => (item as { text: string }).text)
+        .join('\n')
+      const match = DENY_MARKER_PATTERN.exec(text)
+      if (match === null) return
+      const reviewId = match[1]
+      if (reviewId === undefined) {
+        fail(`tool/result carries an unparseable deny marker: ${JSON.stringify(match[0])}`)
+        return
+      }
+      const verdict = verdicts.get(session)?.get(reviewId)
+      if (verdict === undefined) {
+        fail(`tool/result deny marker references unknown reviewId ${JSON.stringify(reviewId)}`)
+        return
+      }
+      if (verdict.decision !== 'deny') {
+        fail(`tool/result deny marker references a non-deny verdict ${JSON.stringify(reviewId)}`)
+      }
+      if (verdict.callId !== undefined && verdict.callId !== block.toolCallId) {
+        fail(`tool/result deny marker for review ${JSON.stringify(reviewId)} has call id ${JSON.stringify(block.toolCallId)}, expected ${JSON.stringify(verdict.callId)}`)
+      }
+    }
+  }
+  for (const session of ctx.sessions.list()) {
+    for (const event of session.events) validateEvent(session, event)
+  }
+  ctx.on('internal/dispatch', (_mode, eventName, args) => {
+    if (eventName !== 'session/event') return
+    const [session, event] = args as [Session, SessionEvent]
+    validateEvent(session, event)
+  }, { global: true })
+}, { inject: ['sessions'] })
+/* jscpd:ignore-end */
+
+/**
+ * Register this package's invariant companion.
+ * @param ctx - Cordis context carrying the invariant service.
+ * @returns the installed registration's disposer after setup succeeds.
+ */
+export const apply = (ctx: Context): Promise<() => void> =>
+  Promise.resolve(ctx.invariants.register(PACKAGE_NAME, install))

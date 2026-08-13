@@ -1,0 +1,9 @@
+{
+  "description": "INVALID: an autoReview/verdict references an approval/asked id that never appears in the session log. The audit chain is broken — the invariant companion must fail this log.",
+  "events": [
+    { "type": "turn/start", "seq": 0, "time": 1700000000000, "data": { "turn": 1 } },
+    { "type": "autoReview/verdict", "seq": 1, "time": 1700000000001, "data": { "reviewId": "review-2", "approvalId": "approval-missing", "toolName": "bash", "provider": "fork", "durationMs": 100, "decision": "allow", "reason": "looks safe", "outcome": "allowed-once" } },
+    { "type": "approval/decided", "seq": 2, "time": 1700000000002, "data": { "id": "approval-missing", "outcome": "allowed-once" } },
+    { "type": "turn/end", "seq": 3, "time": 1700000000003, "data": { "turn": 1, "reason": { "kind": "completed" } } }
+  ]
+}

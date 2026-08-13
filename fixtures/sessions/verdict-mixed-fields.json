@@ -1,0 +1,10 @@
+{
+  "description": "INVALID: an autoReview/verdict carries BOTH verdict fields (decision/reason) and a fallback tag. A fallback means no verdict existed — the invariant companion must fail this log.",
+  "events": [
+    { "type": "turn/start", "seq": 0, "time": 1700000000000, "data": { "turn": 1 } },
+    { "type": "approval/asked", "seq": 1, "time": 1700000000001, "data": { "id": "approval-3", "toolName": "write" } },
+    { "type": "autoReview/verdict", "seq": 2, "time": 1700000000002, "data": { "reviewId": "review-3", "approvalId": "approval-3", "toolName": "write", "provider": "fork", "durationMs": 50, "decision": "deny", "reason": "timeout says no", "fallback": "timeout", "outcome": "rejected" } },
+    { "type": "approval/decided", "seq": 3, "time": 1700000000003, "data": { "id": "approval-3", "outcome": "rejected" } },
+    { "type": "turn/end", "seq": 4, "time": 1700000000004, "data": { "turn": 1, "reason": { "kind": "completed" } } }
+  ]
+}
