@@ -154,7 +154,7 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 - `reviewerTools` के नाम प्रोफ़ाइल में वास्तविक वैश्विक टूल होने चाहिए; अज्ञात नाम समीक्षक बच्चे को सबसे पहले बिंदु पर ज़ोर से विफल करता है और fallback पर गिरता है।
 - जोखिम नियम केवल अनुरोध के `reason` से मिलते हैं; टूल-नाम की शर्तें `toolsPolicy.overrides` में रखें।
 - फ़ैसला ईवेंट log-only है; Web UI ऑडिट पैनल सत्र ईवेंट को जैसे-का-तैसा दिखाता है (समर्पित पैनल नहीं)।
-- `typescript` + `tsdown` जानबूझकर नियमित `dependencies` हैं: pnpm git-होस्टेड पैकेजों की devDependencies इंस्टॉल नहीं करता, और git चैनल का `prepare` केवल उत्पादन निर्भरताओं से ही बिल्ड कर सकता है।
+- git चैनल को केवल वही एक `allowBuilds` कुंजी चाहिए जो `dsh` CLI स्वयं `dsh-auto-review` के लिए प्रिंट करता है। रेपो अपना `pnpm-workspace.yaml` लेकर आता है जिसमें `allowBuilds: { esbuild: true }` है, ताकि अलग-थलग prepare वातावरण esbuild के (हानिरहित प्लेटफ़ॉर्म-बाइनरी सत्यापन) postinstall पर विफल न हो; `typescript` + `tsdown` नियमित `dependencies` हैं ताकि उस वातावरण में बिल्ड टूल हमेशा मौजूद रहें।
 - वैकल्पिक invariant companion (`dsh-auto-review/invariant`) को `invariants` सेवा चाहिए (agent-spine संयोजन जैसे headless/ACP); सामान्य web प्रोफ़ाइल उसे नहीं देती, इसलिए वह पंक्ति bundle पैच में टिप्पणी रूप में जाती है।
 
 ## 🏷️ GitHub टॉपिक

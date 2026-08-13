@@ -154,7 +154,7 @@ Example (annotated full form: `fixtures/config/config-full.yaml`):
 - `reviewerTools` names must exist as global tools in the profile; an unknown name fails the reviewer child loudly at the earliest point and falls back.
 - Risk rules match the request `reason` only; tool-name conditions belong in `toolsPolicy.overrides`.
 - The verdict event is log-only; the Web UI audit panel renders session events as-is (no dedicated panel).
-- `typescript` + `tsdown` are regular `dependencies` on purpose: pnpm does not install devDependencies of git-hosted packages, and the git channel's `prepare` must build with production dependencies alone.
+- The git channel needs the single `allowBuilds` key the `dsh` CLI prints for `dsh-auto-review` itself. The repo ships its own `pnpm-workspace.yaml` with `allowBuilds: { esbuild: true }` so the isolated prepare environment does not fail on esbuild's (harmless platform-binary validation) postinstall; `typescript` + `tsdown` are regular `dependencies` so that environment always has the build tools.
 - The optional invariant companion (`dsh-auto-review/invariant`) needs the `invariants` service (agent-spine compositions such as headless/ACP); the plain web profile does not provide it, so the row ships commented out in the bundle patch.
 
 ## 🏷️ GitHub topics
