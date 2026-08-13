@@ -177,8 +177,10 @@ export class AutoReviewRuntime {
         ...failure.reviewerSessionId !== undefined ? { reviewerSessionId: failure.reviewerSessionId } : {},
         durationMs,
         fallback: failure.fallback,
+        error: failure.error,
         ...outcome !== undefined ? { outcome } : {},
       })
+      this.ctx.logger.warn(`auto-review fallback (${failure.fallback}) for ${request.toolName}: ${failure.error}`)
     }
     if (outcome === undefined) return next()
     return Promise.resolve(outcome)

@@ -228,6 +228,7 @@ export async function runReview(
   request.signal?.addEventListener('abort', onAbort, { once: true })
   let reviewerSessionId: SessionId | undefined
   let model: string | undefined
+  let run: import('@deepseek-ai/dsh-subagent').SubagentRun | undefined
   const failure = (fallback: AutoReviewFallback, error: string): ReviewFailure => ({
     fallback,
     error,
@@ -235,22 +236,22 @@ export async function runReview(
     ...model !== undefined ? { model } : {},
   })
   try {
-    const run = await ctx.subagents.start(provider, {
+    run = await ctx.subagents.start(provider, {
       label: `auto-review: ${request.toolName}`,
       prompt,
       parent: request.agent,
       signal: controller.signal,
       toolFilter: { allow: config.reviewerTools },
       outputSchema: VERDICT_SCHEMA,
-      // The reviewer never delegates further: its computed depth exceeds this cap.
-      maxDepth: 0,
+      // The cap equals the reviewer's OWN computed depth (parent depth + 1):
+      // the reviewer may run, but any child it tries to spawn would exceed it.
+      maxDepth: (request.agent.session.header.delegationDepth ?? 0) + 1,
       ...config.reviewerModel !== undefined ? { agentOptions: { model: config.reviewerModel } } : {},
     })
     reviewerSessionId = run.id
     reviewerSessions.add(run.id)
     model = config.reviewerModel
     const result = await run.result
-    await run.dispose()
     if (timedOut) {
       return failure('timeout', `reviewer exceeded ${config.reviewerTimeoutMs} ms`)
     }
@@ -272,6 +273,7 @@ export async function runReview(
   } catch (error: unknown) {
     return failure('unavailable', `reviewer subagent failed: ${error instanceof Error ? error.message : String(error)}`)
   } finally {
+    if (run !== undefined) await run.dispose()
     if (reviewerSessionId !== undefined) reviewerSessions.delete(reviewerSessionId)
     clearTimeout(timer)
     request.signal?.removeEventListener('abort', onAbort)

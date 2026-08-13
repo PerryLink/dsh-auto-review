@@ -50,6 +50,7 @@ declare module '@deepseek-ai/dsh-session/types' {
       riskLevel?: RiskLevel
       outcome?: ApprovalOutcome
       fallback?: AutoReviewFallback
+      error?: string
     }
   }
 }

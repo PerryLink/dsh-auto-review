@@ -19,9 +19,9 @@ mkdirSync(WORKSPACE_ROOT, { recursive: true })
 mkdirSync(SCRATCH_TARGET, { recursive: true })
 
 const PROMPT_ALLOW = [
-  'Use one pwsh command to write the file dsh-auto-review-demo.txt into the directory $env:TEMP (outside the workspace)',
+  'Use one pwsh command to write the file notes.txt into the workspace (the current directory)',
   'containing exactly this text on one line: auto-review demo ok.',
-  'The sandbox will deny the write. Retry the exact same command once with sandbox_permissions: danger-full-access and a one-sentence justification.',
+  'This session is read-only, so the sandbox will deny the write. Retry the exact same command once with sandbox_permissions: workspace-write and a one-sentence justification that mentions this explicit user request verbatim.',
   'Then reply with exactly the single word DONE and nothing else.',
 ].join(' ')
 
@@ -47,14 +47,19 @@ const setupWorkspace = async (page) => {
       return response.json()
     }
     const created = await call('workspace.create', { path: root })
-    const workspaceId = created.result?.value?.workspace?.id
+    const workspaceId = created.result?.value?.workspace?.workspaceId
     if (workspaceId === undefined) throw new Error(`workspace.create failed: ${JSON.stringify(created)}`)
-    const session = await call('session.create', { workspaceId, cwd: root })
+    const session = await call('session.create', { workspaceId })
     if (session.result?.ok !== true) throw new Error(`session.create failed: ${JSON.stringify(session)}`)
   }, WORKSPACE_ROOT)
   // Adopt the created blank session through the product's New Session button.
   await page.getByRole('button', { name: 'New session' }).filter({ hasText: 'New Session' }).click()
   await page.locator('textarea:enabled[placeholder="Describe what you want to build"]').waitFor({ timeout: 20_000 })
+  // Switch the session to read-only so the workspace write crosses the boundary
+  // and the AI reviewer has a clearly in-scope escalation to grant.
+  await page.getByText('Workspace Write', { exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Read Only' }).click()
+  await page.getByText('Read Only', { exact: true }).first().waitFor({ timeout: 10_000 })
 }
 
 const send = async (page, text) => {

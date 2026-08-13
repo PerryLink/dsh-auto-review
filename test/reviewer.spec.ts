@@ -125,7 +125,7 @@ describe('reviewer start request', () => {
     expect(start.name).toBe('mock')
     expect(start.request.toolFilter).toEqual({ allow: ['read', 'glob', 'grep'] })
     expect(start.request.outputSchema).toEqual(VERDICT_SCHEMA)
-    expect(start.request.maxDepth).toBe(0)
+    expect(start.request.maxDepth).toBe(1)
     expect(start.request.label).toBe('auto-review: bash')
     expect(start.request.signal).toBeInstanceOf(AbortSignal)
     const text = start.request.prompt.map(block => block.type === 'text' ? block.text : '').join('')
