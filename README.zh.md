@@ -154,4 +154,4 @@ pnpm pack                   # 发布产物
 
 ## License
 
-MIT
+Apache License 2.0

@@ -80,5 +80,5 @@
     "prepare": "node scripts/prepare.mjs",
     "verify:self-contained": "node scripts/verify-self-contained.mjs"
   },
-  "license": "MIT"
+  "license": "Apache-2.0"
 }

@@ -154,4 +154,4 @@ Repository layout (plugin-template structure): `src/index.ts` (plugin contract),
 
 ## License
 
-MIT
+Apache License 2.0
