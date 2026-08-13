@@ -48,6 +48,11 @@
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
   },
+  "pnpm": {
+    "neverBuiltDependencies": [
+      "esbuild"
+    ]
+  },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/schemastery": "^3.18.0",

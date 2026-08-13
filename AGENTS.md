@@ -23,7 +23,7 @@ Standalone DeepSeek Harness plugin repository (`dsh-auto-review`). Development f
 
 ## Build
 
-`typescript` + `tsdown` are regular `dependencies` on purpose: pnpm does not install devDependencies of git-hosted packages, and the git channel's `prepare` must build with production dependencies alone. `scripts/prepare.mjs` is the single build entry (tsc declarations → `lib/types`, tsdown bundles → `lib/index.js` + `lib/invariant.js`).
+`scripts/prepare.mjs` is the single build entry (tsc declarations → `lib/types`, tsdown bundles → `lib/index.js` + `lib/invariant.js`). `typescript` + `tsdown` are regular `dependencies` so the git channel's isolated prepare environment always has them. `package.json` declares `pnpm.neverBuiltDependencies: [esbuild]`: the isolated install of git-hosted packages includes devDependencies (vitest → vite → esbuild), and without that declaration pnpm fails the whole prepare on esbuild's ignored build script (`ERR_PNPM_IGNORED_BUILDS`) — verified live against the published repo. Git users still need the one `allowBuilds` key for `dsh-auto-review` itself, which the `dsh` CLI prints verbatim.
 
 ## Docs
 
