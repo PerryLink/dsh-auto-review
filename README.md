@@ -130,6 +130,10 @@ Example (see `fixtures/config/config-full.yaml` for the annotated full form):
 - The verdict event is log-only; the Web UI's audit panel renders session events as-is, so the verdict row appears there without a dedicated panel.
 - Bundling `typescript` + `tsdown` as regular `dependencies` (not devDependencies) is deliberate: pnpm does not install devDependencies of git-hosted packages, and the git channel's `prepare` must build with what production dependencies alone provide.
 
+## Demo
+
+`docs/demo-auto-review.gif` is one real evidence run (real server, real API key, two real model rounds): a read-only session asks for an escalated workspace write — the AI reviewer **allows** it (risk low, 5.2s, zero human operations); a recursive out-of-workspace delete with full-access escalation is **denied** (risk high, 8.9s) and the reviewer's reason appears in the transcript. Replay: `demo/capture-demo.mjs` + `demo/cordis.patch.yml`.
+
 ## Development
 
 ```sh

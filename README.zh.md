@@ -130,6 +130,10 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 - 裁决事件是 log-only；Web UI 审计面板按会话事件原样渲染，因此裁决行会出现在面板中（无专属面板）。
 - 把 `typescript` + `tsdown` 放在 `dependencies`（而非 devDependencies）是有意为之：pnpm 不会安装 git 依赖的 devDependencies，而 git 通道的 `prepare` 必须仅凭生产依赖完成构建。
 
+## 演示
+
+`docs/demo-auto-review.gif` 是一次真实证据链（真实服务器、真实 API key、两轮真实模型）：只读会话请求越界升级写工作区文件——AI 审查代理**放行**（risk low，5.2s，人类零操作）；随后对工作区外目录的递归删除 + 全权限升级被**拒绝**（risk high，8.9s），拒绝理由直接出现在转录中。重放脚本：`demo/capture-demo.mjs` + `demo/cordis.patch.yml`。
+
 ## 开发
 
 ```sh

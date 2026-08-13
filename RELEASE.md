@@ -54,4 +54,6 @@
 
 ## 演示
 
-GIF 演示（越界请求 → AI 裁决放行/拒绝 → 审计面板可见理由）见 `docs/demo-auto-review.gif`（随仓库分发）。
+`docs/demo-auto-review.gif`（随仓库分发）为一次真实证据链：真实服务器（本插件源码挂载）+ 真实 API key + 两轮真实模型。会话切到 Read Only 后，agent 对工作区写文件越界升级 → AI 审查代理裁决 **allow**（risk low，5.2s）；随后递归删除工作区外临时目录并升级 danger-full-access → 裁决 **deny**（risk high，8.9s），拒绝理由注入被拒工具结果、转录可见。全程人类零操作；会话日志含完整 `approval/asked → autoReview/verdict → approval/decided` 链与审查子代理会话。
+
+重放脚本：`demo/capture-demo.mjs` + `demo/cordis.patch.yml`（记录用覆盖：`directory-picker` 钉为官方 browse 后端，因为无头浏览器无法驱动 win32 原生目录选择器；workspace/session 经应用自身 `/api` RPC 创建——该构建未组装目录流客户端模块）。
