@@ -23,6 +23,9 @@
     "cordis.patch.yml",
     "README.md",
     "README.zh.md",
+    "README.es.md",
+    "README.pt.md",
+    "README.hi.md",
     "LICENSE"
   ],
   "dsh": {
@@ -32,11 +35,15 @@
   },
   "keywords": [
     "deepseek-harness",
+    "dsh",
     "dsh-plugin",
+    "cordis",
     "approval",
     "auto-review",
+    "second-model",
     "ai-safety",
-    "sandbox"
+    "sandbox",
+    "subagent"
   ],
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
