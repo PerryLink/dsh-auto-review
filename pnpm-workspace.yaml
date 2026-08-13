@@ -1,2 +1,7 @@
 packages:
   - .
+allowBuilds:
+  # esbuild's postinstall only validates its platform binary; allow it so the
+  # isolated git-install prepare env (which reads THIS file from the tarball)
+  # does not fail with ERR_PNPM_IGNORED_BUILDS.
+  esbuild: true
