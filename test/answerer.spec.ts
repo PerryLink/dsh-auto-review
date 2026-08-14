@@ -8,9 +8,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
+import { FALLBACK_MARKER_PATTERN } from '../src/index.ts'
 import {
   dispatchApproval,
   dispatchAskedApproval,
+  dispatchPostExecute,
   mountHarness,
 } from './harness.ts'
 
@@ -371,5 +373,125 @@ describe('auto-review answerer', () => {
       riskLevel: 'high',
       outcome: 'rejected',
     })
+  })
+
+  it('classifies an abort-rejected run as timeout when the timer already fired', async () => {
+    const harness = await mountHarness(
+      { toolsPolicy: { overrides: { bash: 'ai' } }, reviewerTimeoutMs: 20 },
+      () => ({ rejectOnAbort: true }),
+    )
+    const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+    }, next)
+    expect(outcome).toBe('rejected')
+    expect(lastEvent(harness.session.events, 'autoReview/verdict')?.data).toMatchObject({
+      fallback: 'timeout',
+      outcome: 'rejected',
+    })
+  })
+
+  it('classifies a cancelled start as cancelled, not unavailable', async () => {
+    const harness = await mountHarness(
+      { toolsPolicy: { overrides: { bash: 'ai' } }, reviewerTimeoutMs: 1000 },
+      () => ({ startDelayMs: 30, failStartOnAbort: true }),
+    )
+    const controller = new AbortController()
+    setTimeout(() => controller.abort(), 5)
+    const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+      signal: controller.signal,
+    }, next)
+    expect(outcome).toBe('cancelled')
+    expect(lastEvent(harness.session.events, 'autoReview/verdict')?.data).toMatchObject({
+      fallback: 'cancelled',
+      outcome: 'cancelled',
+    })
+  })
+
+  it('does not let reviewer failures consume the AI verdict budget', async () => {
+    const harness = await mountHarness(
+      { toolsPolicy: { overrides: { bash: 'ai' } }, maxReviewsPerTurn: 1, maxFailuresPerTurn: 10 },
+      () => ({ stopReason: 'error' }),
+    )
+    const first = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+    }, next)
+    expect(first.outcome).toBe('rejected')
+    const second = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+    }, next)
+    expect(second.outcome).toBe('rejected')
+    expect(harness.subagents.starts).toHaveLength(2)
+  })
+
+  it('delegates once the per-turn failure budget is exhausted', async () => {
+    const harness = await mountHarness(
+      { toolsPolicy: { overrides: { bash: 'ai' } }, maxFailuresPerTurn: 1 },
+      () => ({ stopReason: 'error' }),
+    )
+    const first = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+    }, next)
+    expect(first.outcome).toBe('rejected')
+    let downstreamCalled = false
+    const second = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+    }, async () => {
+      downstreamCalled = true
+      return 'allowed-once'
+    })
+    expect(second.outcome).toBe('allowed-once')
+    expect(downstreamCalled).toBe(true)
+    expect(harness.subagents.starts).toHaveLength(1)
+  })
+
+  it('injects an auditable failure text when the fallback rejects', async () => {
+    const harness = await mountHarness(
+      { toolsPolicy: { overrides: { bash: 'ai' } } },
+      () => ({ stopReason: 'error' }),
+    )
+    const callId = CallId('call-fallback')
+    await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+      callId,
+    }, next)
+    const decision = await dispatchPostExecute(harness.ctx, { callId } as never, {
+      isError: true,
+      content: [{ type: 'text', text: 'Error: the user rejected tool "bash"' }],
+    }, async () => ({ kind: 'accept' }))
+    expect(decision).toMatchObject({ kind: 'block' })
+    const feedback = (decision as { feedback: { text: string }[] }).feedback
+    expect(feedback[0]!.text).toMatch(FALLBACK_MARKER_PATTERN)
+    expect(feedback[0]!.text).toContain('unavailable')
+  })
+
+  it('does not inject failure feedback when the fallback delegates', async () => {
+    const harness = await mountHarness(
+      { toolsPolicy: { overrides: { bash: 'ai' } }, fallbackPolicy: 'delegate' },
+      () => ({ stopReason: 'error' }),
+    )
+    const callId = CallId('call-fallback-delegate')
+    await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+      callId,
+    }, next)
+    let downstreamCalled = false
+    const decision = await dispatchPostExecute(harness.ctx, { callId } as never, {
+      isError: true,
+      content: [{ type: 'text', text: 'Error: rejected' }],
+    }, async () => {
+      downstreamCalled = true
+      return { kind: 'accept' }
+    })
+    expect(decision).toMatchObject({ kind: 'accept' })
+    expect(downstreamCalled).toBe(true)
   })
 })

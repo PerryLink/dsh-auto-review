@@ -42,6 +42,7 @@ describe('reviewer prompt', () => {
       reviewerTools: ['read', 'glob', 'grep'],
       fallbackPolicy: 'rejected',
       maxReviewsPerTurn: 10,
+      maxFailuresPerTurn: 10,
       reasonMaxChars: 2000,
       reviewerGuidance: undefined,
     })
@@ -51,6 +52,35 @@ describe('reviewer prompt', () => {
     expect(prompt).toContain('/killall/u → never')
     expect(prompt).toContain('structured_output')
     expect(prompt).toContain('When unsure, DENY')
+  })
+
+  it('truncates the request reason to the shared budget', () => {
+    const session = Session.create(SessionId('prompt-trunc'), undefined, {
+      version: 0,
+      id: SessionId('prompt-trunc'),
+      createdAt: 0,
+      cwd: 'D:\\work',
+    })
+    const prompt = buildReviewPrompt({
+      agent: makeAgent(session),
+      toolName: 'bash',
+      reason: 'escalate sandbox to danger-full-access',
+    }, {
+      enableByDefault: true,
+      toolsPolicy: { default: 'human', overrides: {} },
+      riskRules: [],
+      reviewerProvider: 'fork',
+      reviewerModel: undefined,
+      reviewerTimeoutMs: 60_000,
+      reviewerTools: ['read', 'glob', 'grep'],
+      fallbackPolicy: 'rejected',
+      maxReviewsPerTurn: 10,
+      maxFailuresPerTurn: 10,
+      reasonMaxChars: 10,
+      reviewerGuidance: undefined,
+    })
+    expect(prompt).toContain('escalate s…')
+    expect(prompt).not.toContain('danger-full-access')
   })
 })
 

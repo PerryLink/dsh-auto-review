@@ -11,7 +11,7 @@ When an agent's action crosses the sandbox boundary, a **read-only reviewer suba
 
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![dsh](https://img.shields.io/badge/dsh-0.1.0--rc.6-4c51bf.svg)](https://www.npmjs.com/package/@deepseek-ai/dsh)
-[![tests](https://img.shields.io/badge/tests-61%20passing-brightgreen.svg)](test)
+[![tests](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-auto-review/ci.yml?label=tests&logo=githubactions)](.github/workflows/ci.yml)
 [![typescript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](src)
 [![type](https://img.shields.io/badge/type-cordis%20bundle-8a5cf6.svg)](cordis.patch.yml)
 [![repo](https://img.shields.io/badge/repo-PerryLink%2Fdsh--auto--review-181717.svg)](https://github.com/PerryLink/dsh-auto-review)
@@ -36,7 +36,7 @@ Pattern-based auto-approvers decide before dispatch, with no evidence. `dsh-auto
 | 🧠 **Second-model verdict** | One-shot fork subagent with a read-only tool allow-list (`read`/`glob`/`grep`) and a structured verdict schema `{ decision, reason, riskLevel }`. |
 | 🛡️ **Fail closed** | Reviewer crash, timeout, or schema mismatch never opens the gate: `fallbackPolicy` applies, default `rejected`. |
 | 🧩 **Config-driven routing** | Per-tool policies (`ai`/`human`/`never`) + regex risk rules, all changeable from cordis.yml. |
-| 💬 **Deny reasons reach the model** | The reviewer's reason is injected into the denied tool result (callId-linked), so the agent adapts. |
+| 💬 **Deny reasons reach the model** | The reviewer's reason is injected into the denied tool result (callId-linked), so the agent adapts. Fail-closed fallback rejections inject an auditable failure text too. |
 | 📜 **Full audit trail** | `autoReview/verdict` session events (reviewer identity, verdict, reason, risk, duration) + an invariant companion enforcing *model-visible ⟺ logged*. |
 | 🔁 **No recursion** | Reviewer asks are recognized by identity and delegated; `maxDepth` + the tool allow-list keep the reviewer non-delegating. |
 | ⌨️ **Session command** | `/auto-review on|off|status` with a durable per-session override that survives restore. |
@@ -76,8 +76,8 @@ Three install channels; the plugin is a **bundle** (`"dsh": { "bundle": { "patch
 
 ```sh
 # 1. npm tarball (built artifacts, no build permission needed)
-pnpm pack                       # → dsh-auto-review-0.1.0.tgz
-dsh plugin --profile web add ./dsh-auto-review-0.1.0.tgz
+pnpm pack                       # → dsh-auto-review-<version>.tgz
+dsh plugin --profile web add ./dsh-auto-review-<version>.tgz
 dsh --profile web               # restart
 
 # 2. git source (pin the commit; self-contained `prepare` builds it)
@@ -112,7 +112,8 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 | `reviewerTimeoutMs` | `60000` | Verdict deadline; on expiry the fallback policy applies |
 | `reviewerTools` | `[read, glob, grep]` | The reviewer child's tool allow-list — everything else is invisible there |
 | `fallbackPolicy` | `rejected` | Reviewer failure: `rejected` (fail closed), `delegate` (continue the chain), `allow-readonly` (grant — see Security) |
-| `maxReviewsPerTurn` | `10` | Verdict budget per open turn; beyond it, requests delegate to humans |
+| `maxReviewsPerTurn` | `10` | Real AI-verdict budget per open turn; beyond it, requests delegate to humans |
+| `maxFailuresPerTurn` | `10` | Reviewer-failure budget per open turn (timeout/unavailable/schema, not cancellations); beyond it, requests delegate instead of paying another full timeout. Defaults to `maxReviewsPerTurn` |
 | `reasonMaxChars` | `2000` | Cap for reviewer reasons and the redacted argument preview |
 | `reviewerGuidance` | *(none)* | Optional advisory guidance appended to the reviewer prompt |
 
@@ -138,13 +139,13 @@ Example (annotated full form: `fixtures/config/config-full.yaml`):
 /auto-review on|off|status
 ```
 
-`on`/`off` append the durable `autoReview/state` override (the fold survives restart/resume — replay IS the state) and inject a switch notice the model sees (logged as a `user/message` event). `status` reports the effective state and the turn's verdict budget.
+`on`/`off` append the durable `autoReview/state` override (the fold survives restart/resume — replay IS the state) and inject a switch notice the model sees (logged as a `user/message` event). `status` reports the effective state and both per-turn budgets (AI verdicts and reviewer failures).
 
 ## 🔒 Security
 
 - The reviewer runs in a **read-only tool face** (`toolFilter` allow-list). It cannot write, edit, run bash, fetch the network, or delegate (`maxDepth` = its own depth). Its session log is persisted and auditable.
 - **Sensitive arguments are redacted** (key-name matching: `token`, `password`, `api_key`, `Authorization`, credentials, private keys …) before entering the reviewer prompt; the plugin never executes the reviewed arguments. Redaction is key-based, not content-based — do not AI-review tools whose argument values you cannot afford to show a model.
-- **Fail closed by default.** Every abnormal path (provider missing, start rejection, timeout, non-`completed` stop reason, missing/malformed verdict, audit-correlation failure) resolves through `fallbackPolicy`, default `rejected`. `allow-readonly` grants unconditionally — it exists only for unattended deployments whose admin accepts that risk.
+- **Fail closed by default.** Every abnormal path (provider missing, start rejection, timeout, non-`completed` stop reason, missing/malformed verdict, audit-correlation failure) resolves through `fallbackPolicy`, default `rejected` — and the rejection feeds an auditable reason back to the model instead of the generic "user rejected" text. `allow-readonly` grants unconditionally — it exists only for unattended deployments whose admin accepts that risk.
 - **`never` is one-way at this layer.** A `never` tool or risk rule rejects before the human chain sees the request — a lockdown knob, not a default.
 - **The reviewer is a model.** Its verdicts are advisory policy, not a security kernel. Prefer `human`/`never` rules for irreversible operations.
 

@@ -11,7 +11,7 @@
 
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![dsh](https://img.shields.io/badge/dsh-0.1.0--rc.6-4c51bf.svg)](https://www.npmjs.com/package/@deepseek-ai/dsh)
-[![tests](https://img.shields.io/badge/tests-61%20passing-brightgreen.svg)](test)
+[![tests](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-auto-review/ci.yml?label=tests&logo=githubactions)](.github/workflows/ci.yml)
 [![typescript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](src)
 [![type](https://img.shields.io/badge/type-cordis%20bundle-8a5cf6.svg)](cordis.patch.yml)
 [![repo](https://img.shields.io/badge/repo-PerryLink%2Fdsh--auto--review-181717.svg)](https://github.com/PerryLink/dsh-auto-review)
@@ -36,7 +36,7 @@
 | 🧠 **द्वितीय-मॉडल फ़ैसला** | एक बार का fork सबएजेंट, केवल-पढ़ने वाली टूल अनुमति-सूची (`read`/`glob`/`grep`) और संरचित फ़ैसला schema `{ decision, reason, riskLevel }`। |
 | 🛡️ **Fail closed** | समीक्षक का क्रैश, टाइमआउट या गलत schema कभी द्वार नहीं खोलता: `fallbackPolicy` लागू होती है, डिफ़ॉल्ट `rejected`। |
 | 🧩 **कॉन्फ़िग-चालित रूटिंग** | प्रति-टूल नीतियाँ (`ai`/`human`/`never`) + regex जोखिम नियम, सब cordis.yml से बदले जा सकते हैं। |
-| 💬 **अस्वीकृति के कारण मॉडल तक पहुँचते हैं** | समीक्षक का कारण अस्वीकृत टूल के परिणाम में (callId से जुड़ा) डाला जाता है, ताकि एजेंट खुद को ढाल सके। |
+| 💬 **अस्वीकृति के कारण मॉडल तक पहुँचते हैं** | समीक्षक का कारण अस्वीकृत टूल के परिणाम में (callId से जुड़ा) डाला जाता है, ताकि एजेंट खुद को ढाल सके। Fail-closed fallback अस्वीकृतियाँ एक ऑडिट-योग्य विफलता पाठ भी डालती हैं। |
 | 📜 **पूर्ण ऑडिट शृंखला** | `autoReview/verdict` सत्र-ईवेंट (समीक्षक की पहचान, फ़ैसला, कारण, जोखिम, अवधि) + एक invariant companion जो *model-visible ⟺ logged* लागू करता है। |
 | 🔁 **कोई पुनरावृत्ति नहीं** | समीक्षक के अपने अनुरोध पहचान से पहचाने जाते हैं और आगे भेजे जाते हैं; `maxDepth` + अनुमति-सूची समीक्षक को आगे delegation से रोकते हैं। |
 | ⌨️ **सत्र कमांड** | `/auto-review on|off|status` — टिकाऊ प्रति-सत्र ओवरराइड जो restore के बाद भी बना रहता है। |
@@ -76,8 +76,8 @@
 
 ```sh
 # 1. npm tarball (पहले से बने आर्टिफ़ैक्ट, बिल्ड अनुमति की ज़रूरत नहीं)
-pnpm pack                       # → dsh-auto-review-0.1.0.tgz
-dsh plugin --profile web add ./dsh-auto-review-0.1.0.tgz
+pnpm pack                       # → dsh-auto-review-<version>.tgz
+dsh plugin --profile web add ./dsh-auto-review-<version>.tgz
 dsh --profile web               # पुनः आरंभ करें
 
 # 2. git स्रोत (commit पिन करें; self-contained `prepare` बिल्ड करता है)
@@ -112,7 +112,8 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 | `reviewerTimeoutMs` | `60000` | फ़ैसले की समय-सीमा; समाप्त होने पर fallback नीति लागू |
 | `reviewerTools` | `[read, glob, grep]` | समीक्षक बच्चे की टूल अनुमति-सूची — बाकी सब वहाँ अदृश्य |
 | `fallbackPolicy` | `rejected` | समीक्षक विफलता: `rejected` (fail closed), `delegate` (शृंखला जारी), `allow-readonly` (अनुमति — सुरक्षा देखें) |
-| `maxReviewsPerTurn` | `10` | प्रति खुले टर्न फ़ैसला बजट; खत्म होने पर मानवों को सौंपा जाता है |
+| `maxReviewsPerTurn` | `10` | प्रति खुले टर्न वास्तविक AI-फ़ैसला बजट; खत्म होने पर अनुरोध मानवों को सौंपे जाते हैं |
+| `maxFailuresPerTurn` | `10` | प्रति खुले टर्न समीक्षक-विफलता बजट (टाइमआउट/अनुपलब्ध/schema, रद्दीकरण नहीं); खत्म होने पर अनुरोध दूसरा पूरा टाइमआउट चुकाने के बजाय मानवों को सौंपे जाते हैं। डिफ़ॉल्ट `maxReviewsPerTurn` के बराबर |
 | `reasonMaxChars` | `2000` | समीक्षक के कारणों और redacted आर्गुमेंट पूर्वावलोकन की सीमा |
 | `reviewerGuidance` | *(कोई नहीं)* | समीक्षक prompt में जोड़ा जाने वाला वैकल्पिक मार्गदर्शन (सलाह, कठोर नियम नहीं) |
 
@@ -138,13 +139,13 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 /auto-review on|off|status
 ```
 
-`on`/`off` टिकाऊ `autoReview/state` ओवरराइड जोड़ते हैं (fold पुनः आरंभ/restore के बाद भी बना रहता है — रीप्ले ही स्थिति है) और मॉडल को दिखने वाला स्विच-नोटिस डालते हैं (`user/message` ईवेंट के रूप में दर्ज)। `status` प्रभावी स्थिति और टर्न का फ़ैसला बजट दिखाता है।
+`on`/`off` टिकाऊ `autoReview/state` ओवरराइड जोड़ते हैं (fold पुनः आरंभ/restore के बाद भी बना रहता है — रीप्ले ही स्थिति है) और मॉडल को दिखने वाला स्विच-नोटिस डालते हैं (`user/message` ईवेंट के रूप में दर्ज)। `status` प्रभावी स्थिति और दोनों प्रति-टर्न बजट (AI फ़ैसले और समीक्षक विफलताएँ) दिखाता है।
 
 ## 🔒 सुरक्षा
 
 - समीक्षक **केवल-पढ़ने वाले टूल-सेट** (`toolFilter` अनुमति-सूची) में चलता है। वह लिख, बदल, shell चला, नेटवर्क छू या आगे delegation नहीं कर सकता (`maxDepth` = उसकी अपनी गहराई)। उसका सत्र लॉग स्थायी और ऑडिट-योग्य है।
 - **संवेदनशील आर्गुमेंट पहले हटाए जाते हैं** (कुंजी-नाम मिलान: `token`, `password`, `api_key`, `Authorization`, क्रेडेंशियल, निजी कुंजियाँ …) फिर समीक्षक prompt में जाते हैं; प्लगइन समीक्षित आर्गुमेंट कभी निष्पादित नहीं करता। यह कुंजी-आधारित redaction है, सामग्री-आधारित नहीं — जिन टूल के मान मॉडल को दिखाना जोखिम भरा हो, उन्हें AI समीक्षा में न डालें।
-- **डिफ़ॉल्ट रूप से fail closed।** हर असामान्य रास्ता (provider गायब, start अस्वीकृत, टाइमआउट, गैर-`completed` stopReason, फ़ैसला गायब/विकृत, ऑडिट-सहसंबंध विफलता) `fallbackPolicy` से हल होता है, डिफ़ॉल्ट `rejected`। `allow-readonly` बिना शर्त अनुमति देता है — केवल उन अप्रबंधित परिनियोजनों के लिए जिनका व्यवस्थापक यह जोखिम स्वीकार करता है।
+- **डिफ़ॉल्ट रूप से fail closed।** हर असामान्य रास्ता (provider गायब, start अस्वीकृत, टाइमआउट, गैर-`completed` stopReason, फ़ैसला गायब/विकृत, ऑडिट-सहसंबंध विफलता) `fallbackPolicy` से हल होता है, डिफ़ॉल्ट `rejected` — और अस्वीकृति सामान्य "user rejected" पाठ के बजाय एक ऑडिट-योग्य कारण मॉडल को वापस देती है। `allow-readonly` बिना शर्त अनुमति देता है — केवल उन अप्रबंधित परिनियोजनों के लिए जिनका व्यवस्थापक यह जोखिम स्वीकार करता है।
 - **`never` इस परत पर एकतरफ़ा है।** `never` टूल या जोखिम नियम मानव शृंखला के अनुरोध देखने से पहले ही अस्वीकार कर देता है — यह ताला है, डिफ़ॉल्ट नहीं।
 - **समीक्षक भी एक मॉडल है।** उसके फ़ैसले सलाहकार नीति हैं, सुरक्षा कर्नेल नहीं। अपरिवर्तनीय कार्यों के लिए `human`/`never` नियम रखें।
 

@@ -16,7 +16,7 @@ Standalone DeepSeek Harness plugin repository (`dsh-auto-review`). Development f
 ## Hard rules applied here
 
 - Waterfall listeners (`approval/request`, `tools/post-execute`) always call `next()` unless they claim the request.
-- Model-visible ⟺ logged: the only model-visible plugin content is the injected deny reason; it embeds the verdict `reviewId` marker and the invariant companion enforces marker ⟺ verdict.
+- Model-visible ⟺ logged: the only model-visible plugin content is the injected deny reason (`[auto-review]` marker) and the injected fallback-rejection text (`[auto-review-fallback]` marker); both embed the verdict `reviewId` marker and the invariant companion enforces marker ⟺ verdict.
 - Log-only audit: `autoReview/state` and `autoReview/verdict` are appended with `{ ignorable: true }` via the `StateAppend`/`VerdictAppend` surfaces (rc.6 hosts ignore the options bag — same event, no marker; post-rc.6 hosts stamp the marker so any build loads the log).
 - Fail closed: every reviewer failure path resolves through `fallbackPolicy`, default `rejected`.
 - The `never` approval policy is enforced inside the core service; this plugin never tries to bypass it.
@@ -29,8 +29,15 @@ Standalone DeepSeek Harness plugin repository (`dsh-auto-review`). Development f
 ## Docs
 
 - Five-language READMEs (`README.md`, `README.zh.md`, `README.es.md`, `README.pt.md`, `README.hi.md`) — keep all five in sync; the English file is the source of truth.
+- `CHANGELOG.md` documents every behavior change per version (the release notes live in `RELEASE.md` for the initial release).
 - When the repo is published on GitHub, set topics `dsh`, `dsh-plugin`, `deepseek-harness`, `deepseek`, `cordis`, `ai-safety`, `approval`, `sandbox`, `subagent`, `llm` (the ecosystem's visibility channel is the `dsh-plugin` topic; see dsh-plugin-guide §9).
 
 ## Checks
 
 `pnpm run typecheck && pnpm test && pnpm run build && pnpm run verify:self-contained && pnpm pack`.
+
+`scripts/check-host-versions.mjs` (run by the CI job `host-compat`) fails when the exact-pinned `@deepseek-ai/dsh-*` peers no longer match the npm `latest` of `@deepseek-ai/dsh` — bump the pins (or document a deliberate stay-behind) before publishing.
+
+## Publishing
+
+After a version bump, repack the sibling integration tarball for `dsh-permission-rules` (`pnpm --dir ../dsh-auto-review pack --pack-destination ../dsh-permission-rules/vendor`) and update its `file:` devDependency to the new filename, then rerun its test suite.

@@ -71,6 +71,20 @@ describe('auto-review invariants', () => {
     })
   })
 
+  it('fails a log with two verdicts for one approval/asked', async () => {
+    await expect(mount('verdict-duplicate-approval.json')).rejects.toMatchObject({
+      code: 'INVARIANT',
+      packageName: 'dsh-auto-review',
+    })
+  })
+
+  it('fails a log whose verdict outcome contradicts approval/decided', async () => {
+    await expect(mount('verdict-outcome-mismatch.json')).rejects.toMatchObject({
+      code: 'INVARIANT',
+      packageName: 'dsh-auto-review',
+    })
+  })
+
   it('accepts an incrementally appended valid chain', async () => {
     const { session } = await mount()
     session.append('turn/start', { turn: 1 })
@@ -131,5 +145,58 @@ describe('auto-review invariants', () => {
     expect(() => {
       appendToolResult(session, 'call-mismatch', 'Error: [auto-review] review r-mismatch denied tool "bash": why')
     }).toThrow(/non-deny verdict/u)
+  })
+
+  it('accepts a fallback marker linking a rejected fallback verdict', async () => {
+    const { session } = await mount()
+    session.append('turn/start', { turn: 1 })
+    session.append('approval/asked', {
+      id: ApprovalRequestId('a-fallback'),
+      toolName: 'bash',
+      callId: CallId('call-fallback'),
+    })
+    session.append('autoReview/verdict', {
+      reviewId: AutoReviewVerdictId('r-fallback'),
+      approvalId: ApprovalRequestId('a-fallback'),
+      toolName: 'bash',
+      callId: CallId('call-fallback'),
+      provider: 'fork',
+      durationMs: 10,
+      fallback: 'timeout',
+      error: 'reviewer exceeded 60000 ms',
+      outcome: 'rejected',
+    })
+    expect(() => {
+      appendToolResult(session, 'call-fallback', 'Error: [auto-review-fallback] review r-fallback failed (timeout) and the request was rejected: reviewer exceeded 60000 ms')
+    }).not.toThrow()
+  })
+
+  it('fails a fallback marker whose verdict was not rejected by fallback', async () => {
+    const { session } = await mount()
+    session.append('approval/asked', {
+      id: ApprovalRequestId('a-fallback-delegate'),
+      toolName: 'bash',
+      callId: CallId('call-fallback-delegate'),
+    })
+    session.append('autoReview/verdict', {
+      reviewId: AutoReviewVerdictId('r-fallback-delegate'),
+      approvalId: ApprovalRequestId('a-fallback-delegate'),
+      toolName: 'bash',
+      callId: CallId('call-fallback-delegate'),
+      provider: 'fork',
+      durationMs: 1,
+      fallback: 'unavailable',
+      error: 'reviewer subagent failed',
+    })
+    expect(() => {
+      appendToolResult(session, 'call-fallback-delegate', 'Error: [auto-review-fallback] review r-fallback-delegate failed (unavailable) and the request was rejected: reviewer subagent failed')
+    }).toThrow(/not rejected by fallback/u)
+  })
+
+  it('fails a fallback marker referencing an unknown reviewId', async () => {
+    const { session } = await mount()
+    expect(() => {
+      appendToolResult(session, 'call-orphan-fallback', 'Error: [auto-review-fallback] review r-ghost failed (timeout) and the request was rejected: no reviewer')
+    }).toThrow(/unknown reviewId/u)
   })
 })

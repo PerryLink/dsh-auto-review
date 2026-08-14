@@ -105,6 +105,12 @@ export const DENY_MARKER = '[auto-review]'
 /** Regex extracting the reviewId from an injected deny reason. */
 export const DENY_MARKER_PATTERN = /\[auto-review\] review ([^\s]+) denied/u
 
+/** Stable marker prefix inside every injected fallback rejection text (a distinct vocabulary from {@link DENY_MARKER}). */
+export const FALLBACK_MARKER = '[auto-review-fallback]'
+
+/** Regex extracting the reviewId from an injected fallback rejection. */
+export const FALLBACK_MARKER_PATTERN = /\[auto-review-fallback\] review ([^\s]+) failed/u
+
 /**
  * Build the model-visible deny text injected into a denied tool result. The
  * embedded reviewId is what makes the model-visible text reconstructable
@@ -116,6 +122,19 @@ export const DENY_MARKER_PATTERN = /\[auto-review\] review ([^\s]+) denied/u
  */
 export function denyResultText(reviewId: AutoReviewVerdictId, toolName: string, reason: string): string {
   return `Error: ${DENY_MARKER} review ${reviewId} denied tool "${toolName}": ${reason}`
+}
+
+/**
+ * Build the model-visible text injected into a tool result whose review
+ * failed and was rejected by the fallback policy. The embedded reviewId
+ * links it to the recorded fallback verdict (model-visible ⟺ logged).
+ * @param reviewId - the fallback verdict event's id.
+ * @param fallback - the failure category (timeout/unavailable/schema).
+ * @param error - the failure detail (already truncated upstream).
+ * @returns the exact error text shown to the model.
+ */
+export function fallbackResultText(reviewId: AutoReviewVerdictId, fallback: AutoReviewFallback, error: string): string {
+  return `Error: ${FALLBACK_MARKER} review ${reviewId} failed (${fallback}) and the request was rejected: ${error}`
 }
 
 /**
@@ -133,13 +152,11 @@ export function effectiveAutoReviewState(events: readonly SessionEvent[]): boole
   return undefined
 }
 
-/**
- * How many AI verdicts the session's CURRENT open turn has consumed. A turn
- * without `turn/start` (or one already closed by `turn/end`) counts zero.
- * @param events - session events in log order.
- * @returns the verdict count inside the current open turn.
- */
-export function autoReviewsInOpenTurn(events: readonly SessionEvent[]): number {
+/** The shared open-turn scan both per-turn verdict budgets fold from. */
+function countOpenTurnVerdicts(
+  events: readonly SessionEvent[],
+  matches: (data: SessionEventMap['autoReview/verdict']) => boolean,
+): number {
   let openSeq = -1
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const type = (events[index] as SessionEvent).type
@@ -154,9 +171,35 @@ export function autoReviewsInOpenTurn(events: readonly SessionEvent[]): number {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index] as SessionEvent
     if (event.seq <= openSeq) break
-    if (event.type === 'autoReview/verdict') count += 1
+    if (event.type === 'autoReview/verdict' && matches(event.data)) count += 1
   }
   return count
+}
+
+/**
+ * How many REAL AI verdicts the session's CURRENT open turn has consumed.
+ * Fallback verdicts do not count: they are budgeted separately by
+ * {@link autoReviewFailuresInOpenTurn}, so a failing reviewer does not eat
+ * the AI-decision budget. A turn without `turn/start` (or one already closed
+ * by `turn/end`) counts zero.
+ * @param events - session events in log order.
+ * @returns the decision-carrying verdict count inside the current open turn.
+ */
+export function autoReviewsInOpenTurn(events: readonly SessionEvent[]): number {
+  return countOpenTurnVerdicts(events, data => data.decision !== undefined)
+}
+
+/**
+ * How many reviewer FAILURES the session's CURRENT open turn has consumed —
+ * `autoReview/verdict` events carrying a fallback other than `cancelled`
+ * (a user withdrawal is not a reviewer failure). The answerer delegates once
+ * the budget is exhausted so a broken reviewer costs one timeout instead of
+ * `maxFailuresPerTurn` of them.
+ * @param events - session events in log order.
+ * @returns the failure count inside the current open turn.
+ */
+export function autoReviewFailuresInOpenTurn(events: readonly SessionEvent[]): number {
+  return countOpenTurnVerdicts(events, data => data.fallback !== undefined && data.fallback !== 'cancelled')
 }
 
 /**

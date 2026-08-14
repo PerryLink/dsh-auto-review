@@ -19,15 +19,18 @@ import type { PostToolDecision, ToolExecution, ToolExecutionResult } from '@deep
 import { resolveConfig } from './config.ts'
 import type { Config, ResolvedConfig, ToolReviewPolicy } from './config.ts'
 import {
+  autoReviewFailuresInOpenTurn,
   autoReviewsInOpenTurn,
   correlateApprovalId,
   denyResultText,
   effectiveAutoReviewState,
+  fallbackResultText,
+  type AutoReviewFallback,
   type AutoReviewVerdictId,
   type StateAppend,
   type VerdictAppend,
 } from './events.ts'
-import { isReviewFailure, newVerdictId, runReview } from './review.ts'
+import { isReviewFailure, newVerdictId, runReview, truncate } from './review.ts'
 import type { ReviewFailure } from './review.ts'
 
 export const name = 'auto-review'
@@ -100,7 +103,11 @@ export class AutoReviewRuntime {
     const policy = policyFor(this.config, request)
     if (policy === 'never') return Promise.resolve<ApprovalOutcome>('rejected')
     if (policy !== 'ai') return next()
+    // Separate budgets: real AI verdicts vs reviewer failures. A broken
+    // reviewer burns the failure budget (then delegates) without eating the
+    // AI-decision budget, and vice versa.
     if (autoReviewsInOpenTurn(session.events) >= this.config.maxReviewsPerTurn) return next()
+    if (autoReviewFailuresInOpenTurn(session.events) >= this.config.maxFailuresPerTurn) return next()
     const approvalId = correlateApprovalId(session.events, request.toolName, request.callId)
     if (approvalId === undefined) {
       // The audit chain cannot be completed (verdict → approval/asked); treat
@@ -169,8 +176,9 @@ export class AutoReviewRuntime {
   ): Promise<ApprovalOutcome> {
     const outcome = this.fallbackOutcome(failure)
     if (approvalId !== undefined) {
+      const reviewId = newVerdictId()
       ;(request.agent.session.append as unknown as VerdictAppend)('autoReview/verdict', {
-        reviewId: newVerdictId(),
+        reviewId,
         approvalId,
         toolName: request.toolName,
         ...request.callId !== undefined ? { callId: request.callId } : {},
@@ -183,6 +191,12 @@ export class AutoReviewRuntime {
         ...outcome !== undefined ? { outcome } : {},
       }, { ignorable: true })
       this.ctx.logger.warn(`auto-review fallback (${failure.fallback}) for ${request.toolName}: ${failure.error}`)
+      // A fail-closed rejection is as model-visible as a reviewer deny: the
+      // agent learns WHY it was rejected (and that the reviewer failed)
+      // instead of retrying the same escalation blindly.
+      if (outcome === 'rejected') {
+        this.recordFallbackFeedback(request.callId, reviewId, failure.fallback, failure.error)
+      }
     }
     if (outcome === undefined) return next()
     return Promise.resolve(outcome)
@@ -206,9 +220,27 @@ export class AutoReviewRuntime {
   }
 
   /**
-   * Record a deny reason for the denied call's tool result. Consumed once by
-   * the post-execute listener; entries expire after a bounded TTL so a result
-   * path that never reaches post-execute cannot grow the map.
+   * Store one model-visible feedback text for a denied/failed call's tool
+   * result, keyed by call id. Consumed once by the post-execute listener;
+   * entries expire after a bounded TTL so a result path that never reaches
+   * post-execute cannot grow the map. Same call id twice is last-wins (a
+   * retried approval replaces its own pending feedback).
+   */
+  private recordFeedback(callId: CallId | undefined, text: string): void {
+    if (callId === undefined) return
+    const now = Date.now()
+    for (const [key, entry] of this.denyReasons) {
+      if (now - entry.at > DENY_REASON_TTL_MS) this.denyReasons.delete(key)
+    }
+    this.denyReasons.set(callId, { text, at: now })
+  }
+
+  /**
+   * Record a deny reason for the denied call's tool result.
+   * @param callId - the denied call.
+   * @param toolName - the denied tool.
+   * @param reviewId - the verdict event's id (embedded in the injected text).
+   * @param reason - the reviewer's reason.
    */
   private recordDenyReason(
     callId: CallId | undefined,
@@ -216,12 +248,23 @@ export class AutoReviewRuntime {
     reviewId: AutoReviewVerdictId,
     reason: string,
   ): void {
-    if (callId === undefined) return
-    const now = Date.now()
-    for (const [key, entry] of this.denyReasons) {
-      if (now - entry.at > DENY_REASON_TTL_MS) this.denyReasons.delete(key)
-    }
-    this.denyReasons.set(callId, { text: denyResultText(reviewId, toolName, reason), at: now })
+    this.recordFeedback(callId, denyResultText(reviewId, toolName, reason))
+  }
+
+  /**
+   * Record a fallback-rejection text for the failed call's tool result.
+   * @param callId - the failed call.
+   * @param reviewId - the fallback verdict event's id (embedded in the text).
+   * @param fallback - the failure category.
+   * @param error - the failure detail.
+   */
+  private recordFallbackFeedback(
+    callId: CallId | undefined,
+    reviewId: AutoReviewVerdictId,
+    fallback: AutoReviewFallback,
+    error: string,
+  ): void {
+    this.recordFeedback(callId, fallbackResultText(reviewId, fallback, truncate(error, this.config.reasonMaxChars)))
   }
 
   /**
@@ -264,7 +307,8 @@ export class AutoReviewRuntime {
         kind: 'success',
         text: [
           `Auto-review is ${current ? 'ON' : 'OFF'} for this session.`,
-          `Verdicts this turn: ${autoReviewsInOpenTurn(session.events)}/${this.config.maxReviewsPerTurn}.`,
+          `AI verdicts this turn: ${autoReviewsInOpenTurn(session.events)}/${this.config.maxReviewsPerTurn}`,
+          `Reviewer failures this turn: ${autoReviewFailuresInOpenTurn(session.events)}/${this.config.maxFailuresPerTurn}`,
           'Usage: /auto-review on|off|status',
         ].join('\n'),
       }

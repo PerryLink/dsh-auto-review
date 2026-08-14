@@ -10,6 +10,7 @@ import { Session } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import {
+  autoReviewFailuresInOpenTurn,
   autoReviewsInOpenTurn,
   correlateApprovalId,
   effectiveAutoReviewState,
@@ -37,22 +38,42 @@ describe('effectiveAutoReviewState', () => {
 })
 
 describe('autoReviewsInOpenTurn', () => {
-  it('counts verdicts only inside the current open turn', () => {
+  it('counts decision verdicts only inside the current open turn', () => {
     const session = sessionWith(
       { type: 'turn/start', data: { turn: 1 } },
-      { type: 'autoReview/verdict', data: { reviewId: 'r1', approvalId: 'a1', toolName: 'bash', provider: 'fork', durationMs: 1 } },
-      { type: 'autoReview/verdict', data: { reviewId: 'r2', approvalId: 'a2', toolName: 'bash', provider: 'fork', durationMs: 1 } },
+      { type: 'autoReview/verdict', data: { reviewId: 'r1', approvalId: 'a1', toolName: 'bash', provider: 'fork', durationMs: 1, decision: 'allow', reason: 'ok' } },
+      { type: 'autoReview/verdict', data: { reviewId: 'r2', approvalId: 'a2', toolName: 'bash', provider: 'fork', durationMs: 1, decision: 'deny', reason: 'no' } },
+      { type: 'autoReview/verdict', data: { reviewId: 'rf', approvalId: 'af', toolName: 'bash', provider: 'fork', durationMs: 1, fallback: 'timeout' } },
       { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } },
       { type: 'turn/start', data: { turn: 2 } },
-      { type: 'autoReview/verdict', data: { reviewId: 'r3', approvalId: 'a3', toolName: 'bash', provider: 'fork', durationMs: 1 } },
+      { type: 'autoReview/verdict', data: { reviewId: 'r3', approvalId: 'a3', toolName: 'bash', provider: 'fork', durationMs: 1, decision: 'allow', reason: 'ok' } },
     )
     expect(autoReviewsInOpenTurn(session.events)).toBe(1)
   })
 
-  it('counts zero outside any turn', () => {
+  it('counts zero outside any turn or for fallback-only turns', () => {
     expect(autoReviewsInOpenTurn(sessionWith(
-      { type: 'autoReview/verdict', data: { reviewId: 'r1', approvalId: 'a1', toolName: 'bash', provider: 'fork', durationMs: 1 } },
+      { type: 'autoReview/verdict', data: { reviewId: 'r1', approvalId: 'a1', toolName: 'bash', provider: 'fork', durationMs: 1, fallback: 'timeout' } },
     ).events)).toBe(0)
+    const session = sessionWith(
+      { type: 'turn/start', data: { turn: 1 } },
+      { type: 'autoReview/verdict', data: { reviewId: 'rf', approvalId: 'af', toolName: 'bash', provider: 'fork', durationMs: 1, fallback: 'unavailable' } },
+      { type: 'autoReview/verdict', data: { reviewId: 'rc', approvalId: 'ac', toolName: 'bash', provider: 'fork', durationMs: 1, fallback: 'cancelled' } },
+    )
+    expect(autoReviewsInOpenTurn(session.events)).toBe(0)
+  })
+})
+
+describe('autoReviewFailuresInOpenTurn', () => {
+  it('counts reviewer failures but not user cancellations or decisions', () => {
+    const session = sessionWith(
+      { type: 'turn/start', data: { turn: 1 } },
+      { type: 'autoReview/verdict', data: { reviewId: 'r1', approvalId: 'a1', toolName: 'bash', provider: 'fork', durationMs: 1, fallback: 'timeout' } },
+      { type: 'autoReview/verdict', data: { reviewId: 'r2', approvalId: 'a2', toolName: 'bash', provider: 'fork', durationMs: 1, fallback: 'schema' } },
+      { type: 'autoReview/verdict', data: { reviewId: 'rc', approvalId: 'ac', toolName: 'bash', provider: 'fork', durationMs: 1, fallback: 'cancelled' } },
+      { type: 'autoReview/verdict', data: { reviewId: 'r3', approvalId: 'a3', toolName: 'bash', provider: 'fork', durationMs: 1, decision: 'allow', reason: 'ok' } },
+    )
+    expect(autoReviewFailuresInOpenTurn(session.events)).toBe(2)
   })
 })
 

@@ -11,7 +11,7 @@
 
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![dsh](https://img.shields.io/badge/dsh-0.1.0--rc.6-4c51bf.svg)](https://www.npmjs.com/package/@deepseek-ai/dsh)
-[![tests](https://img.shields.io/badge/tests-61%20passing-brightgreen.svg)](test)
+[![tests](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-auto-review/ci.yml?label=tests&logo=githubactions)](.github/workflows/ci.yml)
 [![typescript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](src)
 [![type](https://img.shields.io/badge/type-cordis%20bundle-8a5cf6.svg)](cordis.patch.yml)
 [![repo](https://img.shields.io/badge/repo-PerryLink%2Fdsh--auto--review-181717.svg)](https://github.com/PerryLink/dsh-auto-review)
@@ -36,7 +36,7 @@
 | 🧠 **第二模型裁决** | 一次性 fork 子代理，只读工具白名单（`read`/`glob`/`grep`）+ 结构化裁决 schema `{ decision, reason, riskLevel }`。 |
 | 🛡️ **fail closed** | 审查代理崩溃、超时、schema 不符都绝不放行：按 `fallbackPolicy` 回退，默认 `rejected`。 |
 | 🧩 **配置驱动路由** | 每工具策略（`ai`/`human`/`never`）+ 正则风险规则，全部可在 cordis.yml 中修改。 |
-| 💬 **拒绝理由到达模型** | 审查理由经 callId 注入被拒工具结果，agent 据此调整。 |
+| 💬 **拒绝理由到达模型** | 审查理由经 callId 注入被拒工具结果，agent 据此调整。fail-closed 回退拒绝同样注入一段可审计的失败文本。 |
 | 📜 **完整审计链** | `autoReview/verdict` 会话事件（审查代理身份/裁决/理由/风险/耗时）+ invariant 伴生强制「模型可见 ⟺ 已记录」。 |
 | 🔁 **防递归** | 审查代理自身的审批请求按身份识别并委托；`maxDepth` + 工具白名单保证其无法再委派。 |
 | ⌨️ **会话级命令** | `/auto-review on|off|status`，durable 会话级覆盖跨恢复生效。 |
@@ -76,8 +76,8 @@
 
 ```sh
 # 1. npm tarball（构建产物，无需构建许可）
-pnpm pack                       # → dsh-auto-review-0.1.0.tgz
-dsh plugin --profile web add ./dsh-auto-review-0.1.0.tgz
+pnpm pack                       # → dsh-auto-review-<version>.tgz
+dsh plugin --profile web add ./dsh-auto-review-<version>.tgz
 dsh --profile web               # 重启生效
 
 # 2. git 源（钉住 commit；自包含 prepare 负责构建）
@@ -112,7 +112,8 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 | `reviewerTimeoutMs` | `60000` | 裁决截止时间；超时走回退策略 |
 | `reviewerTools` | `[read, glob, grep]` | 审查子代理的工具白名单——其余工具在其中不可见 |
 | `fallbackPolicy` | `rejected` | 审查失败处理：`rejected`（fail closed）、`delegate`（继续沿链）、`allow-readonly`（放行——见安全边界） |
-| `maxReviewsPerTurn` | `10` | 每个开放回合的裁决预算；耗尽后委托人类 |
+| `maxReviewsPerTurn` | `10` | 每个开放回合的真实 AI 裁决预算；耗尽后请求委托人类 |
+| `maxFailuresPerTurn` | `10` | 每个开放回合的审查失败预算（超时/不可用/schema 不符，不含取消）；耗尽后请求改为委托，而不再等待另一次完整超时。默认取 `maxReviewsPerTurn` |
 | `reasonMaxChars` | `2000` | 审查理由与脱敏参数预览的长度上限 |
 | `reviewerGuidance` | *(无)* | 追加进审查 prompt 的可选指导语（建议性，非硬规则） |
 
@@ -138,13 +139,13 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 /auto-review on|off|status
 ```
 
-`on`/`off` 追加 durable 的 `autoReview/state` 覆盖事件（fold 跨重启/恢复生效——重放即状态），并注入模型可见的切换通知（记录为 `user/message` 事件）。`status` 显示当前生效状态与本回合裁决预算。
+`on`/`off` 追加 durable 的 `autoReview/state` 覆盖事件（fold 跨重启/恢复生效——重放即状态），并注入模型可见的切换通知（记录为 `user/message` 事件）。`status` 显示当前生效状态与本回合的两项预算（AI 裁决与审查失败）。
 
 ## 🔒 安全边界
 
 - 审查代理运行在**只读工具面**（`toolFilter` 白名单）内：不能写、改、执行 shell、访问网络、再委派（`maxDepth` = 自身深度）。其会话日志同样落盘可审计。
 - **敏感参数先脱敏**（按键名匹配：`token`、`password`、`api_key`、`Authorization`、凭据、私钥等）再进入审查 prompt；插件绝不执行被审参数。脱敏是键名级而非内容级——参数值不能接受展示给模型的工具，不要纳入 AI 审查。
-- **默认 fail closed。** 所有异常路径（provider 缺失、启动被拒、超时、非 `completed` 停止原因、裁决缺失/不合规、审计关联失败）都走 `fallbackPolicy`，默认 `rejected`。`allow-readonly` 是无条件放行——仅供接受该风险的无人值守部署使用。
+- **默认 fail closed。** 所有异常路径（provider 缺失、启动被拒、超时、非 `completed` 停止原因、裁决缺失/不合规、审计关联失败）都走 `fallbackPolicy`，默认 `rejected`——且该拒绝把一段可审计的理由回喂模型，而不是通用的 “user rejected” 文本。`allow-readonly` 是无条件放行——仅供接受该风险的无人值守部署使用。
 - **`never` 在本层是单向的。** `never` 工具或风险规则在人类链看到请求之前即拒绝——是锁定旋钮，不是默认值。
 - **审查代理也是模型。** 其裁决是建议性策略，不是安全内核。不可逆操作请配 `human`/`never` 规则。
 

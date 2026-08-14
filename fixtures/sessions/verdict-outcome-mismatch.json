@@ -1,0 +1,10 @@
+{
+  "description": "The autoReview/verdict claims outcome rejected but approval/decided records allowed-once — a claimed verdict must agree with the service's decided pair, so this log must fail loudly.",
+  "events": [
+    { "type": "turn/start", "seq": 0, "time": 1700000000000, "data": { "turn": 1 } },
+    { "type": "approval/asked", "seq": 1, "time": 1700000000001, "data": { "id": "approval-1", "toolName": "bash", "callId": "call-1" } },
+    { "type": "autoReview/verdict", "seq": 2, "time": 1700000000002, "data": { "reviewId": "review-1", "approvalId": "approval-1", "toolName": "bash", "callId": "call-1", "provider": "fork", "durationMs": 10, "decision": "deny", "reason": "no", "outcome": "rejected" } },
+    { "type": "approval/decided", "seq": 3, "time": 1700000000003, "data": { "id": "approval-1", "outcome": "allowed-once" } },
+    { "type": "turn/end", "seq": 4, "time": 1700000000004, "data": { "turn": 1, "reason": { "kind": "completed" } } }
+  ]
+}

@@ -25,6 +25,12 @@ export interface ScriptedReview {
   readonly failStart?: Error
   /** Delay before the run settles (for timeout tests). */
   readonly delayMs?: number
+  /** Delay before `start` resolves; the start call itself rejects when the run signal was aborted meanwhile and {@link failStartOnAbort} is set. */
+  readonly startDelayMs?: number
+  /** Reject `start` when its signal is already aborted (pre-publication abort). */
+  readonly failStartOnAbort?: boolean
+  /** Reject the run result with an AbortError when the run signal aborts (abort surfaced as a rejection). */
+  readonly rejectOnAbort?: boolean
 }
 
 /** Mock `ctx.subagents` service recording every start request. */
@@ -76,10 +82,24 @@ export function makeSubagents(script: () => ScriptedReview): MockSubagents {
       return name === 'mock' ? {} : undefined
     },
     async start(name: string, request: SubagentStartRequest): Promise<SubagentRun> {
-      starts.push({ name, request })
       const behavior = script()
+      starts.push({ name, request })
       if (behavior.failStart !== undefined) throw behavior.failStart
+      const started = (async () => {
+        if (behavior.startDelayMs !== undefined) {
+          await new Promise<void>(resolve => setTimeout(resolve, behavior.startDelayMs))
+        }
+        if (behavior.failStartOnAbort === true && request.signal.aborted) {
+          throw new Error('aborted before publication')
+        }
+      })()
+      await started
       const result = (async () => {
+        if (behavior.rejectOnAbort === true) {
+          await new Promise<never>((_, reject) => {
+            request.signal.addEventListener('abort', () => reject(new Error('The operation was aborted')), { once: true })
+          })
+        }
         if (behavior.delayMs !== undefined) {
           await new Promise<void>(resolve => setTimeout(resolve, behavior.delayMs))
         }

@@ -6,7 +6,9 @@
  *    per asked event, and payload fields obey the closed vocabularies
  *    (decision/reason/riskLevel/outcome/fallback).
  * 2. Model-visible ⟺ logged: every `tool/result` carrying the deny marker
- *    links to a recorded `deny` verdict with a matching call id.
+ *    links to a recorded `deny` verdict with a matching call id, and every
+ *    `tool/result` carrying the fallback marker links to a recorded fallback
+ *    verdict that was rejected.
  *
  * @module dsh-auto-review/invariant
  */
@@ -14,7 +16,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { InvariantFailure, InvariantInstaller } from '@deepseek-ai/dsh-invariants'
-import { AUTO_REVIEW_FALLBACKS, DENY_MARKER_PATTERN } from './events.ts'
+import { AUTO_REVIEW_FALLBACKS, DENY_MARKER_PATTERN, FALLBACK_MARKER_PATTERN } from './events.ts'
 
 const PACKAGE_NAME = 'dsh-auto-review'
 
@@ -30,6 +32,8 @@ const OUTCOMES: readonly string[] = ['allowed-once', 'rejected', 'cancelled', 'u
 interface VerdictRecord {
   readonly callId: string | undefined
   readonly decision: string | undefined
+  readonly outcome: string | undefined
+  readonly fallback: string | undefined
 }
 
 /* jscpd:ignore-start -- package companions share replay and dispatch plumbing */
@@ -38,6 +42,7 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
   // Install-scoped so a dispose/re-register cycle re-sweeps from a clean slate.
   const askedIds = new WeakMap<Session, Map<string, number>>()
   const verdicts = new WeakMap<Session, Map<string, VerdictRecord>>()
+  const verdictByApproval = new WeakMap<Session, Map<string, VerdictRecord>>()
 
   const validateEvent = (session: Session, event: SessionEvent): void => {
     if (event.type === 'approval/asked') {
@@ -88,10 +93,33 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
       if (verdictsForSession.has(data.reviewId)) {
         fail(`autoReview/verdict repeats reviewId ${JSON.stringify(data.reviewId)}`)
       }
-      verdictsForSession.set(data.reviewId, {
+      const record: VerdictRecord = {
         callId: data.callId,
         decision: data.decision,
-      })
+        outcome: data.outcome,
+        fallback: data.fallback,
+      }
+      verdictsForSession.set(data.reviewId, record)
+      let byApproval = verdictByApproval.get(session)
+      if (byApproval === undefined) {
+        byApproval = new Map<string, VerdictRecord>()
+        verdictByApproval.set(session, byApproval)
+      }
+      if (byApproval.has(data.approvalId)) {
+        fail(`autoReview/verdict ${JSON.stringify(data.reviewId)} is the second verdict for approval/asked ${JSON.stringify(data.approvalId)}`)
+      }
+      byApproval.set(data.approvalId, record)
+      return
+    }
+    if (event.type === 'approval/decided') {
+      // The answerer claims a request by appending its verdict BEFORE the
+      // service settles the decided pair; a claimed verdict must therefore
+      // agree with the recorded outcome (a `delegate` fallback omits its
+      // outcome because the downstream answerer owns the decision).
+      const claimed = verdictByApproval.get(session)?.get(event.data.id)
+      if (claimed?.outcome !== undefined && claimed.outcome !== event.data.outcome) {
+        fail(`approval/decided ${JSON.stringify(event.data.id)} outcome ${JSON.stringify(event.data.outcome)} contradicts the autoReview/verdict outcome ${JSON.stringify(claimed.outcome)}`)
+      }
       return
     }
     if (event.type === 'tool/result') {
@@ -104,23 +132,43 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
         .filter(item => item.type === 'text')
         .map(item => (item as { text: string }).text)
         .join('\n')
-      const match = DENY_MARKER_PATTERN.exec(text)
-      if (match === null) return
-      const reviewId = match[1]
+      const denyMatch = DENY_MARKER_PATTERN.exec(text)
+      if (denyMatch !== null) {
+        const reviewId = denyMatch[1]
+        if (reviewId === undefined) {
+          fail(`tool/result carries an unparseable deny marker: ${JSON.stringify(denyMatch[0])}`)
+          return
+        }
+        const verdict = verdicts.get(session)?.get(reviewId)
+        if (verdict === undefined) {
+          fail(`tool/result deny marker references unknown reviewId ${JSON.stringify(reviewId)}`)
+          return
+        }
+        if (verdict.decision !== 'deny') {
+          fail(`tool/result deny marker references a non-deny verdict ${JSON.stringify(reviewId)}`)
+        }
+        if (verdict.callId !== undefined && verdict.callId !== block.toolCallId) {
+          fail(`tool/result deny marker for review ${JSON.stringify(reviewId)} has call id ${JSON.stringify(block.toolCallId)}, expected ${JSON.stringify(verdict.callId)}`)
+        }
+        return
+      }
+      const fallbackMatch = FALLBACK_MARKER_PATTERN.exec(text)
+      if (fallbackMatch === null) return
+      const reviewId = fallbackMatch[1]
       if (reviewId === undefined) {
-        fail(`tool/result carries an unparseable deny marker: ${JSON.stringify(match[0])}`)
+        fail(`tool/result carries an unparseable fallback marker: ${JSON.stringify(fallbackMatch[0])}`)
         return
       }
       const verdict = verdicts.get(session)?.get(reviewId)
       if (verdict === undefined) {
-        fail(`tool/result deny marker references unknown reviewId ${JSON.stringify(reviewId)}`)
+        fail(`tool/result fallback marker references unknown reviewId ${JSON.stringify(reviewId)}`)
         return
       }
-      if (verdict.decision !== 'deny') {
-        fail(`tool/result deny marker references a non-deny verdict ${JSON.stringify(reviewId)}`)
+      if (verdict.fallback === undefined || verdict.outcome !== 'rejected') {
+        fail(`tool/result fallback marker references a verdict that was not rejected by fallback ${JSON.stringify(reviewId)}`)
       }
       if (verdict.callId !== undefined && verdict.callId !== block.toolCallId) {
-        fail(`tool/result deny marker for review ${JSON.stringify(reviewId)} has call id ${JSON.stringify(block.toolCallId)}, expected ${JSON.stringify(verdict.callId)}`)
+        fail(`tool/result fallback marker for review ${JSON.stringify(reviewId)} has call id ${JSON.stringify(block.toolCallId)}, expected ${JSON.stringify(verdict.callId)}`)
       }
     }
   }

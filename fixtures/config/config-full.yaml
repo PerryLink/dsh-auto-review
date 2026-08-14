@@ -23,7 +23,8 @@ reviewerModel: null           # omit or null: inherit the session agent's route
 reviewerTimeoutMs: 60000
 reviewerTools: [read, glob, grep]   # read-only allow-list for the reviewer child
 fallbackPolicy: rejected      # fail closed on reviewer failure
-maxReviewsPerTurn: 10
+maxReviewsPerTurn: 10         # real AI verdicts per open turn
+maxFailuresPerTurn: 3         # reviewer failures per open turn (defaults to maxReviewsPerTurn)
 reasonMaxChars: 2000
 reviewerGuidance: >
   Prefer denying anything that touches files outside the workspace root.

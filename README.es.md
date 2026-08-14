@@ -11,7 +11,7 @@ Cuando una acción del agente cruza el límite del sandbox, un **subagente revis
 
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![dsh](https://img.shields.io/badge/dsh-0.1.0--rc.6-4c51bf.svg)](https://www.npmjs.com/package/@deepseek-ai/dsh)
-[![tests](https://img.shields.io/badge/tests-61%20passing-brightgreen.svg)](test)
+[![tests](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-auto-review/ci.yml?label=tests&logo=githubactions)](.github/workflows/ci.yml)
 [![typescript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](src)
 [![type](https://img.shields.io/badge/type-cordis%20bundle-8a5cf6.svg)](cordis.patch.yml)
 [![repo](https://img.shields.io/badge/repo-PerryLink%2Fdsh--auto--review-181717.svg)](https://github.com/PerryLink/dsh-auto-review)
@@ -36,7 +36,7 @@ Los auto-aprobadores basados en patrones deciden antes del despacho, sin evidenc
 | 🧠 **Veredicto de segundo modelo** | Subagente fork de un solo uso con lista blanca de herramientas de solo lectura (`read`/`glob`/`grep`) y esquema de veredicto estructurado `{ decision, reason, riskLevel }`. |
 | 🛡️ **Fail closed** | Un fallo, timeout o esquema inválido del revisor nunca abre la puerta: se aplica `fallbackPolicy`, por defecto `rejected`. |
 | 🧩 **Enrutado por configuración** | Políticas por herramienta (`ai`/`human`/`never`) + reglas de riesgo con regex, todo cambiable desde cordis.yml. |
-| 💬 **Los motivos de denegación llegan al modelo** | El motivo del revisor se inyecta en el resultado de la herramienta denegada (vinculado por callId), para que el agente se adapte. |
+| 💬 **Los motivos de denegación llegan al modelo** | El motivo del revisor se inyecta en el resultado de la herramienta denegada (vinculado por callId), para que el agente se adapte. Las denegaciones del fallback fail-closed también inyectan un texto de fallo auditable. |
 | 📜 **Auditoría completa** | Eventos de sesión `autoReview/verdict` (identidad del revisor, veredicto, motivo, riesgo, duración) + un companion de invariantes que exige *model-visible ⟺ logged*. |
 | 🔁 **Sin recursión** | Las peticiones del propio revisor se reconocen por identidad y se delegan; `maxDepth` + la lista blanca mantienen al revisor sin delegar. |
 | ⌨️ **Comando de sesión** | `/auto-review on|off|status` con una anulación duradera por sesión que sobrevive a la restauración. |
@@ -76,8 +76,8 @@ Tres canales de instalación; el plugin es un **bundle** (`"dsh": { "bundle": { 
 
 ```sh
 # 1. tarball de npm (artefactos compilados, sin permiso de build)
-pnpm pack                       # → dsh-auto-review-0.1.0.tgz
-dsh plugin --profile web add ./dsh-auto-review-0.1.0.tgz
+pnpm pack                       # → dsh-auto-review-<version>.tgz
+dsh plugin --profile web add ./dsh-auto-review-<version>.tgz
 dsh --profile web               # reiniciar
 
 # 2. fuente git (fija el commit; el `prepare` autocontenido lo compila)
@@ -112,7 +112,8 @@ Todos los parámetros son campos `Config` de Schemastery (cambiables desde cordi
 | `reviewerTimeoutMs` | `60000` | Plazo del veredicto; al vencer se aplica la política de fallback |
 | `reviewerTools` | `[read, glob, grep]` | Lista blanca de herramientas del hijo revisor — todo lo demás es invisible allí |
 | `fallbackPolicy` | `rejected` | Ante fallo del revisor: `rejected` (fail closed), `delegate` (continúa la cadena), `allow-readonly` (concede — ver Seguridad) |
-| `maxReviewsPerTurn` | `10` | Presupuesto de veredictos por turno abierto; agotado, se delega a humanos |
+| `maxReviewsPerTurn` | `10` | Presupuesto real de veredictos de IA por turno abierto; agotado, se delega a humanos |
+| `maxFailuresPerTurn` | `10` | Presupuesto de fallos del revisor por turno abierto (timeout/no disponible/schema, no cancelaciones); agotado, las peticiones se delegan en lugar de pagar otro timeout completo. Por defecto, `maxReviewsPerTurn` |
 | `reasonMaxChars` | `2000` | Tope para los motivos del revisor y la vista previa de argumentos redactada |
 | `reviewerGuidance` | *(ninguna)* | Guía opcional añadida al prompt del revisor (consultiva, no regla dura) |
 
@@ -138,13 +139,13 @@ Ejemplo (forma completa comentada: `fixtures/config/config-full.yaml`):
 /auto-review on|off|status
 ```
 
-`on`/`off` añaden la anulación duradera `autoReview/state` (el fold sobrevive a reinicios/restauración — la reproducción ES el estado) e inyectan un aviso de cambio visible para el modelo (registrado como evento `user/message`). `status` muestra el estado efectivo y el presupuesto de veredictos del turno.
+`on`/`off` añaden la anulación duradera `autoReview/state` (el fold sobrevive a reinicios/restauración — la reproducción ES el estado) e inyectan un aviso de cambio visible para el modelo (registrado como evento `user/message`). `status` muestra el estado efectivo y ambos presupuestos por turno (veredictos de IA y fallos del revisor).
 
 ## 🔒 Seguridad
 
 - El revisor corre con una **cara de herramientas de solo lectura** (lista blanca `toolFilter`). No puede escribir, editar, ejecutar shell, acceder a la red ni delegar (`maxDepth` = su propia profundidad). Su registro de sesión persiste y es auditable.
 - **Los argumentos sensibles se redactan** (coincidencia por nombre de clave: `token`, `password`, `api_key`, `Authorization`, credenciales, claves privadas …) antes de entrar en el prompt del revisor; el plugin nunca ejecuta los argumentos revisados. La redacción es por clave, no por contenido — no sometas a revisión de IA herramientas cuyos valores no puedas mostrar a un modelo.
-- **Fail closed por defecto.** Toda ruta anómala (provider ausente, arranque rechazado, timeout, stopReason no `completed`, veredicto ausente/malformado, fallo de correlación de auditoría) se resuelve con `fallbackPolicy`, por defecto `rejected`. `allow-readonly` concede incondicionalmente — solo para despliegues desatendidos cuyo administrador acepta ese riesgo.
+- **Fail closed por defecto.** Toda ruta anómala (provider ausente, arranque rechazado, timeout, stopReason no `completed`, veredicto ausente/malformado, fallo de correlación de auditoría) se resuelve con `fallbackPolicy`, por defecto `rejected` — y la denegación devuelve un motivo auditable al modelo en lugar del texto genérico "user rejected". `allow-readonly` concede incondicionalmente — solo para despliegues desatendidos cuyo administrador acepta ese riesgo.
 - **`never` es unidireccional en esta capa.** Una herramienta o regla de riesgo `never` rechaza antes de que la cadena humana vea la petición — es un candado, no un valor por defecto.
 - **El revisor es un modelo.** Sus veredictos son política consultiva, no un kernel de seguridad. Prefiere reglas `human`/`never` para operaciones irreversibles.
 

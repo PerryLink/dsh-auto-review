@@ -1,0 +1,11 @@
+{
+  "description": "Two autoReview/verdict events reference the SAME approval/asked id — the invariant enforces one verdict per ask, so this log must fail loudly.",
+  "events": [
+    { "type": "turn/start", "seq": 0, "time": 1700000000000, "data": { "turn": 1 } },
+    { "type": "approval/asked", "seq": 1, "time": 1700000000001, "data": { "id": "approval-1", "toolName": "bash", "callId": "call-1" } },
+    { "type": "autoReview/verdict", "seq": 2, "time": 1700000000002, "data": { "reviewId": "review-1", "approvalId": "approval-1", "toolName": "bash", "callId": "call-1", "provider": "fork", "durationMs": 10, "decision": "allow", "reason": "ok", "outcome": "allowed-once" } },
+    { "type": "autoReview/verdict", "seq": 3, "time": 1700000000003, "data": { "reviewId": "review-2", "approvalId": "approval-1", "toolName": "bash", "callId": "call-1", "provider": "fork", "durationMs": 12, "decision": "deny", "reason": "no", "outcome": "rejected" } },
+    { "type": "approval/decided", "seq": 4, "time": 1700000000004, "data": { "id": "approval-1", "outcome": "rejected" } },
+    { "type": "turn/end", "seq": 5, "time": 1700000000005, "data": { "turn": 1, "reason": { "kind": "completed" } } }
+  ]
+}

@@ -24,7 +24,7 @@
 
 - [x] 默认配置下，命中白名单工具（bash/write/edit）的越界审批无需人类操作，reviewer 在 `reviewerTimeoutMs`（默认 60s）内给出裁决与理由
 - [x] 未命中白名单的请求 `next()` 委托给人类 answerer，人类审批流程不被短路
-- [x] reviewer 自身引发的审批不递归（会话身份识别 + `maxDepth: 0` + 只读 toolFilter）
+- [x] reviewer 自身引发的审批不递归（会话身份识别 + `maxDepth` 上限于其自身深度、无法再委托 + 只读 toolFilter）
 - [x] reviewer 崩溃/超时/schema 错误按 `fallbackPolicy` 处理，默认拒绝（fail closed）
 - [x] 每个 AI 裁决都能从会话日志重建（`approval/asked` → `autoReview/verdict` → `approval/decided` 齐全，invariant 强制校验）
 - [x] `/auto-review on|off|status` 生效且状态跨会话恢复（durable `autoReview/state` 事件，last-wins fold）
@@ -34,7 +34,7 @@
 
 - S1 fail closed：所有异常路径走 `fallbackPolicy`，默认 `rejected`；`allow-readonly` 显式标注为危险选项。
 - S2 不绕过 `never` policy（服务内强制）；不改核心审批服务、不改 agent-loop（纯插件挂接文档化扩展点）。
-- S3 审查子代理只读工具面（`toolFilter` 白名单 + `maxDepth: 0`），其会话日志落盘可审计。
+- S3 审查子代理只读工具面（`toolFilter` 白名单 + `maxDepth` 上限于其自身深度），其会话日志落盘可审计。
 - S4 不执行被审参数；敏感键值脱敏后仅供审查参考（键名级脱敏，局限已在 README 声明）。
 
 ## 兼容性

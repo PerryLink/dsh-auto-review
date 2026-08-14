@@ -20,10 +20,16 @@ describe('config resolution', () => {
       reviewerTools: ['read', 'glob', 'grep'],
       fallbackPolicy: 'rejected',
       maxReviewsPerTurn: 10,
+      maxFailuresPerTurn: 10,
       reasonMaxChars: 2000,
     })
     expect(resolved.riskRules).toEqual([])
     expect(resolved.reviewerModel).toBeUndefined()
+  })
+
+  it('defaults maxFailuresPerTurn to maxReviewsPerTurn when only the latter is set', () => {
+    expect(resolveConfig({ maxReviewsPerTurn: 3 }).maxFailuresPerTurn).toBe(3)
+    expect(resolveConfig({ maxFailuresPerTurn: 2 }).maxFailuresPerTurn).toBe(2)
   })
 
   it('compiles risk rules into flagless regexes in order', () => {
@@ -49,6 +55,7 @@ describe('config resolution', () => {
     expect(() => resolveConfig({ reviewerTimeoutMs: 0 })).toThrow(/reviewerTimeoutMs/u)
     expect(() => resolveConfig({ reviewerTimeoutMs: 1.5 })).toThrow(/reviewerTimeoutMs/u)
     expect(() => resolveConfig({ maxReviewsPerTurn: -1 })).toThrow(/maxReviewsPerTurn/u)
+    expect(() => resolveConfig({ maxFailuresPerTurn: 0 })).toThrow(/maxFailuresPerTurn/u)
     expect(() => resolveConfig({ reasonMaxChars: 0 })).toThrow(/reasonMaxChars/u)
   })
 
