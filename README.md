@@ -44,6 +44,7 @@ Pattern-based auto-approvers decide before dispatch, with no evidence. `dsh-auto
 | ✋ **One-shot human override** | `/auto-review approve [n]` authorizes ONE retry of a recent denial; the next same-tool review carries that authorization as reviewer context (the reviewer still decides). |
 | 📜 **Reviewer context** | Optional compact transcript (recent messages and tool results, bounded) + a Codex-style Markdown `reviewerPolicyText` ruling policy. |
 | ⌨️ **Session command** | `/auto-review on|off|status|approve [n]` with a durable per-session override that survives restore and cumulative session statistics. |
+| 🖥️ **Web review panel** | A session-header panel (Web GUI) shows the switch, both per-turn budgets, cumulative statistics, the circuit trip, recent verdicts, and one-shot approve buttons — driven by the `autoReview` session projection. |
 
 ## How it works
 
@@ -159,6 +160,18 @@ Example (annotated full form: `fixtures/config/config-full.yaml`):
 
 `on`/`off` append the durable `autoReview/state` override (the fold survives restart/resume — replay IS the state) and inject a switch notice the model sees (logged as a `user/message` event). `status` reports the effective state, both per-turn budgets (AI verdicts and reviewer failures), and the session's cumulative statistics. `approve [n]` records a single-use `autoReview/override` for the n-th most recent denial (1 = most recent): the next same-tool review within `overrideTtlMs` carries the authorization as reviewer context — the reviewer still decides, and the override is consumed by that review regardless of its outcome.
 
+## 🖥️ Web review panel
+
+In the Web GUI (web profile), the package contributes a session-header action (**AI Review**) that opens a panel with the session's auto-review state: the switch, both per-turn budgets, cumulative statistics, the circuit trip, the recent verdicts, and one-shot **approve** buttons for recent denials (they execute `/auto-review approve [n]`).
+
+How it is wired:
+
+- The host registers an `autoReview` **session projection** (folded from the log-only `autoReview/*` events) and serves it through the session-projection channel.
+- The browser half is a **client module** (auto-discovered from the `dsh.client` declaration) registered on the `conversation.session.header.actions` seat.
+- No extra patch rows are needed: the panel loads whenever the plugin is installed in a profile whose web build provides the session-projection capability (the web profile does). Without that capability the panel reports itself unavailable; the answerer is unaffected.
+
+The panel reads only whole projection values — it never receives the raw session event stream.
+
 ## 🔒 Security
 
 - The reviewer runs in a **read-only tool face** (`toolFilter` allow-list). It cannot write, edit, run bash, fetch the network, or delegate (`maxDepth` = its own depth). Its session log is persisted and auditable.
@@ -175,7 +188,7 @@ Example (annotated full form: `fixtures/config/config-full.yaml`):
 - `reviewerTools` names must exist as global tools in the profile; an unknown name fails the reviewer child loudly at the earliest point and falls back.
 - Risk rules match the request `reason`, the `toolName`, or the redacted call `arguments` per their `field`; other conditions belong in `toolsPolicy.overrides`.
 - The `/auto-review approve` override authorizes the next same-tool review, not the exact historical call; a different action on the same tool consumes it.
-- The verdict event is log-only; the Web UI audit panel renders session events as-is (no dedicated panel).
+- The verdict events are log-only; the dedicated Web review panel reads the folded `autoReview` projection (the raw event stream never reaches browser plugins).
 - `autoReview/state` and `autoReview/verdict` are appended with the envelope's `ignorable: true` marker, so any harness build loads the log — readers that do not know the out-of-repo types simply skip those records instead of refusing the session. (rc.6 hosts accept and ignore the marker, keeping the exact pre-marker behavior; sessions written by pre-0.1.1 versions can be repaired with `scripts/repair-session-logs.mjs` from `dsh-permission-rules`.)
 - The git channel needs the single `allowBuilds` key the `dsh` CLI prints for `dsh-auto-review` itself. The repo ships its own `pnpm-workspace.yaml` with `allowBuilds: { esbuild: true }` so the isolated prepare environment does not fail on esbuild's (harmless platform-binary validation) postinstall; `typescript` + `tsdown` are regular `dependencies` so that environment always has the build tools.
 - The optional invariant companion (`dsh-auto-review/invariant`) needs the `invariants` service (agent-spine compositions such as headless/ACP); the plain web profile does not provide it, so the row ships commented out in the bundle patch.
@@ -194,13 +207,13 @@ Recommended when you publish: `dsh` · `dsh-plugin` · `deepseek-harness` · `de
 ```sh
 pnpm install                # node ^22.19 || >=24
 pnpm run typecheck          # tsc, src + tests
-pnpm test                   # vitest: 61 tests, 6 suites
-pnpm run build              # tsc declarations + tsdown bundles (lib/)
+pnpm test                   # vitest: 124 tests, 8 suites
+pnpm run build              # tsc declarations + tsdown bundles (lib/, incl. the client bundle)
 pnpm run verify:self-contained
 pnpm pack                   # publish artifact
 ```
 
-Repository layout (plugin-template structure): `src/index.ts` (plugin contract) · `src/config.ts` (Schemastery schema + resolution) · `src/runtime.ts` (answerer, command, deny-reason injection) · `src/review.ts` (reviewer orchestration, prompt, sanitization) · `src/events.ts` (session-event vocabulary + folds) · `src/invariant.ts` (invariant companion) · `test/` · `fixtures/`.
+Repository layout (plugin-template structure): `src/index.ts` (plugin contract) · `src/config.ts` (Schemastery schema + resolution) · `src/runtime.ts` (answerer, command, deny-reason injection) · `src/review.ts` (reviewer orchestration, prompt, sanitization) · `src/events.ts` (session-event vocabulary + folds) · `src/projection.ts` + `src/projection-types.ts` (the `autoReview` session projection) · `src/invariant.ts` (invariant companion) · `src/client/` (browser half: review panel, locales, styles) · `test/` · `fixtures/`.
 
 ## 📄 License
 

@@ -1,6 +1,11 @@
 # dsh-auto-review bundle patch: mount the auto-review answerer. `name` is the
 # package name, resolved through the profile's node_modules. An id-targeted
 # override replaces the whole config row — restate every key when overriding.
+#
+# The Web GUI review panel needs NO extra row: the package's `dsh.client`
+# declaration auto-registers its browser half (a session-header action), and
+# the host half registers an `autoReview` session projection whenever the
+# profile provides the session-projection capability (the web profile does).
 - insert:
     - id: auto-review
       name: dsh-auto-review

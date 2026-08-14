@@ -44,6 +44,7 @@
 | ✋ **一次性人工覆盖** | `/auto-review approve [n]` 授权对最近一次拒绝的**一次**重试；下一次同工具审查把该授权作为审查上下文携带（最终仍由审查代理决定）。 |
 | 📜 **审查上下文** | 可选的紧凑转录（近期消息与工具结果，有界）+ Codex 风格 Markdown `reviewerPolicyText` 裁决策略。 |
 | ⌨️ **会话级命令** | `/auto-review on|off|status|approve [n]`，带跨恢复生效的 durable 会话级覆盖与会话累计统计。 |
+| 🖥️ **Web 审查面板** | 会话头部面板（Web GUI）展示开关、两项每回合预算、累计统计、熔断器触发、最近裁决与一次性批准按钮——由 `autoReview` 会话投影驱动。 |
 
 ## 工作原理
 
@@ -159,6 +160,18 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 
 `on`/`off` 追加 durable 的 `autoReview/state` 覆盖事件（fold 跨重启/恢复生效——重放即状态），并注入模型可见的切换通知（记录为 `user/message` 事件）。`status` 显示当前生效状态、两项回合预算（AI 裁决与审查失败）以及会话的累计统计。`approve [n]` 针对第 n 近的拒绝（1 = 最近一次）记录一次性 `autoReview/override`：在 `overrideTtlMs` 内的下一次同工具审查携带该授权作为审查上下文——最终仍由审查代理决定，且无论该审查结果如何，此覆盖都会被消耗。
 
+## 🖥️ Web 审查面板
+
+在 Web GUI（web profile）中，本包贡献一个会话头部按钮（**AI 审查**），打开面板显示本会话的自动审查状态：开关、两项每回合预算、累计统计、熔断器触发、最近裁决，以及针对近期拒绝的一次性**批准**按钮（执行 `/auto-review approve [n]`）。
+
+接线方式：
+
+- 宿主注册一个 `autoReview` **会话投影**（由 log-only 的 `autoReview/*` 事件折叠而来），经会话投影通道送达浏览器。
+- 浏览器半是一个 **client module**（由 `dsh.client` 声明自动发现），注册在 `conversation.session.header.actions` 席位。
+- 无需额外 patch 行：只要插件安装在 web 构建提供会话投影能力的 profile（web profile 即如此）中，面板即自动加载；缺少该能力时面板显示不可用，answerer 不受影响。
+
+面板只读取投影整值——浏览器插件永远不会收到原始会话事件流。
+
 ## 🔒 安全边界
 
 - 审查代理运行在**只读工具面**（`toolFilter` 白名单）内：不能写、改、执行 shell、访问网络、再委派（`maxDepth` = 自身深度）。其会话日志同样落盘可审计。
@@ -175,7 +188,7 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 - `reviewerTools` 中的名字必须是 profile 中真实存在的全局工具；未知名字会在最早点响亮失败并回退。
 - 风险规则按各自的 `field` 匹配请求 `reason`、`toolName` 或脱敏后的调用 `arguments`；其他条件请用 `toolsPolicy.overrides`。
 - `/auto-review approve` 覆盖授权的是下一次同工具审查，而非那次精确的历史调用；同一工具上的另一动作也会消耗它。
-- 裁决事件是 log-only；Web UI 审计面板按会话事件原样渲染（无专属面板）。
+- 裁决事件是 log-only；专属 Web 审查面板读取折叠后的 `autoReview` 投影（原始事件流不会到达浏览器插件）。
 - `autoReview/state` 与 `autoReview/verdict` 均以信封 `ignorable: true` 标记写入，任何 harness 构建都能加载日志——不认识这些仓库外类型的读取器只会跳过相应记录而不是拒绝整个会话。（rc.6 宿主会接受并忽略该标记，行为与打标前完全一致；0.1.1 之前版本写入的会话可用 `dsh-permission-rules` 的 `scripts/repair-session-logs.mjs` 一次性修复。）
 - git 通道只需要 `dsh` CLI 打印的那一条 `allowBuilds` 键（针对 `dsh-auto-review` 本体）。仓库自带 `pnpm-workspace.yaml` 并声明 `allowBuilds: { esbuild: true }`，使隔离的 prepare 环境不会因 esbuild 的（无害的平台二进制校验）postinstall 而失败；`typescript` + `tsdown` 是常规 `dependencies`，保证该环境始终有构建工具。
 - 可选 invariant 伴生（`dsh-auto-review/invariant`）需要 `invariants` 服务（agent-spine 组合，如 headless/ACP）；普通 web profile 不提供该服务，因此该行在 bundle patch 中以注释形式发布。
@@ -194,7 +207,7 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 ```sh
 pnpm install                # node ^22.19 || >=24
 pnpm run typecheck          # tsc，src + 测试
-pnpm test                   # vitest：61 个测试、6 个套件
+pnpm test                   # vitest：124 个测试、8 个套件
 pnpm run build              # tsc 声明 + tsdown 打包（lib/）
 pnpm run verify:self-contained
 pnpm pack                   # 发布产物

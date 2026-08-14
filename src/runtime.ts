@@ -20,6 +20,7 @@ import type { PostToolDecision, ToolExecution, ToolExecutionResult } from '@deep
 import { resolveConfig, riskExceeds } from './config.ts'
 import type { Config, ResolvedConfig, ToolReviewPolicy } from './config.ts'
 import { messages } from './messages.ts'
+import { AUTO_REVIEW_PROJECTION } from './projection.ts'
 import {
   activeOverride,
   autoReviewFailuresInOpenTurn,
@@ -499,7 +500,10 @@ export class AutoReviewRuntime {
 
 /**
  * Mount the plugin: resolve config, register the answerer and the
- * post-execute listener as effects, and register the slash command.
+ * post-execute listener as effects, register the slash command, and register
+ * the `autoReview` session projection (when the host provides the
+ * session-projection capability — the web profile does; bare test mounts and
+ * minimal compositions may not, and the answerer must not depend on it).
  * @param ctx - the host context.
  * @param config - raw plugin config.
  */
@@ -514,4 +518,7 @@ export function apply(ctx: Context, config: Config): void {
     input: { hint: 'on|off|status|approve [n]' },
     handler: invocation => runtime.command(invocation),
   })
+  if (ctx.get('sessionProjections') !== undefined) {
+    ctx.inject(['sessionProjections'], scope => scope.sessionProjections.register(AUTO_REVIEW_PROJECTION))
+  }
 }

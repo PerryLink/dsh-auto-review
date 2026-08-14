@@ -2,7 +2,17 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
-## [0.2.0] — unreleased
+## [0.3.0] — unreleased
+
+### Added
+
+- **Web review panel**: a session-header action in the Web GUI showing the session's switch, both per-turn budgets, cumulative statistics, the circuit trip, recent verdicts, and one-shot approve buttons for recent denials (they execute `/auto-review approve [n]`).
+  - Host: an `autoReview` **session projection** (`src/projection.ts` + `src/projection-types.ts`) folds the log-only `autoReview/*` events into one wire-JSON value; it registers whenever the host provides the session-projection capability (the web profile does), so non-web mounts keep working unchanged.
+  - Browser: a **client module** (`dsh.client` declaration + `./client` export) registered on the `conversation.session.header.actions` seat; it reads only the projection whole value — the raw session event stream never reaches browser plugins.
+  - The browser bundle follows the shell's client-bundle handshake (`window.__ModuleLoader__.load`), with platform modules external and everything else inlined.
+- `CHANGELOG.md` is now shipped in the tarball.
+
+## [0.2.0] — 2026-08-14
 
 ### Breaking
 

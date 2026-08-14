@@ -44,6 +44,7 @@ Los auto-aprobadores basados en patrones deciden antes del despacho, sin evidenc
 | ✋ **Anulación humana de un solo uso** | `/auto-review approve [n]` autoriza UN reintento de una denegación reciente; la siguiente revisión de la misma herramienta lleva esa autorización como contexto del revisor (el revisor sigue decidiendo). |
 | 📜 **Contexto del revisor** | Transcripción compacta opcional (mensajes recientes y resultados de herramientas, acotada) + una política de decisión `reviewerPolicyText` en Markdown estilo Codex. |
 | ⌨️ **Comando de sesión** | `/auto-review on|off|status|approve [n]` con una anulación duradera por sesión que sobrevive a la restauración y estadísticas acumuladas de sesión. |
+| 🖥️ **Panel de revisión web** | Un panel en la cabecera de sesión (GUI web) muestra el interruptor, ambos presupuestos por turno, estadísticas acumuladas, el disparo del disyuntor, veredictos recientes y botones de aprobación de un solo uso — impulsado por la proyección de sesión `autoReview`. |
 
 ## Cómo funciona
 
@@ -159,6 +160,18 @@ Ejemplo (forma completa comentada: `fixtures/config/config-full.yaml`):
 
 `on`/`off` añaden la anulación duradera `autoReview/state` (el fold sobrevive a reinicios/restauración — la reproducción ES el estado) e inyectan un aviso de cambio visible para el modelo (registrado como evento `user/message`). `status` muestra el estado efectivo, ambos presupuestos por turno (veredictos de IA y fallos del revisor) y las estadísticas acumuladas de la sesión. `approve [n]` registra una `autoReview/override` de un solo uso para la n-ésima denegación más reciente (1 = la más reciente): la siguiente revisión de la misma herramienta dentro de `overrideTtlMs` lleva la autorización como contexto del revisor — el revisor sigue decidiendo, y la anulación se consume con esa revisión independientemente de su resultado.
 
+## 🖥️ Panel de revisión web
+
+En la GUI web (perfil web), el paquete aporta una acción en la cabecera de sesión (**AI Review**) que abre un panel con el estado de auto-revisión de la sesión: el interruptor, ambos presupuestos por turno, estadísticas acumuladas, el disparo del disyuntor, los veredictos recientes y botones de **aprobación** de un solo uso para denegaciones recientes (ejecutan `/auto-review approve [n]`).
+
+Cómo está cableado:
+
+- El host registra una **proyección de sesión** `autoReview` (plegada desde los eventos log-only `autoReview/*`) y la sirve a través del canal de proyección de sesión.
+- La mitad navegador es un **módulo cliente** (auto-descubierto desde la declaración `dsh.client`) registrado en el asiento `conversation.session.header.actions`.
+- No hacen falta filas de patch adicionales: el panel carga siempre que el plugin esté instalado en un perfil cuya compilación web ofrece la capacidad de proyección de sesión (el perfil web lo hace). Sin esa capacidad el panel se declara no disponible; el contestador no se ve afectado.
+
+El panel solo lee valores de proyección completos — nunca recibe el flujo crudo de eventos de sesión.
+
 ## 🔒 Seguridad
 
 - El revisor corre con una **cara de herramientas de solo lectura** (lista blanca `toolFilter`). No puede escribir, editar, ejecutar shell, acceder a la red ni delegar (`maxDepth` = su propia profundidad). Su registro de sesión persiste y es auditable.
@@ -175,7 +188,7 @@ Ejemplo (forma completa comentada: `fixtures/config/config-full.yaml`):
 - Los nombres de `reviewerTools` deben existir como herramientas globales del perfil; un nombre desconocido hace fallar al hijo revisor en voz alta en el punto más temprano y cae al fallback.
 - Las reglas de riesgo emparejan el `reason` de la petición, el `toolName` o los `arguments` redactados de la llamada según su `field`; las demás condiciones van en `toolsPolicy.overrides`.
 - La anulación `/auto-review approve` autoriza la siguiente revisión de la misma herramienta, no la llamada histórica exacta; una acción distinta sobre la misma herramienta la consume.
-- El evento de veredicto es log-only; el panel de auditoría de la Web UI renderiza los eventos de sesión tal cual (sin panel dedicado).
+- Los eventos de veredicto son log-only; el panel de revisión web dedicado lee la proyección plegada `autoReview` (el flujo crudo de eventos nunca llega a los plugins del navegador).
 - `autoReview/state` y `autoReview/verdict` se escriben con el marcador de envoltura `ignorable: true`, de modo que cualquier build del harness carga el registro: los lectores que no conocen los tipos fuera del repositorio simplemente omiten esos eventos en lugar de rechazar la sesión. (Los hosts rc.6 aceptan e ignoran el marcador, conservando exactamente el comportamiento anterior; las sesiones escritas por versiones anteriores a 0.1.1 pueden repararse con `scripts/repair-session-logs.mjs` de `dsh-permission-rules`.)
 - El canal git solo necesita la clave `allowBuilds` que imprime el CLI `dsh` para `dsh-auto-review`. El repo trae su propio `pnpm-workspace.yaml` con `allowBuilds: { esbuild: true }` para que el entorno de prepare aislado no falle por el postinstall de esbuild (validación inofensiva del binario de plataforma); `typescript` + `tsdown` son `dependencies` regulares para que ese entorno siempre tenga las herramientas de build.
 - El companion de invariantes opcional (`dsh-auto-review/invariant`) necesita el servicio `invariants` (composiciones agent-spine como headless/ACP); el perfil web simple no lo proporciona, por eso la fila se publica comentada en el patch del bundle.
@@ -194,7 +207,7 @@ Recomendados al publicar: `dsh` · `dsh-plugin` · `deepseek-harness` · `deepse
 ```sh
 pnpm install                # node ^22.19 || >=24
 pnpm run typecheck          # tsc, src + tests
-pnpm test                   # vitest: 61 tests, 6 suites
+pnpm test                   # vitest: 124 tests, 8 suites
 pnpm run build              # declaraciones tsc + bundles tsdown (lib/)
 pnpm run verify:self-contained
 pnpm pack                   # artefacto de publicación

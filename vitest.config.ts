@@ -5,5 +5,6 @@ export default defineConfig({
     include: ['test/**/*.spec.ts'],
     environment: 'node',
     pool: 'forks',
+    environmentMatchGlobs: [['test/client*.spec.ts', 'jsdom']],
   },
 })
