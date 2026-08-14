@@ -15,8 +15,8 @@ import type { ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-subagent'
 import { assertObjectJsonSchema, type ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
 import type { AutoReviewFallback } from './events.ts'
-import { AutoReviewVerdictId, findPresentedCall } from './events.ts'
-import type { ResolvedConfig, RiskLevel } from './config.ts'
+import { AutoReviewCircuitId, AutoReviewVerdictId, findPresentedCall } from './events.ts'
+import type { ContextBudgetConfig, ResolvedConfig, RiskLevel } from './config.ts'
 
 /** A reviewer verdict, validated against the closed decision vocabulary. */
 export interface ReviewerVerdict {
@@ -88,6 +88,30 @@ export function sanitizeArguments(value: unknown): unknown {
 }
 
 /**
+ * The already-presented call arguments, parsed and key-redacted, as pretty
+ * JSON — the raw material for both the reviewer prompt section and the
+ * `arguments` risk-rule field.
+ * @param events - the requesting session's log.
+ * @param callId - the call to render.
+ * @returns the sanitized JSON text, or undefined when the log lacks a parseable call.
+ */
+export function sanitizedArgumentsText(events: readonly SessionEvent[], callId: CallId): string | undefined {
+  const raw = findPresentedCall(events, callId)
+  if (raw === undefined) return undefined
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw) as unknown
+  } catch {
+    return undefined
+  }
+  try {
+    return JSON.stringify(sanitizeArguments(parsed), undefined, 2)
+  } catch {
+    return String(parsed)
+  }
+}
+
+/**
  * Render the tool-call context for the reviewer: the already-streamed call
  * arguments (parsed, redacted, truncated) or a note when the log lacks them.
  * @param events - the requesting session's log.
@@ -97,21 +121,77 @@ export function sanitizeArguments(value: unknown): unknown {
  */
 export function renderCallContext(events: readonly SessionEvent[], callId: CallId | undefined, maxChars: number): string {
   if (callId === undefined) return 'Tool call arguments: (not available — the asker attached no call id)'
-  const raw = findPresentedCall(events, callId)
-  if (raw === undefined) return 'Tool call arguments: (not found in the presented transcript)'
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw) as unknown
-  } catch {
-    return 'Tool call arguments: (unparseable raw JSON omitted)'
-  }
-  let text: string
-  try {
-    text = JSON.stringify(sanitizeArguments(parsed), undefined, 2)
-  } catch {
-    text = String(parsed)
-  }
+  const text = sanitizedArgumentsText(events, callId)
+  if (text === undefined) return 'Tool call arguments: (not found or unparseable in the presented transcript)'
   return `Tool call arguments (sensitive values redacted):\n${truncate(text, maxChars)}`
+}
+
+/** How many characters one transcript line may take before truncation. */
+const CONTEXT_LINE_BUDGET = 300
+
+/** Extract the text blocks of a message's content as one string. */
+function contentText(content: readonly ContentBlock[]): string {
+  return content
+    .filter(block => block.type === 'text')
+    .map(block => (block as { text: string }).text)
+    .join('\n')
+}
+
+/** One transcript event rendered as a compact line, or undefined when the event carries no usable text. */
+function contextLine(event: SessionEvent): string | undefined {
+  switch (event.type) {
+    case 'user/message': return `[user] ${truncate(contentText(event.data.content), CONTEXT_LINE_BUDGET)}`
+    case 'assistant/message': return `[agent] ${truncate(contentText(event.data.message.content), CONTEXT_LINE_BUDGET)}`
+    case 'tool/call': {
+      const args = event.data.arguments
+      return `[tool call ${event.data.name}] ${truncate(args, CONTEXT_LINE_BUDGET)}`
+    }
+    case 'tool/result': {
+      const block = event.data.message.content[0]
+      if (block === undefined || block.type !== 'tool-result') return undefined
+      const text = contentText(block.content)
+      return text === '' ? undefined : `[tool result] ${truncate(text, CONTEXT_LINE_BUDGET)}`
+    }
+    default: return undefined
+  }
+}
+
+/**
+ * Build the compact-transcript section for the reviewer: the tail of the
+ * session's user/assistant messages and tool calls/results, most recent
+ * last, bounded by {@link ContextBudgetConfig}. `turns: 0` yields an empty
+ * section. Tool-call arguments and tool-result text enter verbatim (they are
+ * already-presented transcript content); the presented call of the pending
+ * request is redacted separately in {@link renderCallContext}.
+ * @param events - the requesting session's log.
+ * @param budget - how much context to include.
+ * @returns the prompt section text (empty when disabled).
+ */
+export function buildContextSection(events: readonly SessionEvent[], budget: ContextBudgetConfig): string {
+  if (budget.turns === 0) return ''
+  const lines: string[] = []
+  let crossed = 0
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index] as SessionEvent
+    if (event.type === 'turn/end') {
+      crossed += 1
+      if (crossed >= budget.turns) break
+      continue
+    }
+    if (event.type === 'turn/start') continue
+    const line = contextLine(event)
+    if (line !== undefined) lines.push(line)
+  }
+  lines.reverse()
+  const joined = lines.join('\n')
+  if (joined === '') return '(no transcript content yet)'
+  return truncate(joined, budget.maxChars)
+}
+
+/** Context of a pending human override, passed into the reviewer prompt. */
+export interface OverrideContext {
+  readonly reviewId: AutoReviewVerdictId
+  readonly toolName: string
 }
 
 /**
@@ -130,20 +210,38 @@ export function truncate(text: string, maxChars: number): string {
 
 /**
  * Build the reviewer prompt: role, the pending request's tool/reason/context/
- * workspace, the resolved risk rules, and the verdict contract.
+ * workspace, the resolved risk rules, the ruling policy text, the optional
+ * human-override context, and the verdict contract.
  * @param request - the pending approval request.
  * @param config - resolved config (rules, guidance, budgets).
+ * @param override - a pending human one-shot override, when one applies.
  * @returns the exact prompt text block.
  */
-export function buildReviewPrompt(request: ApprovalRequest, config: ResolvedConfig): string {
+export function buildReviewPrompt(request: ApprovalRequest, config: ResolvedConfig, override?: OverrideContext): string {
   const workspace = request.agent.session.header.cwd ?? '(unknown)'
   const rules = config.riskRules.length > 0
-    ? config.riskRules.map(rule => `- reason matches /${rule.pattern}/u → ${rule.policy}`).join('\n')
+    ? config.riskRules.map(rule => `- ${rule.field === 'reason' ? 'reason' : rule.field} matches /${rule.pattern}/u → ${rule.policy}`).join('\n')
     : '(no risk rules configured)'
   const guidance = config.reviewerGuidance === undefined
     ? ''
     : `\nAdditional reviewer guidance:\n${config.reviewerGuidance}\n`
+  const policy = config.reviewerPolicyText === undefined
+    ? ''
+    : `\nRuling policy (follow it over the general verdict rules):\n${config.reviewerPolicyText}\n`
+  const overrideSection = override === undefined
+    ? ''
+    : [
+      '',
+      'HUMAN OVERRIDE: the user explicitly authorized ONE retry of the previously denied',
+      `action (review ${override.reviewId}, tool ${override.toolName}). This does not force`,
+      'an allow — judge the current evidence normally, but count the explicit human',
+      'authorization as strong evidence of legitimacy.',
+    ].join('\n')
   const context = renderCallContext(request.agent.session.events, request.callId, config.reasonMaxChars)
+  const transcript = buildContextSection(request.agent.session.events, config.contextBudget)
+  const transcriptSection = transcript === ''
+    ? ''
+    : `\nRecent session transcript (presented content, most recent last):\n${transcript}\n`
   // The reason is the CALLING model's self-report: evidence to weigh, not an
   // instruction — it is truncated like every other prompt input.
   const reason = truncate(request.reason ?? '(none given)', config.reasonMaxChars)
@@ -161,6 +259,9 @@ export function buildReviewPrompt(request: ApprovalRequest, config: ResolvedConf
     'Risk rules (the resolved policy already accounts for these; the first match won):',
     rules,
     guidance,
+    policy,
+    overrideSection,
+    transcriptSection,
     'Verdict rules:',
     '- allow: the action is safe, reversible, within the stated scope, and its reason is plausible.',
     '- deny: the action is destructive, irreversible, credential- or data-exfiltrating, or the',
@@ -206,6 +307,7 @@ export function parseVerdict(value: unknown, reasonMaxChars: number): ReviewerVe
  * @param request - the pending approval request (parent, signal, and evidence).
  * @param reviewerSessions - the runtime's live reviewer session ids, so the
  *   answerer can refuse the child's own approval asks while the review runs.
+ * @param override - a pending human one-shot override, when one applies.
  * @returns the verdict or the failure.
  */
 export async function runReview(
@@ -213,12 +315,23 @@ export async function runReview(
   config: ResolvedConfig,
   request: ApprovalRequest,
   reviewerSessions: Set<SessionId>,
+  override?: OverrideContext,
 ): Promise<ReviewResolution> {
   const provider = config.reviewerProvider
-  if (ctx.subagents.getProvider(provider) === undefined) {
+  const providerInfo = ctx.subagents.getProvider(provider)
+  if (providerInfo === undefined) {
     return { fallback: 'unavailable', error: `subagent provider "${provider}" is not registered` }
   }
-  const prompt: ContentBlock[] = [{ type: 'text', text: buildReviewPrompt(request, config) }]
+  const capabilities = providerInfo.capabilities
+  // Absent capabilities (mock providers) skip the precheck; the service
+  // rejects unsupported requests at start time either way.
+  if (capabilities?.outputSchema === false) {
+    return { fallback: 'unavailable', error: `subagent provider "${provider}" does not support outputSchema, which the structured verdict requires` }
+  }
+  if (capabilities?.toolFilter === false) {
+    return { fallback: 'unavailable', error: `subagent provider "${provider}" does not support toolFilter, which the read-only reviewer face requires` }
+  }
+  const prompt: ContentBlock[] = [{ type: 'text', text: buildReviewPrompt(request, config, override) }]
   const controller = new AbortController()
   let timedOut = false
   const timer = setTimeout(() => {
@@ -295,4 +408,12 @@ export async function runReview(
  */
 export function newVerdictId(): AutoReviewVerdictId {
   return AutoReviewVerdictId(randomUUID())
+}
+
+/**
+ * Mint one circuit-trip id. Wrapped for testability (audit uniqueness is a UUID).
+ * @returns a fresh branded id.
+ */
+export function newCircuitId(): AutoReviewCircuitId {
+  return AutoReviewCircuitId(randomUUID())
 }

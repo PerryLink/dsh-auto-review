@@ -8,7 +8,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
-import { FALLBACK_MARKER_PATTERN } from '../src/index.ts'
+import { CIRCUIT_MARKER_PATTERN, DENY_MARKER_PATTERN, FALLBACK_MARKER_PATTERN } from '../src/index.ts'
 import {
   dispatchApproval,
   dispatchAskedApproval,
@@ -221,9 +221,9 @@ describe('auto-review answerer', () => {
     expect(verdict?.data).not.toHaveProperty('outcome')
   })
 
-  it('grants on reviewer failure only with fallbackPolicy allow-readonly', async () => {
+  it('grants on reviewer failure only with fallbackPolicy allow-once', async () => {
     const harness = await mountHarness(
-      { toolsPolicy: { overrides: { bash: 'ai' } }, fallbackPolicy: 'allow-readonly' },
+      { toolsPolicy: { overrides: { bash: 'ai' } }, fallbackPolicy: 'allow-once' },
       () => ({ stopReason: 'error' }),
     )
     const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
@@ -493,5 +493,235 @@ describe('auto-review answerer', () => {
     })
     expect(decision).toMatchObject({ kind: 'accept' })
     expect(downstreamCalled).toBe(true)
+  })
+
+  it('matches a toolName-field risk rule against the tool name', async () => {
+    const harness = await mountHarness({
+      riskRules: [{ pattern: 'bash', policy: 'never', field: 'toolName' }],
+    })
+    const denied = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+    }, next)
+    expect(denied.outcome).toBe('rejected')
+    expect(harness.subagents.starts).toHaveLength(0)
+    let downstreamCalled = false
+    const delegated = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'write',
+    }, async () => {
+      downstreamCalled = true
+      return 'allowed-once'
+    })
+    expect(delegated.outcome).toBe('allowed-once')
+    expect(downstreamCalled).toBe(true)
+  })
+
+  it('matches an arguments-field risk rule against the redacted call arguments', async () => {
+    const harness = await mountHarness({
+      riskRules: [{ pattern: 'rm -rf', policy: 'never', field: 'arguments' }],
+    })
+    const append = harness.session.append as unknown as (type: string, data: unknown) => unknown
+    append.call(harness.session, 'tool/call', {
+      turn: 1,
+      step: 1,
+      callId: CallId('call-rm'),
+      name: 'bash',
+      arguments: '{"command":"rm -rf /tmp/cache"}',
+    })
+    const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+      callId: CallId('call-rm'),
+    }, next)
+    expect(outcome).toBe('rejected')
+    expect(harness.subagents.starts).toHaveLength(0)
+  })
+
+  it('delegates an allow verdict whose risk exceeds maxAutoAllow', async () => {
+    const harness = await mountHarness(
+      {
+        toolsPolicy: { overrides: { bash: 'ai' } },
+        riskPolicy: { maxAutoAllow: 'medium', onHighRisk: 'delegate' },
+      },
+      () => ({ verdict: { decision: 'allow', reason: 'risky but reversible', riskLevel: 'high' } }),
+    )
+    let downstreamCalled = false
+    const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+    }, async () => {
+      downstreamCalled = true
+      return 'rejected'
+    })
+    expect(outcome).toBe('rejected')
+    expect(downstreamCalled).toBe(true)
+    const verdict = lastEvent(harness.session.events, 'autoReview/verdict')
+    expect(verdict?.data).toMatchObject({ decision: 'allow', riskLevel: 'high', escalation: 'risk-policy' })
+    expect(verdict?.data).not.toHaveProperty('outcome')
+  })
+
+  it('denies an allow verdict whose risk exceeds maxAutoAllow with onHighRisk deny', async () => {
+    const harness = await mountHarness(
+      {
+        toolsPolicy: { overrides: { bash: 'ai' } },
+        riskPolicy: { maxAutoAllow: 'medium', onHighRisk: 'deny' },
+      },
+      () => ({ verdict: { decision: 'allow', reason: 'risky', riskLevel: 'high' } }),
+    )
+    const callId = CallId('call-risk-deny')
+    const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+      callId,
+    }, next)
+    expect(outcome).toBe('rejected')
+    expect(lastEvent(harness.session.events, 'autoReview/verdict')?.data).toMatchObject({
+      decision: 'allow',
+      escalation: 'risk-policy',
+      outcome: 'rejected',
+    })
+    const decision = await dispatchPostExecute(harness.ctx, { callId } as never, {
+      isError: true,
+      content: [{ type: 'text', text: 'Error: rejected' }],
+    }, async () => ({ kind: 'accept' }))
+    const feedback = (decision as { feedback: { text: string }[] }).feedback
+    expect(feedback[0]!.text).toMatch(DENY_MARKER_PATTERN)
+    expect(feedback[0]!.text).toContain('Do not attempt')
+  })
+
+  it('still allows a low-risk verdict under a tightened risk cap', async () => {
+    const harness = await mountHarness(
+      {
+        toolsPolicy: { overrides: { bash: 'ai' } },
+        riskPolicy: { maxAutoAllow: 'low', onHighRisk: 'deny' },
+      },
+      () => ({ verdict: { decision: 'allow', reason: 'safe', riskLevel: 'low' } }),
+    )
+    const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+    }, next)
+    expect(outcome).toBe('allowed-once')
+  })
+
+  it('trips the circuit breaker on consecutive denials and delegates afterwards', async () => {
+    const harness = await mountHarness(
+      {
+        toolsPolicy: { overrides: { bash: 'ai' } },
+        circuitBreaker: { consecutiveDenies: 2, windowDenies: 10, windowSize: 50, action: 'delegate' },
+      },
+      () => ({ verdict: { decision: 'deny', reason: 'no' } }),
+    )
+    const first = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+    }, next)
+    expect(first.outcome).toBe('rejected')
+    const second = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+    }, next)
+    expect(second.outcome).toBe('rejected')
+    const circuit = harness.session.events.find(event => event.type === 'autoReview/circuit')
+    expect(circuit?.data).toMatchObject({ action: 'delegate', trip: { kind: 'consecutive', count: 2 } })
+    let downstreamCalled = false
+    const third = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+    }, async () => {
+      downstreamCalled = true
+      return 'allowed-once'
+    })
+    expect(third.outcome).toBe('allowed-once')
+    expect(downstreamCalled).toBe(true)
+    expect(harness.subagents.starts).toHaveLength(2)
+  })
+
+  it('rejects later requests with an auditable marker when the circuit action is reject', async () => {
+    const harness = await mountHarness(
+      {
+        toolsPolicy: { overrides: { bash: 'ai' } },
+        circuitBreaker: { consecutiveDenies: 1, windowDenies: 10, windowSize: 50, action: 'reject' },
+      },
+      () => ({ verdict: { decision: 'deny', reason: 'no' } }),
+    )
+    await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+    }, next)
+    const callId = CallId('call-circuit')
+    const second = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+      callId,
+    }, next)
+    expect(second.outcome).toBe('rejected')
+    expect(harness.subagents.starts).toHaveLength(1)
+    const decision = await dispatchPostExecute(harness.ctx, { callId } as never, {
+      isError: true,
+      content: [{ type: 'text', text: 'Error: rejected' }],
+    }, async () => ({ kind: 'accept' }))
+    const feedback = (decision as { feedback: { text: string }[] }).feedback
+    expect(feedback[0]!.text).toMatch(CIRCUIT_MARKER_PATTERN)
+  })
+
+  it('aborts the turn when the circuit action is abort-turn', async () => {
+    const harness = await mountHarness(
+      {
+        toolsPolicy: { overrides: { bash: 'ai' } },
+        circuitBreaker: { consecutiveDenies: 1, windowDenies: 10, windowSize: 50, action: 'abort-turn' },
+      },
+      () => ({ verdict: { decision: 'deny', reason: 'no' } }),
+    )
+    const cancel = vi.fn()
+    harness.agent.cancel = cancel as never
+    const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+    }, next)
+    expect(outcome).toBe('rejected')
+    const circuit = harness.session.events.find(event => event.type === 'autoReview/circuit')
+    expect(circuit?.data).toMatchObject({ action: 'abort-turn' })
+    expect(harness.injected).toHaveLength(1)
+    expect((harness.injected[0]!.content[0] as { text: string }).text).toContain('circuit breaker tripped')
+    await new Promise<void>(resolve => setTimeout(resolve, 5))
+    expect(cancel).toHaveBeenCalledWith({ kind: 'hook', reason: expect.stringContaining('circuit breaker') })
+  })
+
+  it('runs the next same-tool review with a pending human override, then consumes it', async () => {
+    let decision: 'allow' | 'deny' = 'deny'
+    const harness = await mountHarness(
+      { toolsPolicy: { overrides: { bash: 'ai' } } },
+      () => ({ verdict: { decision, reason: 'x' } }),
+    )
+    const first = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+    }, next)
+    expect(first.outcome).toBe('rejected')
+    const denyVerdict = lastEvent(harness.session.events, 'autoReview/verdict')
+    const reviewId = (denyVerdict?.data as { reviewId: string }).reviewId
+    ;(harness.session.append as unknown as (type: string, data: unknown) => unknown)('autoReview/override', {
+      reviewId,
+      toolName: 'bash',
+    })
+    decision = 'allow'
+    const second = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+    }, next)
+    expect(second.outcome).toBe('allowed-once')
+    const overrideStart = harness.subagents.starts.at(-1)!
+    const overrideText = overrideStart.request.prompt.map(block => block.type === 'text' ? block.text : '').join('')
+    expect(overrideText).toContain('HUMAN OVERRIDE')
+    const third = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+    }, next)
+    expect(third.outcome).toBe('allowed-once')
+    const consumedStart = harness.subagents.starts.at(-1)!
+    const consumedText = consumedStart.request.prompt.map(block => block.type === 'text' ? block.text : '').join('')
+    expect(consumedText).not.toContain('HUMAN OVERRIDE')
   })
 })

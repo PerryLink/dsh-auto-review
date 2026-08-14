@@ -13,18 +13,32 @@ toolsPolicy:
 
 riskRules:
   # First match wins, and risk rules win over toolsPolicy.overrides.
+  # `field` selects the match subject: reason (default) | toolName | arguments
+  # (the redacted presented call arguments).
   - pattern: '(?i)(rm\\s+(-[a-z]+\\s+)*/|git\\s+push\\s+--force|curl\\s+.*\\|\\s*(ba)?sh)'
     policy: never
   - pattern: '(?i)(sudo|chmod\\s+777)'
     policy: human
+  - pattern: 'write'
+    policy: never
+    field: toolName
 
 reviewerProvider: fork        # the in-process fork subagent backend
 reviewerModel: null           # omit or null: inherit the session agent's route
 reviewerTimeoutMs: 60000
 reviewerTools: [read, glob, grep]   # read-only allow-list for the reviewer child
-fallbackPolicy: rejected      # fail closed on reviewer failure
+fallbackPolicy: rejected      # fail closed on reviewer failure (delegate | allow-once)
 maxReviewsPerTurn: 10         # real AI verdicts per open turn
 maxFailuresPerTurn: 3         # reviewer failures per open turn (defaults to maxReviewsPerTurn)
 reasonMaxChars: 2000
 reviewerGuidance: >
   Prefer denying anything that touches files outside the workspace root.
+denyGuidance: >
+  Do not attempt to work around this denial. Choose a materially safer
+  alternative or ask the user before retrying this action.
+contextBudget: { turns: 2, maxChars: 4000 }   # compact transcript for the reviewer; turns: 0 disables
+riskPolicy: { maxAutoAllow: medium, onHighRisk: delegate }   # allow verdicts above medium delegate to humans
+circuitBreaker: { consecutiveDenies: 3, windowDenies: 10, windowSize: 50, action: delegate }  # delegate | reject | abort-turn
+overrideTtlMs: 300000          # /auto-review approve validity window
+language: en                   # /auto-review command UI language (en | zh)
+# reviewerPolicyText: see fixtures/config/policy-template.md

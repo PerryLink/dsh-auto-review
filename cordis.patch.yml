@@ -8,10 +8,12 @@
         toolsPolicy:
           # Tools NOT listed fall back to the schema default `human`
           # (delegate to the human answerer — the chain is never short-circuited).
+          # `edit` (in-place modification) is deliberately NOT AI-reviewed by
+          # default: add it here explicitly if you accept in-place edits without
+          # a human in the loop.
           overrides:
             bash: ai
             write: ai
-            edit: ai
     # OPTIONAL invariant companion — uncomment and add to YOUR profile patch
     # layer only in compositions that provide the `invariants` service
     # (agent-spine apps such as headless/ACP). The plain web profile has no

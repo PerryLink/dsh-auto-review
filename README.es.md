@@ -39,7 +39,11 @@ Los auto-aprobadores basados en patrones deciden antes del despacho, sin evidenc
 | 💬 **Los motivos de denegación llegan al modelo** | El motivo del revisor se inyecta en el resultado de la herramienta denegada (vinculado por callId), para que el agente se adapte. Las denegaciones del fallback fail-closed también inyectan un texto de fallo auditable. |
 | 📜 **Auditoría completa** | Eventos de sesión `autoReview/verdict` (identidad del revisor, veredicto, motivo, riesgo, duración) + un companion de invariantes que exige *model-visible ⟺ logged*. |
 | 🔁 **Sin recursión** | Las peticiones del propio revisor se reconocen por identidad y se delegan; `maxDepth` + la lista blanca mantienen al revisor sin delegar. |
-| ⌨️ **Comando de sesión** | `/auto-review on|off|status` con una anulación duradera por sesión que sobrevive a la restauración. |
+| 🧯 **Disyuntor de rechazos** | 3 denegaciones consecutivas (o 10 dentro de los últimos 50 veredictos) en un turno disparan el disyuntor: las peticiones posteriores delegan, rechazan o abortan el turno — sin bucles de denegación interminables. |
+| 🎚️ **Política por nivel de riesgo** | Un veredicto `allow` cuyo riesgo supera `riskPolicy.maxAutoAllow` nunca resuelve la petición: la delega a un humano o la deniega. |
+| ✋ **Anulación humana de un solo uso** | `/auto-review approve [n]` autoriza UN reintento de una denegación reciente; la siguiente revisión de la misma herramienta lleva esa autorización como contexto del revisor (el revisor sigue decidiendo). |
+| 📜 **Contexto del revisor** | Transcripción compacta opcional (mensajes recientes y resultados de herramientas, acotada) + una política de decisión `reviewerPolicyText` en Markdown estilo Codex. |
+| ⌨️ **Comando de sesión** | `/auto-review on|off|status|approve [n]` con una anulación duradera por sesión que sobrevive a la restauración y estadísticas acumuladas de sesión. |
 
 ## Cómo funciona
 
@@ -95,7 +99,7 @@ Verifica:
 dsh --profile web --dump-config | grep -A4 'id: auto-review'
 ```
 
-De serie, el patch enviado somete `bash`, `write` y `edit` a revisión de IA; el resto de herramientas se delega a la cadena humana.
+De serie, el patch enviado somete `bash` y `write` a revisión de IA; el resto de herramientas (incluido `edit` — modificación in situ) se delega a la cadena humana. Añade `edit: ai` explícitamente si aceptas ediciones in situ sin un humano en el bucle.
 
 ## ⚙️ Configuración
 
@@ -106,16 +110,23 @@ Todos los parámetros son campos `Config` de Schemastery (cambiables desde cordi
 | `enableByDefault` | `true` | Las sesiones arrancan con auto-review activado; `/auto-review on\|off` escribe una anulación duradera con prioridad |
 | `toolsPolicy.default` | `human` | Política para herramientas no listadas (delegar al answerer humano) |
 | `toolsPolicy.overrides` | `{}` | Política por herramienta: `ai` (decide el revisor), `human` (forzar humano), `never` (rechazo determinista) |
-| `riskRules` | `[]` | `{pattern, policy}` emparejado (gana la primera coincidencia) contra el motivo de la petición, **antes** de la tabla de herramientas |
+| `riskRules` | `[]` | `{pattern, policy, field?}` emparejado (gana la primera coincidencia) antes de la tabla de herramientas; `field` selecciona `reason` (por defecto), `toolName` o `arguments` (los argumentos de llamada presentados redactados) |
 | `reviewerProvider` | `fork` | Provider de subagente para el revisor (backend fork en proceso) |
 | `reviewerModel` | *(heredar)* | Id del modelo del revisor; sin valor hereda la ruta del agente de sesión |
 | `reviewerTimeoutMs` | `60000` | Plazo del veredicto; al vencer se aplica la política de fallback |
-| `reviewerTools` | `[read, glob, grep]` | Lista blanca de herramientas del hijo revisor — todo lo demás es invisible allí |
-| `fallbackPolicy` | `rejected` | Ante fallo del revisor: `rejected` (fail closed), `delegate` (continúa la cadena), `allow-readonly` (concede — ver Seguridad) |
+| `reviewerTools` | `[read, glob, grep]` | Lista blanca de herramientas del hijo revisor (no debe estar vacía) — todo lo demás es invisible allí |
+| `fallbackPolicy` | `rejected` | Ante fallo del revisor: `rejected` (fail closed), `delegate` (continúa la cadena), `allow-once` (concede — ver Seguridad). Renombrado desde `allow-readonly` en 0.2.0; la grafía antigua falla en voz alta |
 | `maxReviewsPerTurn` | `10` | Presupuesto real de veredictos de IA por turno abierto; agotado, se delega a humanos |
 | `maxFailuresPerTurn` | `10` | Presupuesto de fallos del revisor por turno abierto (timeout/no disponible/schema, no cancelaciones); agotado, las peticiones se delegan en lugar de pagar otro timeout completo. Por defecto, `maxReviewsPerTurn` |
-| `reasonMaxChars` | `2000` | Tope para los motivos del revisor y la vista previa de argumentos redactada |
+| `reasonMaxChars` | `2000` | Tope para los motivos del revisor, el motivo de la petición y la vista previa de argumentos redactada |
 | `reviewerGuidance` | *(ninguna)* | Guía opcional añadida al prompt del revisor (consultiva, no regla dura) |
+| `reviewerPolicyText` | *(ninguna)* | Política de decisión en Markdown inyectada en el prompt del revisor (estilo Codex; plantilla en `fixtures/config/policy-template.md`) |
+| `denyGuidance` | *(texto anti-elusión)* | Guía añadida a cada motivo de denegación inyectado |
+| `contextBudget` | `{turns: 0, maxChars: 4000}` | Presupuesto de transcripción compacta para el prompt del revisor; `turns: 0` lo desactiva |
+| `riskPolicy` | `{maxAutoAllow: high, onHighRisk: delegate}` | Los veredictos `allow` por encima de `maxAutoAllow` delegan (`delegate`) o deniegan (`deny`) |
+| `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 10, windowSize: 50, action: delegate}` | Disyuntor de rechazos; `action`: `delegate` / `reject` / `abort-turn` |
+| `overrideTtlMs` | `300000` | Cuánto tiempo una anulación `/auto-review approve` sigue siendo utilizable |
+| `language` | `en` | Idioma de la interfaz de la salida del comando `/auto-review` (`en` \| `zh`) |
 
 Ejemplo (forma completa comentada: `fixtures/config/config-full.yaml`):
 
@@ -125,27 +136,34 @@ Ejemplo (forma completa comentada: `fixtures/config/config-full.yaml`):
       name: dsh-auto-review
       config:
         toolsPolicy:
-          overrides: { bash: ai, write: ai, edit: ai }
+          overrides: { bash: ai, write: ai }
         riskRules:
           - pattern: '(?i)(rm\s+(-[a-z]+\s+)*/|git\s+push\s+--force)'
             policy: never
+          - pattern: 'write'
+            policy: never
+            field: toolName
         reviewerTimeoutMs: 30000
         fallbackPolicy: delegate
+        riskPolicy: { maxAutoAllow: medium, onHighRisk: delegate }
+        circuitBreaker: { consecutiveDenies: 3, windowDenies: 10, windowSize: 50, action: delegate }
 ```
 
 ## ⌨️ Comando de sesión
 
 ```
-/auto-review on|off|status
+/auto-review on|off|status|approve [n]
 ```
 
-`on`/`off` añaden la anulación duradera `autoReview/state` (el fold sobrevive a reinicios/restauración — la reproducción ES el estado) e inyectan un aviso de cambio visible para el modelo (registrado como evento `user/message`). `status` muestra el estado efectivo y ambos presupuestos por turno (veredictos de IA y fallos del revisor).
+`on`/`off` añaden la anulación duradera `autoReview/state` (el fold sobrevive a reinicios/restauración — la reproducción ES el estado) e inyectan un aviso de cambio visible para el modelo (registrado como evento `user/message`). `status` muestra el estado efectivo, ambos presupuestos por turno (veredictos de IA y fallos del revisor) y las estadísticas acumuladas de la sesión. `approve [n]` registra una `autoReview/override` de un solo uso para la n-ésima denegación más reciente (1 = la más reciente): la siguiente revisión de la misma herramienta dentro de `overrideTtlMs` lleva la autorización como contexto del revisor — el revisor sigue decidiendo, y la anulación se consume con esa revisión independientemente de su resultado.
 
 ## 🔒 Seguridad
 
 - El revisor corre con una **cara de herramientas de solo lectura** (lista blanca `toolFilter`). No puede escribir, editar, ejecutar shell, acceder a la red ni delegar (`maxDepth` = su propia profundidad). Su registro de sesión persiste y es auditable.
 - **Los argumentos sensibles se redactan** (coincidencia por nombre de clave: `token`, `password`, `api_key`, `Authorization`, credenciales, claves privadas …) antes de entrar en el prompt del revisor; el plugin nunca ejecuta los argumentos revisados. La redacción es por clave, no por contenido — no sometas a revisión de IA herramientas cuyos valores no puedas mostrar a un modelo.
-- **Fail closed por defecto.** Toda ruta anómala (provider ausente, arranque rechazado, timeout, stopReason no `completed`, veredicto ausente/malformado, fallo de correlación de auditoría) se resuelve con `fallbackPolicy`, por defecto `rejected` — y la denegación devuelve un motivo auditable al modelo en lugar del texto genérico "user rejected". `allow-readonly` concede incondicionalmente — solo para despliegues desatendidos cuyo administrador acepta ese riesgo.
+- **Fail closed por defecto.** Toda ruta anómala (provider ausente, brechas de capacidad, arranque rechazado, timeout, stopReason no `completed`, veredicto ausente/malformado, fallo de correlación de auditoría) se resuelve con `fallbackPolicy`, por defecto `rejected` — y la denegación devuelve un motivo auditable al modelo en lugar del texto genérico "user rejected". `allow-once` concede incondicionalmente — solo existe para despliegues desatendidos cuyo administrador acepta ese riesgo.
+- **Disyuntor de rechazos.** Una racha de denegaciones en un turno dispara el disyuntor (`consecutiveDenies` / `windowDenies` dentro de `windowSize`), registrado como evento log-only `autoReview/circuit`; las peticiones posteriores siguen su `action` (`delegate` / `reject` / `abort-turn`). `abort-turn` inyecta una advertencia visible para el modelo y cancela al agente.
+- **El contexto del revisor es transcripción ya presentada.** `contextBudget` alimenta al revisor con contenido de sesión ya presentado (mensajes, resultados de herramientas). Con el modelo de revisor por defecto en la misma ruta, ese contenido permanece dentro de un único provider; configura `reviewerModel` con un provider diferente solo si aceptas presentarle esa transcripción.
 - **`never` es unidireccional en esta capa.** Una herramienta o regla de riesgo `never` rechaza antes de que la cadena humana vea la petición — es un candado, no un valor por defecto.
 - **El revisor es un modelo.** Sus veredictos son política consultiva, no un kernel de seguridad. Prefiere reglas `human`/`never` para operaciones irreversibles.
 
@@ -153,7 +171,8 @@ Ejemplo (forma completa comentada: `fixtures/config/config-full.yaml`):
 
 - El revisor necesita una ruta LLM operativa (heredada del agente de sesión por defecto); sin ella, cada revisión cae al `fallbackPolicy` — nunca una concesión silenciosa.
 - Los nombres de `reviewerTools` deben existir como herramientas globales del perfil; un nombre desconocido hace fallar al hijo revisor en voz alta en el punto más temprano y cae al fallback.
-- Las reglas de riesgo solo emparejan el `reason` de la petición; las condiciones por nombre de herramienta van en `toolsPolicy.overrides`.
+- Las reglas de riesgo emparejan el `reason` de la petición, el `toolName` o los `arguments` redactados de la llamada según su `field`; las demás condiciones van en `toolsPolicy.overrides`.
+- La anulación `/auto-review approve` autoriza la siguiente revisión de la misma herramienta, no la llamada histórica exacta; una acción distinta sobre la misma herramienta la consume.
 - El evento de veredicto es log-only; el panel de auditoría de la Web UI renderiza los eventos de sesión tal cual (sin panel dedicado).
 - `autoReview/state` y `autoReview/verdict` se escriben con el marcador de envoltura `ignorable: true`, de modo que cualquier build del harness carga el registro: los lectores que no conocen los tipos fuera del repositorio simplemente omiten esos eventos en lugar de rechazar la sesión. (Los hosts rc.6 aceptan e ignoran el marcador, conservando exactamente el comportamiento anterior; las sesiones escritas por versiones anteriores a 0.1.1 pueden repararse con `scripts/repair-session-logs.mjs` de `dsh-permission-rules`.)
 - El canal git solo necesita la clave `allowBuilds` que imprime el CLI `dsh` para `dsh-auto-review`. El repo trae su propio `pnpm-workspace.yaml` con `allowBuilds: { esbuild: true }` para que el entorno de prepare aislado no falle por el postinstall de esbuild (validación inofensiva del binario de plataforma); `typescript` + `tsdown` son `dependencies` regulares para que ese entorno siempre tenga las herramientas de build.

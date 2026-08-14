@@ -16,7 +16,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { InvariantFailure, InvariantInstaller } from '@deepseek-ai/dsh-invariants'
-import { AUTO_REVIEW_FALLBACKS, DENY_MARKER_PATTERN, FALLBACK_MARKER_PATTERN } from './events.ts'
+import { AUTO_REVIEW_FALLBACKS, CIRCUIT_MARKER_PATTERN, DENY_MARKER_PATTERN, FALLBACK_MARKER_PATTERN } from './events.ts'
 
 const PACKAGE_NAME = 'dsh-auto-review'
 
@@ -28,12 +28,15 @@ export const inject = ['invariants']
 const DECISIONS: readonly string[] = ['allow', 'deny']
 const RISK_LEVELS: readonly string[] = ['low', 'medium', 'high']
 const OUTCOMES: readonly string[] = ['allowed-once', 'rejected', 'cancelled', 'unavailable']
+const TRIP_KINDS: readonly string[] = ['consecutive', 'window']
+const CIRCUIT_ACTIONS: readonly string[] = ['delegate', 'reject', 'abort-turn']
 
 interface VerdictRecord {
   readonly callId: string | undefined
   readonly decision: string | undefined
   readonly outcome: string | undefined
   readonly fallback: string | undefined
+  readonly escalation: string | undefined
 }
 
 /* jscpd:ignore-start -- package companions share replay and dispatch plumbing */
@@ -43,6 +46,7 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
   const askedIds = new WeakMap<Session, Map<string, number>>()
   const verdicts = new WeakMap<Session, Map<string, VerdictRecord>>()
   const verdictByApproval = new WeakMap<Session, Map<string, VerdictRecord>>()
+  const circuits = new WeakMap<Session, Map<string, string>>()
 
   const validateEvent = (session: Session, event: SessionEvent): void => {
     if (event.type === 'approval/asked') {
@@ -78,6 +82,19 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
       if (data.outcome !== undefined && !OUTCOMES.includes(data.outcome)) {
         fail(`autoReview/verdict ${JSON.stringify(data.reviewId)} has invalid outcome ${JSON.stringify(data.outcome)}`)
       }
+      if (data.escalation !== undefined) {
+        // The only escalation today: the risk policy overrode an allow. It
+        // must reference an allow verdict and can never settle allowed-once.
+        if (data.escalation !== 'risk-policy') {
+          fail(`autoReview/verdict ${JSON.stringify(data.reviewId)} has invalid escalation ${JSON.stringify(data.escalation)}`)
+        }
+        if (data.decision !== 'allow') {
+          fail(`autoReview/verdict ${JSON.stringify(data.reviewId)} escalates a non-allow verdict`)
+        }
+        if (data.outcome === 'allowed-once') {
+          fail(`autoReview/verdict ${JSON.stringify(data.reviewId)} escalates yet settles allowed-once`)
+        }
+      }
       if (!Number.isSafeInteger(data.durationMs) || data.durationMs < 0) {
         fail(`autoReview/verdict ${JSON.stringify(data.reviewId)} has invalid durationMs ${String(data.durationMs)}`)
       }
@@ -98,6 +115,7 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
         decision: data.decision,
         outcome: data.outcome,
         fallback: data.fallback,
+        escalation: data.escalation,
       }
       verdictsForSession.set(data.reviewId, record)
       let byApproval = verdictByApproval.get(session)
@@ -109,6 +127,35 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
         fail(`autoReview/verdict ${JSON.stringify(data.reviewId)} is the second verdict for approval/asked ${JSON.stringify(data.approvalId)}`)
       }
       byApproval.set(data.approvalId, record)
+      return
+    }
+    if (event.type === 'autoReview/circuit') {
+      const data = event.data
+      if (!TRIP_KINDS.includes(data.trip.kind)) {
+        fail(`autoReview/circuit ${JSON.stringify(data.circuitId)} has invalid trip kind ${JSON.stringify(data.trip.kind)}`)
+      }
+      if (!CIRCUIT_ACTIONS.includes(data.action)) {
+        fail(`autoReview/circuit ${JSON.stringify(data.circuitId)} has invalid action ${JSON.stringify(data.action)}`)
+      }
+      if (!Number.isSafeInteger(data.trip.count) || data.trip.count < 1) {
+        fail(`autoReview/circuit ${JSON.stringify(data.circuitId)} has invalid trip count ${String(data.trip.count)}`)
+      }
+      let circuitIds = circuits.get(session)
+      if (circuitIds === undefined) {
+        circuitIds = new Map<string, string>()
+        circuits.set(session, circuitIds)
+      }
+      if (circuitIds.has(data.circuitId)) {
+        fail(`autoReview/circuit repeats circuitId ${JSON.stringify(data.circuitId)}`)
+      }
+      circuitIds.set(data.circuitId, data.action)
+      return
+    }
+    if (event.type === 'autoReview/override') {
+      const verdict = verdicts.get(session)?.get(event.data.reviewId)
+      if (verdict === undefined || (verdict.decision !== 'deny' && verdict.escalation !== 'risk-policy')) {
+        fail(`autoReview/override references reviewId ${JSON.stringify(event.data.reviewId)} without a prior denial verdict`)
+      }
       return
     }
     if (event.type === 'approval/decided') {
@@ -144,7 +191,7 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
           fail(`tool/result deny marker references unknown reviewId ${JSON.stringify(reviewId)}`)
           return
         }
-        if (verdict.decision !== 'deny') {
+        if (verdict.decision !== 'deny' && !(verdict.escalation === 'risk-policy' && verdict.outcome === 'rejected')) {
           fail(`tool/result deny marker references a non-deny verdict ${JSON.stringify(reviewId)}`)
         }
         if (verdict.callId !== undefined && verdict.callId !== block.toolCallId) {
@@ -153,22 +200,40 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
         return
       }
       const fallbackMatch = FALLBACK_MARKER_PATTERN.exec(text)
-      if (fallbackMatch === null) return
-      const reviewId = fallbackMatch[1]
-      if (reviewId === undefined) {
-        fail(`tool/result carries an unparseable fallback marker: ${JSON.stringify(fallbackMatch[0])}`)
+      if (fallbackMatch !== null) {
+        const reviewId = fallbackMatch[1]
+        if (reviewId === undefined) {
+          fail(`tool/result carries an unparseable fallback marker: ${JSON.stringify(fallbackMatch[0])}`)
+          return
+        }
+        const verdict = verdicts.get(session)?.get(reviewId)
+        if (verdict === undefined) {
+          fail(`tool/result fallback marker references unknown reviewId ${JSON.stringify(reviewId)}`)
+          return
+        }
+        if (verdict.fallback === undefined || verdict.outcome !== 'rejected') {
+          fail(`tool/result fallback marker references a verdict that was not rejected by fallback ${JSON.stringify(reviewId)}`)
+        }
+        if (verdict.callId !== undefined && verdict.callId !== block.toolCallId) {
+          fail(`tool/result fallback marker for review ${JSON.stringify(reviewId)} has call id ${JSON.stringify(block.toolCallId)}, expected ${JSON.stringify(verdict.callId)}`)
+        }
         return
       }
-      const verdict = verdicts.get(session)?.get(reviewId)
-      if (verdict === undefined) {
-        fail(`tool/result fallback marker references unknown reviewId ${JSON.stringify(reviewId)}`)
+      const circuitMatch = CIRCUIT_MARKER_PATTERN.exec(text)
+      if (circuitMatch === null) return
+      const circuitId = circuitMatch[1]
+      const toolName = circuitMatch[2]
+      if (circuitId === undefined || toolName === undefined) {
+        fail(`tool/result carries an unparseable circuit marker: ${JSON.stringify(circuitMatch[0])}`)
         return
       }
-      if (verdict.fallback === undefined || verdict.outcome !== 'rejected') {
-        fail(`tool/result fallback marker references a verdict that was not rejected by fallback ${JSON.stringify(reviewId)}`)
+      const action = circuits.get(session)?.get(circuitId)
+      if (action === undefined) {
+        fail(`tool/result circuit marker references unknown circuitId ${JSON.stringify(circuitId)}`)
+        return
       }
-      if (verdict.callId !== undefined && verdict.callId !== block.toolCallId) {
-        fail(`tool/result fallback marker for review ${JSON.stringify(reviewId)} has call id ${JSON.stringify(block.toolCallId)}, expected ${JSON.stringify(verdict.callId)}`)
+      if (action === 'delegate') {
+        fail(`tool/result circuit marker references a delegate-action circuit ${JSON.stringify(circuitId)}`)
       }
     }
   }

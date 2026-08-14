@@ -11,7 +11,12 @@ toolsPolicy:
 riskRules:
   - pattern: '(?i)(killall|pkill|taskkill|Stop-Process)'
     policy: never
+  - pattern: '(?i)(sudo|chmod\s+777)'
+    policy: human
 
 reviewerTimeoutMs: 30000
 fallbackPolicy: delegate
 maxReviewsPerTurn: 5
+maxFailuresPerTurn: 2
+riskPolicy: { maxAutoAllow: medium, onHighRisk: delegate }
+circuitBreaker: { consecutiveDenies: 2, windowDenies: 5, windowSize: 20, action: reject }

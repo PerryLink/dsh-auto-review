@@ -10,15 +10,60 @@ import { Session } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import {
+  buildContextSection,
   buildReviewPrompt,
   parseVerdict,
   renderCallContext,
+  sanitizedArgumentsText,
   sanitizeArguments,
   truncate,
   VERDICT_SCHEMA,
 } from '../src/index.ts'
 import { denyResultText, AutoReviewVerdictId, DENY_MARKER_PATTERN } from '../src/index.ts'
+import type { ResolvedConfig } from '../src/index.ts'
 import { dispatchAskedApproval, dispatchPostExecute, makeAgent, mountHarness } from './harness.ts'
+
+/** A session seeded with raw-typed events (append casts keep the fixtures compact). */
+function sessionWithEvents(events: { type: string; data: unknown }[]): Session {
+  const session = Session.create(SessionId(`ctx-${events.length}`), undefined, {
+    version: 0,
+    id: SessionId(`ctx-${events.length}`),
+    createdAt: 0,
+    cwd: 'D:\\work',
+  })
+  const surface = new Set(['user/message', 'assistant/message', 'tool/result'])
+  const append = session.append as unknown as (type: string, data: unknown, options?: { surfaceOp: 'append' }) => unknown
+  for (const event of events) {
+    append.call(session, event.type, event.data, surface.has(event.type) ? { surfaceOp: 'append' } : undefined)
+  }
+  return session
+}
+
+/** A fully resolved config with spot overrides (the prompt tests need a literal). */
+function promptConfig(overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {
+  return {
+    enableByDefault: true,
+    toolsPolicy: { default: 'human', overrides: {} },
+    riskRules: [],
+    reviewerProvider: 'fork',
+    reviewerModel: undefined,
+    reviewerTimeoutMs: 60_000,
+    reviewerTools: ['read', 'glob', 'grep'],
+    fallbackPolicy: 'rejected',
+    maxReviewsPerTurn: 10,
+    maxFailuresPerTurn: 10,
+    reasonMaxChars: 2000,
+    reviewerGuidance: undefined,
+    reviewerPolicyText: undefined,
+    denyGuidance: 'do not bypass',
+    contextBudget: { turns: 0, maxChars: 4000 },
+    riskPolicy: { maxAutoAllow: 'high', onHighRisk: 'delegate' },
+    circuitBreaker: { consecutiveDenies: 3, windowDenies: 10, windowSize: 50, action: 'delegate' },
+    overrideTtlMs: 300_000,
+    language: 'en',
+    ...overrides,
+  }
+}
 
 describe('reviewer prompt', () => {
   it('names the tool, the reason, the workspace, and the risk rules', () => {
@@ -35,7 +80,7 @@ describe('reviewer prompt', () => {
     }, {
       enableByDefault: true,
       toolsPolicy: { default: 'human', overrides: {} },
-      riskRules: [{ pattern: 'killall', regex: /killall/u, policy: 'never' }],
+      riskRules: [{ pattern: 'killall', regex: /killall/u, policy: 'never', field: 'reason' }],
       reviewerProvider: 'fork',
       reviewerModel: undefined,
       reviewerTimeoutMs: 60_000,
@@ -45,6 +90,13 @@ describe('reviewer prompt', () => {
       maxFailuresPerTurn: 10,
       reasonMaxChars: 2000,
       reviewerGuidance: undefined,
+      reviewerPolicyText: undefined,
+      denyGuidance: 'do not bypass',
+      contextBudget: { turns: 0, maxChars: 4000 },
+      riskPolicy: { maxAutoAllow: 'high', onHighRisk: 'delegate' },
+      circuitBreaker: { consecutiveDenies: 3, windowDenies: 10, windowSize: 50, action: 'delegate' },
+      overrideTtlMs: 300_000,
+      language: 'en',
     })
     expect(prompt).toContain('Tool name: bash')
     expect(prompt).toContain('escalate sandbox to danger-full-access')
@@ -78,6 +130,13 @@ describe('reviewer prompt', () => {
       maxFailuresPerTurn: 10,
       reasonMaxChars: 10,
       reviewerGuidance: undefined,
+      reviewerPolicyText: undefined,
+      denyGuidance: 'do not bypass',
+      contextBudget: { turns: 0, maxChars: 4000 },
+      riskPolicy: { maxAutoAllow: 'high', onHighRisk: 'delegate' },
+      circuitBreaker: { consecutiveDenies: 3, windowDenies: 10, windowSize: 50, action: 'delegate' },
+      overrideTtlMs: 300_000,
+      language: 'en',
     })
     expect(prompt).toContain('escalate s…')
     expect(prompt).not.toContain('danger-full-access')
@@ -242,5 +301,119 @@ describe('deny marker text', () => {
     const text = denyResultText(AutoReviewVerdictId('review-42'), 'bash', 'too risky')
     expect(text).toBe('Error: [auto-review] review review-42 denied tool "bash": too risky')
     expect(DENY_MARKER_PATTERN.exec(text)?.[1]).toBe('review-42')
+  })
+})
+
+describe('Phase B prompt sections', () => {
+  it('includes the ruling policy text, the override context, and field-scoped risk rules', () => {
+    const session = Session.create(SessionId('prompt-phaseb'), undefined, {
+      version: 0,
+      id: SessionId('prompt-phaseb'),
+      createdAt: 0,
+      cwd: 'D:\\work',
+    })
+    const prompt = buildReviewPrompt({
+      agent: makeAgent(session),
+      toolName: 'bash',
+      reason: 'cleanup',
+    }, promptConfig({
+      riskRules: [{ pattern: 'bash', regex: /bash/u, policy: 'never', field: 'toolName' }],
+      reviewerPolicyText: '# Policy\n- Always deny `rm -rf`',
+    }), { reviewId: AutoReviewVerdictId('r9'), toolName: 'bash' })
+    expect(prompt).toContain('Ruling policy')
+    expect(prompt).toContain('Always deny `rm -rf`')
+    expect(prompt).toContain('HUMAN OVERRIDE')
+    expect(prompt).toContain('review r9')
+    expect(prompt).toContain('toolName matches /bash/u → never')
+  })
+
+  it('omits the override and policy sections when not configured', () => {
+    const session = Session.create(SessionId('prompt-phaseb-plain'), undefined, {
+      version: 0,
+      id: SessionId('prompt-phaseb-plain'),
+      createdAt: 0,
+      cwd: 'D:\\work',
+    })
+    const prompt = buildReviewPrompt({ agent: makeAgent(session), toolName: 'bash' }, promptConfig())
+    expect(prompt).not.toContain('HUMAN OVERRIDE')
+    expect(prompt).not.toContain('Ruling policy')
+    expect(prompt).not.toContain('Recent session transcript')
+  })
+})
+
+describe('compact transcript context', () => {
+  it('collects user/agent/tool lines bounded by the budget', () => {
+    const session = sessionWithEvents([
+      { type: 'turn/start', data: { turn: 1 } },
+      { type: 'user/message', data: { content: [{ type: 'text', text: 'please fix the tests' }] } },
+      { type: 'assistant/message', data: { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: 'running tests now' }] } } },
+      { type: 'tool/call', data: { turn: 1, step: 1, callId: 'c1', name: 'bash', arguments: '{"command":"pnpm test"}' } },
+      { type: 'tool/result', data: { turn: 1, step: 1, message: { role: 'user', content: [{ type: 'tool-result', toolCallId: 'c1', content: [{ type: 'text', text: '76 passed' }], isError: false }] } } },
+    ])
+    const section = buildContextSection(session.events, { turns: 1, maxChars: 1000 })
+    expect(section).toContain('[user] please fix the tests')
+    expect(section).toContain('[agent] running tests now')
+    expect(section).toContain('[tool call bash]')
+    expect(section).toContain('[tool result] 76 passed')
+  })
+
+  it('is disabled with turns 0 and truncates to the character cap', () => {
+    const session = sessionWithEvents([
+      { type: 'turn/start', data: { turn: 1 } },
+      { type: 'user/message', data: { content: [{ type: 'text', text: 'a long message to truncate' }] } },
+    ])
+    expect(buildContextSection(session.events, { turns: 0, maxChars: 1000 })).toBe('')
+    expect(buildContextSection(session.events, { turns: 1, maxChars: 20 })).toMatch(/…$/u)
+  })
+})
+
+describe('provider capability precheck', () => {
+  it('fails unavailable with a clear error when the provider lacks outputSchema', async () => {
+    const harness = await mountHarness(
+      { toolsPolicy: { overrides: { bash: 'ai' } } },
+      undefined,
+      {},
+      { capabilities: { outputSchema: false, depthLimit: true, toolFilter: true, persona: true } },
+    )
+    const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+    }, async () => 'allowed-once')
+    expect(outcome).toBe('rejected')
+    const verdict = harness.session.events.find(event => event.type === 'autoReview/verdict')
+    expect(verdict?.data).toMatchObject({ fallback: 'unavailable' })
+    expect((verdict?.data as { error?: string }).error).toContain('outputSchema')
+    expect(harness.subagents.starts).toHaveLength(0)
+  })
+
+  it('fails unavailable when the provider lacks toolFilter', async () => {
+    const harness = await mountHarness(
+      { toolsPolicy: { overrides: { bash: 'ai' } } },
+      undefined,
+      {},
+      { capabilities: { outputSchema: true, depthLimit: true, toolFilter: false, persona: true } },
+    )
+    const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+    }, async () => 'allowed-once')
+    expect(outcome).toBe('rejected')
+    const verdict = harness.session.events.find(event => event.type === 'autoReview/verdict')
+    expect((verdict?.data as { error?: string }).error).toContain('toolFilter')
+  })
+})
+
+describe('sanitized arguments text', () => {
+  it('returns redacted pretty JSON for a presented call and undefined without one', () => {
+    const events = [{
+      type: 'tool/call',
+      seq: 0,
+      time: 0,
+      data: { turn: 1, step: 1, callId: 'call-1', name: 'bash', arguments: '{"apiKey":"sk-x","cmd":"ls"}' },
+    }]
+    const text = sanitizedArgumentsText(events as never, CallId('call-1'))
+    expect(text).toContain('"[REDACTED]"')
+    expect(text).toContain('"cmd": "ls"')
+    expect(sanitizedArgumentsText(events as never, CallId('ghost'))).toBeUndefined()
   })
 })

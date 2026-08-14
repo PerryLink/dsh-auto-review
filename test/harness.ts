@@ -75,11 +75,11 @@ export function makeAgent(session: Session, injected: UserMessage[] = []): Agent
 }
 
 /** Build the scripted subagent service. */
-export function makeSubagents(script: () => ScriptedReview): MockSubagents {
+export function makeSubagents(script: () => ScriptedReview, capabilities?: object): MockSubagents {
   const starts: { name: string; request: SubagentStartRequest }[] = []
   return {
     getProvider(name: string): object | undefined {
-      return name === 'mock' ? {} : undefined
+      return name === 'mock' ? (capabilities ?? {}) : undefined
     },
     async start(name: string, request: SubagentStartRequest): Promise<SubagentRun> {
       const behavior = script()
@@ -145,13 +145,14 @@ export async function mountHarness(
   pluginConfig: Record<string, unknown> = {},
   script: () => ScriptedReview = () => ({ verdict: { decision: 'allow', reason: 'looks safe' } }),
   approvalConfig: Record<string, unknown> = {},
+  providerCapabilities?: object,
 ): Promise<Harness> {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
   const session = ctx.sessions.create(SessionId('harness-session'))
   session.append('turn/start', { turn: 1 })
   await ctx.plugin(ApprovalService, approvalConfig)
-  const subagents = makeSubagents(script)
+  const subagents = makeSubagents(script, providerCapabilities)
   const commands = makeCommands()
   ctx.provide('subagents', subagents as never)
   ctx.provide('commands', commands as never)

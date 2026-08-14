@@ -15,7 +15,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import { ApprovalRequestId } from '@deepseek-ai/dsh-user-approval'
 import { describe, expect, it } from 'vitest'
 import * as AutoReviewInvariant from '../src/invariant.ts'
-import { AutoReviewVerdictId } from '../src/index.ts'
+import { AutoReviewCircuitId, AutoReviewVerdictId } from '../src/index.ts'
 
 function fixtureEvents(name: string): unknown {
   const url = new URL(`../fixtures/sessions/${name}`, import.meta.url)
@@ -198,5 +198,96 @@ describe('auto-review invariants', () => {
     expect(() => {
       appendToolResult(session, 'call-orphan-fallback', 'Error: [auto-review-fallback] review r-ghost failed (timeout) and the request was rejected: no reviewer')
     }).toThrow(/unknown reviewId/u)
+  })
+
+  it('fails a verdict that escalates a deny decision', async () => {
+    const { session } = await mount()
+    session.append('approval/asked', { id: ApprovalRequestId('a-esc'), toolName: 'bash' })
+    expect(() => {
+      session.append('autoReview/verdict', {
+        reviewId: AutoReviewVerdictId('r-esc'),
+        approvalId: ApprovalRequestId('a-esc'),
+        toolName: 'bash',
+        provider: 'fork',
+        durationMs: 1,
+        decision: 'deny',
+        reason: 'no',
+        escalation: 'risk-policy',
+      })
+    }).toThrow(/non-allow verdict/u)
+  })
+
+  it('fails a risk-policy escalation that settles allowed-once', async () => {
+    const { session } = await mount()
+    session.append('approval/asked', { id: ApprovalRequestId('a-esc-allow'), toolName: 'bash' })
+    expect(() => {
+      session.append('autoReview/verdict', {
+        reviewId: AutoReviewVerdictId('r-esc-allow'),
+        approvalId: ApprovalRequestId('a-esc-allow'),
+        toolName: 'bash',
+        provider: 'fork',
+        durationMs: 1,
+        decision: 'allow',
+        reason: 'ok',
+        riskLevel: 'high',
+        escalation: 'risk-policy',
+        outcome: 'allowed-once',
+      })
+    }).toThrow(/allowed-once/u)
+  })
+
+  it('accepts an override referencing a deny verdict and fails an orphan', async () => {
+    const { session } = await mount()
+    session.append('approval/asked', { id: ApprovalRequestId('a-over'), toolName: 'bash' })
+    session.append('autoReview/verdict', {
+      reviewId: AutoReviewVerdictId('r-over'),
+      approvalId: ApprovalRequestId('a-over'),
+      toolName: 'bash',
+      provider: 'fork',
+      durationMs: 1,
+      decision: 'deny',
+      reason: 'no',
+    })
+    expect(() => {
+      session.append('autoReview/override', { reviewId: AutoReviewVerdictId('r-over'), toolName: 'bash' })
+    }).not.toThrow()
+    expect(() => {
+      session.append('autoReview/override', { reviewId: AutoReviewVerdictId('r-ghost-over'), toolName: 'write' })
+    }).toThrow(/without a prior denial verdict/u)
+  })
+
+  it('accepts a circuit rejection chain and fails a delegate-action marker', async () => {
+    const { session } = await mount()
+    session.append('autoReview/circuit', {
+      circuitId: AutoReviewCircuitId('circuit-1'),
+      action: 'reject',
+      trip: { kind: 'consecutive', count: 3 },
+      toolName: 'bash',
+    })
+    expect(() => {
+      appendToolResult(session, 'call-circuit', 'Error: [auto-review-circuit] circuit circuit-1 rejected tool "bash" before review: rejection circuit breaker tripped')
+    }).not.toThrow()
+    session.append('autoReview/circuit', {
+      circuitId: AutoReviewCircuitId('circuit-2'),
+      action: 'delegate',
+      trip: { kind: 'window', count: 10 },
+      toolName: 'write',
+    })
+    expect(() => {
+      appendToolResult(session, 'call-circuit-2', 'Error: [auto-review-circuit] circuit circuit-2 rejected tool "write" before review: tripped')
+    }).toThrow(/delegate-action circuit/u)
+  })
+
+  it('fails a circuit event with an invalid trip kind', async () => {
+    const { session } = await mount()
+    const append = session.append as unknown as (type: string, data: unknown) => unknown
+    expect(() => {
+      append.call(session, 'autoReview/circuit', {
+        circuitId: 'circuit-bad',
+        action: 'reject',
+        trip: { kind: 'burst', count: 3 },
+        toolName: 'bash',
+      })
+    }).toThrow(/invalid trip kind/u)
   })
 })

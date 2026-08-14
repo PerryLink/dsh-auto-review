@@ -15,7 +15,7 @@ import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { CallId } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent, SessionEventMap, SessionId } from '@deepseek-ai/dsh-session'
 import type { ApprovalOutcome, ApprovalRequestId } from '@deepseek-ai/dsh-user-approval'
-import type { RiskLevel } from './config.ts'
+import type { CircuitAction, RiskLevel } from './config.ts'
 
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
@@ -51,6 +51,32 @@ declare module '@deepseek-ai/dsh-session/types' {
       outcome?: ApprovalOutcome
       fallback?: AutoReviewFallback
       error?: string
+      /**
+       * Present when the reviewer ALLOWED but the verdict did not settle the
+       * request: the risk policy overrode the allow (the request delegated to
+       * the human chain, or was deterministically denied per `onHighRisk`).
+       * A risk-policy override never carries `outcome: 'allowed-once'`.
+       */
+      escalation?: 'risk-policy'
+    }
+    /**
+     * The rejection circuit breaker tripped — log-only audit, once per turn.
+     * `circuitId` links the injected circuit-rejection marker back here.
+     */
+    'autoReview/circuit': {
+      circuitId: AutoReviewCircuitId
+      action: CircuitAction
+      trip: { kind: 'consecutive' | 'window'; count: number }
+      toolName: string
+    }
+    /**
+     * A human one-shot override: the user explicitly authorized ONE retry of
+     * a previously denied action (the referenced deny verdict). Log-only;
+     * consumed by the next same-tool review within `overrideTtlMs`.
+     */
+    'autoReview/override': {
+      reviewId: AutoReviewVerdictId
+      toolName: string
     }
   }
 }
@@ -78,6 +104,20 @@ export type VerdictAppend = (
   options?: { ignorable?: true },
 ) => unknown
 
+/** `Session.append` narrowed to the `autoReview/circuit` event — same contract as {@link VerdictAppend}. */
+export type CircuitAppend = (
+  type: 'autoReview/circuit',
+  data: SessionEventMap['autoReview/circuit'],
+  options?: { ignorable?: true },
+) => unknown
+
+/** `Session.append` narrowed to the `autoReview/override` event — same contract as {@link VerdictAppend}. */
+export type OverrideAppend = (
+  type: 'autoReview/override',
+  data: SessionEventMap['autoReview/override'],
+  options?: { ignorable?: true },
+) => unknown
+
 /** Why the answerer had no reviewer verdict — the closed fallback vocabulary. */
 export type AutoReviewFallback = 'timeout' | 'cancelled' | 'unavailable' | 'schema'
 
@@ -90,6 +130,9 @@ export const AUTO_REVIEW_FALLBACKS: readonly AutoReviewFallback[] = ['timeout', 
 /** Identifies one `autoReview/verdict` audit event. */
 export type AutoReviewVerdictId = Branded<'AutoReviewVerdictId'>
 
+/** Identifies one `autoReview/circuit` audit event. */
+export type AutoReviewCircuitId = Branded<'AutoReviewCircuitId'>
+
 /**
  * Brand a string as an {@link AutoReviewVerdictId}.
  * @param id - the raw id string.
@@ -97,6 +140,15 @@ export type AutoReviewVerdictId = Branded<'AutoReviewVerdictId'>
  */
 export function AutoReviewVerdictId(id: string): AutoReviewVerdictId {
   return id as AutoReviewVerdictId
+}
+
+/**
+ * Brand a string as an {@link AutoReviewCircuitId}.
+ * @param id - the raw id string.
+ * @returns the same string, branded (a compile-time cast — no runtime cost).
+ */
+export function AutoReviewCircuitId(id: string): AutoReviewCircuitId {
+  return id as AutoReviewCircuitId
 }
 
 /** Stable marker prefix inside every injected deny reason, parsed by the invariant companion. */
@@ -110,6 +162,12 @@ export const FALLBACK_MARKER = '[auto-review-fallback]'
 
 /** Regex extracting the reviewId from an injected fallback rejection. */
 export const FALLBACK_MARKER_PATTERN = /\[auto-review-fallback\] review ([^\s]+) failed/u
+
+/** Stable marker prefix inside every injected circuit rejection text. */
+export const CIRCUIT_MARKER = '[auto-review-circuit]'
+
+/** Regex extracting the circuitId and tool name from an injected circuit rejection. */
+export const CIRCUIT_MARKER_PATTERN = /\[auto-review-circuit\] circuit ([^\s]+) rejected tool "([^"]+)" before review/u
 
 /**
  * Build the model-visible deny text injected into a denied tool result. The
@@ -138,6 +196,19 @@ export function fallbackResultText(reviewId: AutoReviewVerdictId, fallback: Auto
 }
 
 /**
+ * Build the model-visible text injected into a tool result rejected by a
+ * tripped circuit breaker. The embedded circuitId links it to the recorded
+ * `autoReview/circuit` event (model-visible ⟺ logged).
+ * @param circuitId - the circuit event's id.
+ * @param toolName - the rejected tool.
+ * @param explanation - why the breaker rejects (trip kind and count).
+ * @returns the exact error text shown to the model.
+ */
+export function circuitResultText(circuitId: AutoReviewCircuitId, toolName: string, explanation: string): string {
+  return `Error: ${CIRCUIT_MARKER} circuit ${circuitId} rejected tool "${toolName}" before review: ${explanation}`
+}
+
+/**
  * The session's auto-review override: the last `autoReview/state` event, or
  * `undefined` when the session never switched (callers apply the configured
  * `enableByDefault`). The pure fold — replay IS the state.
@@ -152,28 +223,32 @@ export function effectiveAutoReviewState(events: readonly SessionEvent[]): boole
   return undefined
 }
 
-/** The shared open-turn scan both per-turn verdict budgets fold from. */
-function countOpenTurnVerdicts(
-  events: readonly SessionEvent[],
-  matches: (data: SessionEventMap['autoReview/verdict']) => boolean,
-): number {
+/**
+ * The verdict events inside the session's CURRENT open turn, oldest first.
+ * A turn without `turn/start` (or one already closed by `turn/end`) yields
+ * an empty list.
+ * @param events - session events in log order.
+ * @returns the open turn's verdict payloads.
+ */
+export function openTurnVerdicts(events: readonly SessionEvent[]): SessionEventMap['autoReview/verdict'][] {
   let openSeq = -1
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const type = (events[index] as SessionEvent).type
-    if (type === 'turn/end') return 0
+    if (type === 'turn/end') return []
     if (type === 'turn/start') {
       openSeq = (events[index] as SessionEvent).seq
       break
     }
   }
-  if (openSeq < 0) return 0
-  let count = 0
+  if (openSeq < 0) return []
+  const verdicts: SessionEventMap['autoReview/verdict'][] = []
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index] as SessionEvent
     if (event.seq <= openSeq) break
-    if (event.type === 'autoReview/verdict' && matches(event.data)) count += 1
+    if (event.type === 'autoReview/verdict') verdicts.push(event.data)
   }
-  return count
+  verdicts.reverse()
+  return verdicts
 }
 
 /**
@@ -186,7 +261,7 @@ function countOpenTurnVerdicts(
  * @returns the decision-carrying verdict count inside the current open turn.
  */
 export function autoReviewsInOpenTurn(events: readonly SessionEvent[]): number {
-  return countOpenTurnVerdicts(events, data => data.decision !== undefined)
+  return openTurnVerdicts(events).filter(data => data.decision !== undefined).length
 }
 
 /**
@@ -199,7 +274,170 @@ export function autoReviewsInOpenTurn(events: readonly SessionEvent[]): number {
  * @returns the failure count inside the current open turn.
  */
 export function autoReviewFailuresInOpenTurn(events: readonly SessionEvent[]): number {
-  return countOpenTurnVerdicts(events, data => data.fallback !== undefined && data.fallback !== 'cancelled')
+  return openTurnVerdicts(events).filter(data => data.fallback !== undefined && data.fallback !== 'cancelled').length
+}
+
+/**
+ * Whether a verdict is a denial of the request: a reviewer deny, or an allow
+ * overridden by the risk policy (`escalation: 'risk-policy'` with the deny
+ * outcome). The circuit breaker and the approve list count both.
+ * @param data - the verdict payload.
+ * @returns true when the request was denied.
+ */
+export function isDenial(data: SessionEventMap['autoReview/verdict']): boolean {
+  return data.decision === 'deny' || data.escalation === 'risk-policy'
+}
+
+/**
+ * The trailing run of consecutive denials in the current open turn —
+ * the circuit breaker's `consecutiveDenies` signal.
+ * @param events - session events in log order.
+ * @returns the length of the trailing denial run.
+ */
+export function consecutiveDeniesInOpenTurn(events: readonly SessionEvent[]): number {
+  const verdicts = openTurnVerdicts(events)
+  let count = 0
+  for (let index = verdicts.length - 1; index >= 0; index -= 1) {
+    if (!isDenial(verdicts[index]!)) break
+    count += 1
+  }
+  return count
+}
+
+/**
+ * How many of the last {@link windowSize} decision verdicts in the current
+ * open turn are denials — the circuit breaker's `windowDenies` signal.
+ * @param events - session events in log order.
+ * @param windowSize - how many recent verdicts the window counts.
+ * @returns the denial count inside the window.
+ */
+export function deniesInRecentVerdicts(events: readonly SessionEvent[], windowSize: number): number {
+  const decisions = openTurnVerdicts(events).filter(data => data.decision !== undefined)
+  return decisions.slice(-windowSize).filter(data => isDenial(data)).length
+}
+
+/**
+ * The current open turn's circuit trip, when one was recorded.
+ * @param events - session events in log order.
+ * @returns the last `autoReview/circuit` payload in the open turn, or undefined.
+ */
+export function circuitInOpenTurn(events: readonly SessionEvent[]): SessionEventMap['autoReview/circuit'] | undefined {
+  let openSeq = -1
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const type = (events[index] as SessionEvent).type
+    if (type === 'turn/end') return undefined
+    if (type === 'turn/start') {
+      openSeq = (events[index] as SessionEvent).seq
+      break
+    }
+  }
+  if (openSeq < 0) return undefined
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index] as SessionEvent
+    if (event.seq <= openSeq) break
+    if (event.type === 'autoReview/circuit') return event.data
+  }
+  return undefined
+}
+
+/** One recent deny verdict, as the approve command lists them. */
+export interface RecentDeny {
+  readonly reviewId: AutoReviewVerdictId
+  readonly toolName: string
+  readonly reason?: string
+  readonly riskLevel?: RiskLevel
+}
+
+/**
+ * The most recent deny verdicts, newest first — the `/auto-review approve`
+ * candidate list.
+ * @param events - session events in log order.
+ * @param limit - how many to collect.
+ * @returns up to {@link limit} deny verdicts, newest first.
+ */
+export function lastDeniedVerdicts(events: readonly SessionEvent[], limit: number): RecentDeny[] {
+  const result: RecentDeny[] = []
+  for (let index = events.length - 1; index >= 0 && result.length < limit; index -= 1) {
+    const event = events[index] as SessionEvent
+    if (event.type !== 'autoReview/verdict' || !isDenial(event.data)) continue
+    const data = event.data
+    result.push({
+      reviewId: data.reviewId,
+      toolName: data.toolName,
+      ...data.reason !== undefined ? { reason: data.reason } : {},
+      ...data.riskLevel !== undefined ? { riskLevel: data.riskLevel } : {},
+    })
+  }
+  return result
+}
+
+/**
+ * Whether a human one-shot override is pending for a tool: the latest
+ * `autoReview/override` for the tool is still unconsumed (no verdict for the
+ * tool after it) and unexpired. An override is consumed by the NEXT
+ * same-tool review regardless of its decision — single-use by construction.
+ * @param events - session events in log order.
+ * @param toolName - the tool an approval request is about.
+ * @param ttlMs - the override lifetime.
+ * @param now - the current epoch milliseconds.
+ * @returns the overridden deny verdict's id, or undefined without a pending override.
+ */
+export function activeOverride(
+  events: readonly SessionEvent[],
+  toolName: string,
+  ttlMs: number,
+  now: number,
+): AutoReviewVerdictId | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index] as SessionEvent
+    if (event.type === 'autoReview/verdict' && event.data.toolName === toolName) return undefined
+    if (event.type === 'autoReview/override' && event.data.toolName === toolName) {
+      return now - event.time <= ttlMs ? event.data.reviewId : undefined
+    }
+  }
+  return undefined
+}
+
+/** Cumulative review statistics folded from the session log (status command). */
+export interface ReviewStats {
+  readonly allows: number
+  readonly denies: number
+  readonly fallbacks: number
+  /** Mean duration of decision-carrying verdicts, rounded; 0 without any. */
+  readonly avgDurationMs: number
+  /** The last three verdicts, newest first. */
+  readonly recent: readonly SessionEventMap['autoReview/verdict'][]
+}
+
+/**
+ * Fold one session's review statistics: verdict counts, mean duration, and
+ * the three most recent verdicts.
+ * @param events - session events in log order.
+ * @returns the statistics.
+ */
+export function reviewStats(events: readonly SessionEvent[]): ReviewStats {
+  let allows = 0
+  let denies = 0
+  let fallbacks = 0
+  let decided = 0
+  let durationSum = 0
+  for (const event of events) {
+    if (event.type !== 'autoReview/verdict') continue
+    const data = event.data
+    if (data.decision === 'allow') allows += 1
+    else if (data.decision === 'deny') denies += 1
+    else fallbacks += 1
+    if (data.decision !== undefined) {
+      decided += 1
+      durationSum += data.durationMs
+    }
+  }
+  const recent: SessionEventMap['autoReview/verdict'][] = []
+  for (let index = events.length - 1; index >= 0 && recent.length < 3; index -= 1) {
+    const event = events[index] as SessionEvent
+    if (event.type === 'autoReview/verdict') recent.push(event.data)
+  }
+  return { allows, denies, fallbacks, avgDurationMs: decided === 0 ? 0 : Math.round(durationSum / decided), recent }
 }
 
 /**

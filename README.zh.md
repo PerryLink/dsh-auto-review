@@ -39,7 +39,11 @@
 | 💬 **拒绝理由到达模型** | 审查理由经 callId 注入被拒工具结果，agent 据此调整。fail-closed 回退拒绝同样注入一段可审计的失败文本。 |
 | 📜 **完整审计链** | `autoReview/verdict` 会话事件（审查代理身份/裁决/理由/风险/耗时）+ invariant 伴生强制「模型可见 ⟺ 已记录」。 |
 | 🔁 **防递归** | 审查代理自身的审批请求按身份识别并委托；`maxDepth` + 工具白名单保证其无法再委派。 |
-| ⌨️ **会话级命令** | `/auto-review on|off|status`，durable 会话级覆盖跨恢复生效。 |
+| 🧯 **拒绝熔断器** | 单个回合内连续 3 次拒绝（或最近 50 次裁决中 10 次）即触发熔断器：后续请求委托、拒绝或中止回合——不再有无尽拒绝循环。 |
+| 🎚️ **风险等级策略** | 风险超过 `riskPolicy.maxAutoAllow` 的 `allow` 裁决绝不定案：改为委托人类或拒绝。 |
+| ✋ **一次性人工覆盖** | `/auto-review approve [n]` 授权对最近一次拒绝的**一次**重试；下一次同工具审查把该授权作为审查上下文携带（最终仍由审查代理决定）。 |
+| 📜 **审查上下文** | 可选的紧凑转录（近期消息与工具结果，有界）+ Codex 风格 Markdown `reviewerPolicyText` 裁决策略。 |
+| ⌨️ **会话级命令** | `/auto-review on|off|status|approve [n]`，带跨恢复生效的 durable 会话级覆盖与会话累计统计。 |
 
 ## 工作原理
 
@@ -95,7 +99,7 @@ dsh plugin --profile web add link:/path/to/dsh-auto-review
 dsh --profile web --dump-config | grep -A4 'id: auto-review'
 ```
 
-开箱配置对 `bash`、`write`、`edit` 走 AI 裁决，其余工具委托人类链。
+开箱配置对 `bash`、`write` 走 AI 裁决；其余工具（包括 `edit` —— 就地修改）委托人类链。若接受无人工介入的就地编辑，请显式添加 `edit: ai`。
 
 ## ⚙️ 配置
 
@@ -106,16 +110,23 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 | `enableByDefault` | `true` | 会话初始是否启用；`/auto-review on\|off` 写入的 durable 覆盖优先于它 |
 | `toolsPolicy.default` | `human` | 未列出工具的策略（委托人类 answerer） |
 | `toolsPolicy.overrides` | `{}` | 每工具策略：`ai`（AI 裁决）、`human`（强制人类）、`never`（确定性拒绝） |
-| `riskRules` | `[]` | `{pattern, policy}` 按顺序匹配请求 reason（首个命中生效），**先于**工具表 |
+| `riskRules` | `[]` | `{pattern, policy, field?}` 在工具表**之前**按顺序匹配（首个命中生效）；`field` 选择 `reason`（默认）、`toolName` 或 `arguments`（脱敏后的呈现调用参数） |
 | `reviewerProvider` | `fork` | 审查代理的 subagent provider（进程内 fork 后端） |
 | `reviewerModel` | *(继承)* | 审查模型 id；不设则继承会话 agent 的模型路由 |
 | `reviewerTimeoutMs` | `60000` | 裁决截止时间；超时走回退策略 |
-| `reviewerTools` | `[read, glob, grep]` | 审查子代理的工具白名单——其余工具在其中不可见 |
-| `fallbackPolicy` | `rejected` | 审查失败处理：`rejected`（fail closed）、`delegate`（继续沿链）、`allow-readonly`（放行——见安全边界） |
+| `reviewerTools` | `[read, glob, grep]` | 审查子代理的工具白名单（必须非空）——其余工具在其中不可见 |
+| `fallbackPolicy` | `rejected` | 审查失败处理：`rejected`（fail closed）、`delegate`（继续沿链）、`allow-once`（放行——见安全边界）。0.2.0 由 `allow-readonly` 更名而来；旧拼写会响亮失败 |
 | `maxReviewsPerTurn` | `10` | 每个开放回合的真实 AI 裁决预算；耗尽后请求委托人类 |
 | `maxFailuresPerTurn` | `10` | 每个开放回合的审查失败预算（超时/不可用/schema 不符，不含取消）；耗尽后请求改为委托，而不再等待另一次完整超时。默认取 `maxReviewsPerTurn` |
-| `reasonMaxChars` | `2000` | 审查理由与脱敏参数预览的长度上限 |
+| `reasonMaxChars` | `2000` | 审查理由、请求 reason 与脱敏参数预览的长度上限 |
 | `reviewerGuidance` | *(无)* | 追加进审查 prompt 的可选指导语（建议性，非硬规则） |
+| `reviewerPolicyText` | *(无)* | 注入审查 prompt 的 Markdown 裁决策略（Codex 风格；模板见 `fixtures/config/policy-template.md`） |
+| `denyGuidance` | *(防规避文本)* | 追加到每一段注入拒绝理由之后的指导语 |
+| `contextBudget` | `{turns: 0, maxChars: 4000}` | 审查 prompt 的紧凑转录预算；`turns: 0` 禁用 |
+| `riskPolicy` | `{maxAutoAllow: high, onHighRisk: delegate}` | 高于 `maxAutoAllow` 的 `allow` 裁决委托（`delegate`）或拒绝（`deny`） |
+| `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 10, windowSize: 50, action: delegate}` | 拒绝熔断器；`action`：`delegate` / `reject` / `abort-turn` |
+| `overrideTtlMs` | `300000` | `/auto-review approve` 覆盖保持可用的时长 |
+| `language` | `en` | `/auto-review` 命令输出的界面语言（`en` \| `zh`） |
 
 示例（完整注释版见 `fixtures/config/config-full.yaml`）：
 
@@ -125,27 +136,34 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
       name: dsh-auto-review
       config:
         toolsPolicy:
-          overrides: { bash: ai, write: ai, edit: ai }
+          overrides: { bash: ai, write: ai }
         riskRules:
           - pattern: '(?i)(rm\s+(-[a-z]+\s+)*/|git\s+push\s+--force)'
             policy: never
+          - pattern: 'write'
+            policy: never
+            field: toolName
         reviewerTimeoutMs: 30000
         fallbackPolicy: delegate
+        riskPolicy: { maxAutoAllow: medium, onHighRisk: delegate }
+        circuitBreaker: { consecutiveDenies: 3, windowDenies: 10, windowSize: 50, action: delegate }
 ```
 
 ## ⌨️ 会话级命令
 
 ```
-/auto-review on|off|status
+/auto-review on|off|status|approve [n]
 ```
 
-`on`/`off` 追加 durable 的 `autoReview/state` 覆盖事件（fold 跨重启/恢复生效——重放即状态），并注入模型可见的切换通知（记录为 `user/message` 事件）。`status` 显示当前生效状态与本回合的两项预算（AI 裁决与审查失败）。
+`on`/`off` 追加 durable 的 `autoReview/state` 覆盖事件（fold 跨重启/恢复生效——重放即状态），并注入模型可见的切换通知（记录为 `user/message` 事件）。`status` 显示当前生效状态、两项回合预算（AI 裁决与审查失败）以及会话的累计统计。`approve [n]` 针对第 n 近的拒绝（1 = 最近一次）记录一次性 `autoReview/override`：在 `overrideTtlMs` 内的下一次同工具审查携带该授权作为审查上下文——最终仍由审查代理决定，且无论该审查结果如何，此覆盖都会被消耗。
 
 ## 🔒 安全边界
 
 - 审查代理运行在**只读工具面**（`toolFilter` 白名单）内：不能写、改、执行 shell、访问网络、再委派（`maxDepth` = 自身深度）。其会话日志同样落盘可审计。
 - **敏感参数先脱敏**（按键名匹配：`token`、`password`、`api_key`、`Authorization`、凭据、私钥等）再进入审查 prompt；插件绝不执行被审参数。脱敏是键名级而非内容级——参数值不能接受展示给模型的工具，不要纳入 AI 审查。
-- **默认 fail closed。** 所有异常路径（provider 缺失、启动被拒、超时、非 `completed` 停止原因、裁决缺失/不合规、审计关联失败）都走 `fallbackPolicy`，默认 `rejected`——且该拒绝把一段可审计的理由回喂模型，而不是通用的 “user rejected” 文本。`allow-readonly` 是无条件放行——仅供接受该风险的无人值守部署使用。
+- **默认 fail closed。** 所有异常路径（provider 缺失、能力缺口、启动被拒、超时、非 `completed` 停止原因、裁决缺失/不合规、审计关联失败）都走 `fallbackPolicy`，默认 `rejected`——且该拒绝把一段可审计的理由回喂模型，而不是通用的 “user rejected” 文本。`allow-once` 是无条件放行——仅供接受该风险的无人值守部署使用。
+- **拒绝熔断器。** 单个回合内的一连串拒绝（`consecutiveDenies` / `windowSize` 内的 `windowDenies`）触发熔断器，记录为 log-only 的 `autoReview/circuit` 事件；后续请求遵循其 `action`（`delegate` / `reject` / `abort-turn`）。`abort-turn` 注入模型可见的警告并取消 agent。
+- **审查上下文是已呈现的转录。** `contextBudget` 把已呈现的会话内容（消息、工具结果）喂给审查代理。默认同路由审查模型下该内容始终留在同一 provider 内；只有当你接受将这份转录呈现给另一个 provider 时，才把 `reviewerModel` 配置为不同 provider。
 - **`never` 在本层是单向的。** `never` 工具或风险规则在人类链看到请求之前即拒绝——是锁定旋钮，不是默认值。
 - **审查代理也是模型。** 其裁决是建议性策略，不是安全内核。不可逆操作请配 `human`/`never` 规则。
 
@@ -153,7 +171,8 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 
 - 审查代理需要可用的 LLM 路由（默认继承会话 agent 的 provider/model）；没有路由时每次审查按 `fallbackPolicy` 回退——绝不静默放行。
 - `reviewerTools` 中的名字必须是 profile 中真实存在的全局工具；未知名字会在最早点响亮失败并回退。
-- 风险规则只匹配请求 `reason`；按工具名区分请用 `toolsPolicy.overrides`。
+- 风险规则按各自的 `field` 匹配请求 `reason`、`toolName` 或脱敏后的调用 `arguments`；其他条件请用 `toolsPolicy.overrides`。
+- `/auto-review approve` 覆盖授权的是下一次同工具审查，而非那次精确的历史调用；同一工具上的另一动作也会消耗它。
 - 裁决事件是 log-only；Web UI 审计面板按会话事件原样渲染（无专属面板）。
 - `autoReview/state` 与 `autoReview/verdict` 均以信封 `ignorable: true` 标记写入，任何 harness 构建都能加载日志——不认识这些仓库外类型的读取器只会跳过相应记录而不是拒绝整个会话。（rc.6 宿主会接受并忽略该标记，行为与打标前完全一致；0.1.1 之前版本写入的会话可用 `dsh-permission-rules` 的 `scripts/repair-session-logs.mjs` 一次性修复。）
 - git 通道只需要 `dsh` CLI 打印的那一条 `allowBuilds` 键（针对 `dsh-auto-review` 本体）。仓库自带 `pnpm-workspace.yaml` 并声明 `allowBuilds: { esbuild: true }`，使隔离的 prepare 环境不会因 esbuild 的（无害的平台二进制校验）postinstall 而失败；`typescript` + `tsdown` 是常规 `dependencies`，保证该环境始终有构建工具。

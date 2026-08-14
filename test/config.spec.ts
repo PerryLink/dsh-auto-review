@@ -32,6 +32,46 @@ describe('config resolution', () => {
     expect(resolveConfig({ maxFailuresPerTurn: 2 }).maxFailuresPerTurn).toBe(2)
   })
 
+  it('accepts the renamed allow-once fallback and rejects the old spelling', () => {
+    expect(resolveConfig({ fallbackPolicy: 'allow-once' }).fallbackPolicy).toBe('allow-once')
+    expect(() => ConfigSchema({ fallbackPolicy: 'allow-readonly' } as never)).toThrow()
+  })
+
+  it('defaults the Phase B tunables conservatively', () => {
+    const resolved = resolveConfig()
+    expect(resolved.denyGuidance).toContain('Do not attempt')
+    expect(resolved.contextBudget).toEqual({ turns: 0, maxChars: 4000 })
+    expect(resolved.riskPolicy).toEqual({ maxAutoAllow: 'high', onHighRisk: 'delegate' })
+    expect(resolved.circuitBreaker).toEqual({ consecutiveDenies: 3, windowDenies: 10, windowSize: 50, action: 'delegate' })
+    expect(resolved.overrideTtlMs).toBe(5 * 60_000)
+    expect(resolved.reviewerPolicyText).toBeUndefined()
+    expect(resolved.language).toBe('en')
+  })
+
+  it('rejects an unsupported UI language', () => {
+    expect(() => ConfigSchema({ language: 'fr' } as never)).toThrow()
+  })
+
+  it('compiles risk rules with their match field', () => {
+    const resolved = resolveConfig({
+      riskRules: [
+        { pattern: 'bash', policy: 'never', field: 'toolName' },
+        { pattern: 'killall', policy: 'human' },
+      ],
+    })
+    expect(resolved.riskRules.map(rule => rule.field)).toEqual(['toolName', 'reason'])
+  })
+
+  it('fails loud on an empty reviewerTools allow-list', () => {
+    expect(() => resolveConfig({ reviewerTools: [] })).toThrow(/reviewerTools/u)
+  })
+
+  it('fails loud on invalid circuit/context/override budgets', () => {
+    expect(() => resolveConfig({ circuitBreaker: { windowSize: 0 } })).toThrow(/circuitBreaker\.windowSize/u)
+    expect(() => resolveConfig({ contextBudget: { turns: -1 } })).toThrow(/contextBudget\.turns/u)
+    expect(() => resolveConfig({ overrideTtlMs: 0 })).toThrow(/overrideTtlMs/u)
+  })
+
   it('compiles risk rules into flagless regexes in order', () => {
     const resolved = resolveConfig({
       riskRules: [

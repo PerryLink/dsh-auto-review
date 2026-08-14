@@ -6,6 +6,7 @@
  */
 
 import z from '@deepseek-ai/schemastery'
+import type { UiLanguage } from './messages.ts'
 
 /**
  * What one approval request does at the auto-review answerer:
@@ -160,6 +161,8 @@ export interface Config {
   circuitBreaker?: Partial<CircuitBreakerConfig>
   /** How long a `/auto-review approve` override stays usable, in milliseconds. Default 5 minutes. */
   overrideTtlMs?: number
+  /** UI language of the `/auto-review` command output (`en` | `zh`). Default `'en'`. */
+  language?: UiLanguage
 }
 
 /** Config after {@link resolveConfig}: every optional field has its explicit default. */
@@ -182,6 +185,7 @@ export interface ResolvedConfig {
   readonly riskPolicy: RiskPolicyConfig
   readonly circuitBreaker: CircuitBreakerConfig
   readonly overrideTtlMs: number
+  readonly language: UiLanguage
 }
 
 /** A compiled {@link RiskRuleConfig}, ready to test against its configured field. */
@@ -241,6 +245,7 @@ export const Config: z<Config> = z.object({
     action: CIRCUIT_ACTION.default('delegate'),
   }).default({ consecutiveDenies: 3, windowDenies: 10, windowSize: 50, action: 'delegate' }),
   overrideTtlMs: z.number().default(5 * 60_000),
+  language: z.union(['en', 'zh'] as const).default('en'),
 })
 
 /** Whether `level` ranks strictly above `cap` in {@link RISK_ORDER}. */
@@ -332,5 +337,6 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
       action: breaker.action ?? 'delegate',
     },
     overrideTtlMs: config.overrideTtlMs ?? 5 * 60_000,
+    language: config.language ?? 'en',
   }
 }

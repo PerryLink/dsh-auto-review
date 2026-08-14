@@ -1,9 +1,10 @@
 /**
  * Runtime of `dsh-auto-review`: the `approval/request` answerer (claim when
  * the session and tool policy say `ai`, otherwise strictly `next()`), the
- * reviewer verdict handling with fail-closed fallback, the deny-reason
- * injection into the denied tool result, and the `/auto-review` session
- * command. Every registration is an effect (ctx.on / commands.register).
+ * reviewer verdict handling with fail-closed fallback, the risk-policy
+ * escalation, the rejection circuit breaker, the deny-reason injection into
+ * the denied tool result, and the `/auto-review` session command. Every
+ * registration is an effect (ctx.on / commands.register).
  * @module dsh-auto-review/runtime
  */
 
@@ -11,36 +12,46 @@ import type { Context } from '@deepseek-ai/cordis'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { CallId } from '@deepseek-ai/dsh-llm'
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
-import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionEventMap, SessionId } from '@deepseek-ai/dsh-session'
 import type { ApprovalOutcome, ApprovalRequest, ApprovalRequestId } from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-subagent'
 import type { PostToolDecision, ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
-import { resolveConfig } from './config.ts'
+import { resolveConfig, riskExceeds } from './config.ts'
 import type { Config, ResolvedConfig, ToolReviewPolicy } from './config.ts'
+import { messages } from './messages.ts'
 import {
+  activeOverride,
   autoReviewFailuresInOpenTurn,
   autoReviewsInOpenTurn,
+  circuitInOpenTurn,
+  circuitResultText,
+  consecutiveDeniesInOpenTurn,
   correlateApprovalId,
+  deniesInRecentVerdicts,
   denyResultText,
   effectiveAutoReviewState,
   fallbackResultText,
+  lastDeniedVerdicts,
+  reviewStats,
   type AutoReviewFallback,
   type AutoReviewVerdictId,
+  type CircuitAppend,
+  type OverrideAppend,
   type StateAppend,
   type VerdictAppend,
 } from './events.ts'
-import { isReviewFailure, newVerdictId, runReview, truncate } from './review.ts'
-import type { ReviewFailure } from './review.ts'
+import { isReviewFailure, newCircuitId, newVerdictId, runReview, sanitizedArgumentsText, truncate } from './review.ts'
+import type { OverrideContext, ReviewFailure } from './review.ts'
 
 export const name = 'auto-review'
 export const inject = ['approval', 'subagents', 'commands', 'tools']
 
-/** How long an injected deny reason stays available for its tool result (bounded cleanup). */
-const DENY_REASON_TTL_MS = 5 * 60_000
+/** How long an injected feedback text stays available for its tool result (bounded cleanup). */
+const FEEDBACK_TTL_MS = 5 * 60_000
 
-/** One recorded deny reason waiting for the denied call's tool result. */
-interface DenyReasonEntry {
+/** One recorded feedback text waiting for the denied/failed call's tool result. */
+interface FeedbackEntry {
   readonly text: string
   readonly at: number
 }
@@ -53,15 +64,21 @@ function assertNever(value: never, label: string): never {
 /**
  * Answerer policy resolution for one request: the first matching risk rule
  * (security invariants win over tool defaults), then the exact tool override,
- * then the table default.
+ * then the table default. Each rule matches its configured field: the
+ * request reason, the tool name, or the redacted presented call arguments.
  * @param config - the resolved config.
  * @param request - the pending approval request.
+ * @param argumentsText - the sanitized call-arguments JSON, when the log has it.
  * @returns the policy this request resolves to.
  */
-function policyFor(config: ResolvedConfig, request: ApprovalRequest): ToolReviewPolicy {
-  const reason = request.reason ?? ''
+function policyFor(config: ResolvedConfig, request: ApprovalRequest, argumentsText: string | undefined): ToolReviewPolicy {
   for (const rule of config.riskRules) {
-    if (rule.regex.test(reason)) return rule.policy
+    const subject = rule.field === 'reason'
+      ? request.reason ?? ''
+      : rule.field === 'toolName'
+        ? request.toolName
+        : argumentsText ?? ''
+    if (rule.regex.test(subject)) return rule.policy
   }
   const override = config.toolsPolicy.overrides[request.toolName]
   if (override !== undefined) return override
@@ -76,8 +93,8 @@ export class AutoReviewRuntime {
   /** Live reviewer child sessions — their approval asks never re-enter AI review. */
   private readonly reviewerSessions = new Set<SessionId>()
 
-  /** Deny reasons keyed by call id, consumed (and deleted) by the post-execute listener. */
-  private readonly denyReasons = new Map<CallId, DenyReasonEntry>()
+  /** Feedback texts keyed by call id, consumed (and deleted) by the post-execute listener. */
+  private readonly feedback = new Map<CallId, FeedbackEntry>()
 
   constructor(
     private readonly ctx: Context,
@@ -87,9 +104,10 @@ export class AutoReviewRuntime {
   /**
    * The `approval/request` answerer. Claims a request ONLY when auto-review
    * is enabled for the session AND the policy for this tool/reason is `ai`
-   * AND the per-turn budget remains; everything else delegates via `next()`
-   * (or deterministically rejects for `never`). The reviewer's own asks are
-   * always delegated (anti-recursion).
+   * AND both per-turn budgets remain AND the rejection circuit breaker is
+   * not tripped; everything else delegates via `next()` (or deterministically
+   * rejects for `never`). The reviewer's own asks are always delegated
+   * (anti-recursion).
    * @param request - the pending decision.
    * @param next - the downstream answerer chain.
    * @returns the closed approval outcome.
@@ -100,7 +118,11 @@ export class AutoReviewRuntime {
     const session = request.agent.session
     const enabled = effectiveAutoReviewState(session.events) ?? this.config.enableByDefault
     if (!enabled) return next()
-    const policy = policyFor(this.config, request)
+    const needsArguments = this.config.riskRules.some(rule => rule.field === 'arguments')
+    const argumentsText = needsArguments && request.callId !== undefined
+      ? sanitizedArgumentsText(session.events, request.callId)
+      : undefined
+    const policy = policyFor(this.config, request, argumentsText)
     if (policy === 'never') return Promise.resolve<ApprovalOutcome>('rejected')
     if (policy !== 'ai') return next()
     // Separate budgets: real AI verdicts vs reviewer failures. A broken
@@ -108,6 +130,8 @@ export class AutoReviewRuntime {
     // AI-decision budget, and vice versa.
     if (autoReviewsInOpenTurn(session.events) >= this.config.maxReviewsPerTurn) return next()
     if (autoReviewFailuresInOpenTurn(session.events) >= this.config.maxFailuresPerTurn) return next()
+    const circuit = circuitInOpenTurn(session.events)
+    if (circuit !== undefined) return this.circuitSettle(request, circuit, next)
     const approvalId = correlateApprovalId(session.events, request.toolName, request.callId)
     if (approvalId === undefined) {
       // The audit chain cannot be completed (verdict → approval/asked); treat
@@ -117,29 +141,42 @@ export class AutoReviewRuntime {
         error: 'cannot correlate the pending approval/asked audit event',
       }, next)
     }
-    return this.review(request, approvalId, next)
+    const overrideId = activeOverride(session.events, request.toolName, this.config.overrideTtlMs, Date.now())
+    const override: OverrideContext | undefined = overrideId === undefined
+      ? undefined
+      : { reviewId: overrideId, toolName: request.toolName }
+    return this.review(request, approvalId, next, override)
   }
 
   /**
    * Run the reviewer for one claimed request, register the child for
-   * anti-recursion, and settle the answerer chain.
+   * anti-recursion, apply the risk policy, record the verdict, trip the
+   * circuit breaker on denials, and settle the answerer chain.
    * @param request - the pending decision.
    * @param approvalId - the correlated `approval/asked` id.
-   * @param next - the downstream chain (used by the `delegate` fallback).
+   * @param next - the downstream chain (used by risk-policy delegation).
+   * @param override - a pending human one-shot override, when one applies.
    * @returns the closed approval outcome.
    */
   private async review(
     request: ApprovalRequest,
     approvalId: ApprovalRequestId,
     next: () => Promise<ApprovalOutcome>,
+    override?: OverrideContext,
   ): Promise<ApprovalOutcome> {
     const started = Date.now()
-    const resolution = await runReview(this.ctx, this.config, request, this.reviewerSessions)
+    const resolution = await runReview(this.ctx, this.config, request, this.reviewerSessions, override)
     const durationMs = Date.now() - started
     if (isReviewFailure(resolution)) {
       return this.finish(request, approvalId, resolution, next, durationMs)
     }
     const reviewId = newVerdictId()
+    const overridden = resolution.decision === 'allow'
+      && resolution.riskLevel !== undefined
+      && riskExceeds(resolution.riskLevel, this.config.riskPolicy.maxAutoAllow)
+    const outcome: ApprovalOutcome | undefined = overridden
+      ? this.config.riskPolicy.onHighRisk === 'deny' ? 'rejected' : undefined
+      : resolution.decision === 'allow' ? 'allowed-once' : 'rejected'
     ;(request.agent.session.append as unknown as VerdictAppend)('autoReview/verdict', {
       reviewId,
       approvalId,
@@ -152,10 +189,25 @@ export class AutoReviewRuntime {
       decision: resolution.decision,
       reason: resolution.reason,
       ...resolution.riskLevel !== undefined ? { riskLevel: resolution.riskLevel } : {},
-      outcome: resolution.decision === 'allow' ? 'allowed-once' : 'rejected',
+      ...overridden ? { escalation: 'risk-policy' } : {},
+      ...outcome !== undefined ? { outcome } : {},
     }, { ignorable: true })
+    if (outcome === undefined) return next()
     if (resolution.decision === 'deny') {
       this.recordDenyReason(request.callId, request.toolName, reviewId, resolution.reason)
+      this.checkCircuit(request)
+      return 'rejected'
+    }
+    if (overridden) {
+      // The reviewer allowed, but the risk policy denied: feed the override
+      // back to the model and count it toward the rejection circuit breaker.
+      this.recordDenyReason(
+        request.callId,
+        request.toolName,
+        reviewId,
+        `${resolution.reason} (risk ${resolution.riskLevel} exceeds the configured maxAutoAllow ${this.config.riskPolicy.maxAutoAllow}; the allow verdict was overridden)`,
+      )
+      this.checkCircuit(request)
       return 'rejected'
     }
     return 'allowed-once'
@@ -164,7 +216,7 @@ export class AutoReviewRuntime {
   /**
    * Append the fallback verdict event and apply the configured fallback
    * policy. A user cancellation settles `cancelled` regardless of policy;
-   * otherwise `rejected` (fail closed), `allow-readonly`, or `delegate`
+   * otherwise `rejected` (fail closed), `allow-once`, or `delegate`
    * (continue the chain) per config.
    */
   private finish(
@@ -213,9 +265,67 @@ export class AutoReviewRuntime {
     if (failure.fallback === 'cancelled') return 'cancelled'
     switch (this.config.fallbackPolicy) {
       case 'rejected': return 'rejected'
-      case 'allow-readonly': return 'allowed-once'
+      case 'allow-once': return 'allowed-once'
       case 'delegate': return undefined
       default: return assertNever(this.config.fallbackPolicy, 'fallback policy')
+    }
+  }
+
+  /**
+   * Settle one request while the rejection circuit breaker is tripped:
+   * `delegate` continues the chain; `reject` (and `abort-turn`, whose abort
+   * already happened at trip time) rejects with an auditable marker.
+   * @param request - the pending decision.
+   * @param circuit - the turn's recorded circuit trip.
+   * @param next - the downstream chain.
+   * @returns the closed approval outcome.
+   */
+  private circuitSettle(
+    request: ApprovalRequest,
+    circuit: SessionEventMap['autoReview/circuit'],
+    next: () => Promise<ApprovalOutcome>,
+  ): Promise<ApprovalOutcome> {
+    if (circuit.action === 'delegate') return next()
+    const explanation = `rejection circuit breaker tripped (${circuit.trip.kind}: ${circuit.trip.count} denials)`
+    this.recordFeedback(request.callId, circuitResultText(circuit.circuitId, request.toolName, explanation))
+    return Promise.resolve<ApprovalOutcome>('rejected')
+  }
+
+  /**
+   * Trip the rejection circuit breaker after a denial, at most once per
+   * turn. `abort-turn` also injects a model-visible warning and cancels the
+   * agent (deferred a macrotask so the service's `approval/decided` append
+   * commits first — the pair must stay turn-enclosed).
+   * @param request - the request whose denial may trip the breaker.
+   */
+  private checkCircuit(request: ApprovalRequest): void {
+    const session = request.agent.session
+    if (circuitInOpenTurn(session.events) !== undefined) return
+    const { consecutiveDenies, windowDenies, windowSize, action } = this.config.circuitBreaker
+    const consecutive = consecutiveDeniesInOpenTurn(session.events)
+    const trip = consecutive >= consecutiveDenies
+      ? { kind: 'consecutive' as const, count: consecutive }
+      : (() => {
+        const window = deniesInRecentVerdicts(session.events, windowSize)
+        return window >= windowDenies ? { kind: 'window' as const, count: window } : undefined
+      })()
+    if (trip === undefined) return
+    const circuitId = newCircuitId()
+    ;(session.append as unknown as CircuitAppend)('autoReview/circuit', {
+      circuitId,
+      action,
+      trip,
+      toolName: request.toolName,
+    }, { ignorable: true })
+    this.ctx.logger.warn(`auto-review circuit breaker tripped (${trip.kind}: ${trip.count}) by ${request.toolName}; action=${action}`)
+    if (action === 'abort-turn') {
+      request.agent.inject(createUserMessage({
+        content: [{ type: 'text', text: messages(this.config.language).circuitNotice(trip.kind, trip.count) }],
+        source: { kind: 'plugin', plugin: 'auto-review' },
+      }))
+      setTimeout(() => {
+        request.agent.cancel({ kind: 'hook', reason: `auto-review circuit breaker: ${trip.kind} ${trip.count}` })
+      }, 0)
     }
   }
 
@@ -229,14 +339,15 @@ export class AutoReviewRuntime {
   private recordFeedback(callId: CallId | undefined, text: string): void {
     if (callId === undefined) return
     const now = Date.now()
-    for (const [key, entry] of this.denyReasons) {
-      if (now - entry.at > DENY_REASON_TTL_MS) this.denyReasons.delete(key)
+    for (const [key, entry] of this.feedback) {
+      if (now - entry.at > FEEDBACK_TTL_MS) this.feedback.delete(key)
     }
-    this.denyReasons.set(callId, { text, at: now })
+    this.feedback.set(callId, { text, at: now })
   }
 
   /**
-   * Record a deny reason for the denied call's tool result.
+   * Record a deny reason (plus the anti-circumvention guidance) for the
+   * denied call's tool result.
    * @param callId - the denied call.
    * @param toolName - the denied tool.
    * @param reviewId - the verdict event's id (embedded in the injected text).
@@ -248,7 +359,7 @@ export class AutoReviewRuntime {
     reviewId: AutoReviewVerdictId,
     reason: string,
   ): void {
-    this.recordFeedback(callId, denyResultText(reviewId, toolName, reason))
+    this.recordFeedback(callId, `${denyResultText(reviewId, toolName, reason)}\n${this.config.denyGuidance}`)
   }
 
   /**
@@ -269,18 +380,18 @@ export class AutoReviewRuntime {
 
   /**
    * The `tools/post-execute` listener: replace the generic rejection text of
-   * a call THIS answerer denied with the reviewer's reason (the model-visible
-   * content, reconstructable via the embedded reviewId marker). Any other
-   * call delegates untouched.
+   * a call THIS answerer denied with the recorded feedback (the model-visible
+   * content, reconstructable via the embedded marker). Any other call
+   * delegates untouched.
    */
   injectDenyReason(
     exec: ToolExecution,
     result: Readonly<ToolExecutionResult>,
     next: () => Promise<PostToolDecision>,
   ): Promise<PostToolDecision> {
-    const entry = this.denyReasons.get(exec.callId)
+    const entry = this.feedback.get(exec.callId)
     if (entry === undefined) return next()
-    this.denyReasons.delete(exec.callId)
+    this.feedback.delete(exec.callId)
     // Only the denial result exists for this call (the tool never executed);
     // a non-error result means the chain evolved past us — leave it alone.
     if (!result.isError) return next()
@@ -293,45 +404,96 @@ export class AutoReviewRuntime {
   /**
    * Execute the `/auto-review` command: `on` / `off` write the durable
    * `autoReview/state` override (surviving restore) and inject a switch
-   * notice; `status` reports the effective state.
+   * notice; `status` reports the effective state, both per-turn budgets,
+   * and the session's cumulative statistics; `approve [n]` records a
+   * one-shot human override for a recent denial.
    * @param invocation - the received command invocation.
    * @returns the command result shown to the user.
    */
   command(invocation: CommandInvocation): CommandResult {
     const agent = invocation.agent
     const session = agent.session
+    const t = messages(this.config.language)
     const input = invocation.rawInput.trim().toLowerCase()
+    if (input.startsWith('approve')) return this.approveCommand(invocation)
     const current = effectiveAutoReviewState(session.events) ?? this.config.enableByDefault
     if (input === 'status' || input === '') {
+      const stats = reviewStats(session.events)
+      const recent = stats.recent.length === 0
+        ? []
+        : [t.recentLine(stats.recent.map(verdict => {
+          const label = verdict.decision !== undefined
+            ? verdict.decision
+            : `fallback(${verdict.fallback ?? '?'})`
+          return `${verdict.toolName}: ${label}`
+        }).join(', '))]
       return {
         kind: 'success',
         text: [
-          `Auto-review is ${current ? 'ON' : 'OFF'} for this session.`,
-          `AI verdicts this turn: ${autoReviewsInOpenTurn(session.events)}/${this.config.maxReviewsPerTurn}`,
-          `Reviewer failures this turn: ${autoReviewFailuresInOpenTurn(session.events)}/${this.config.maxFailuresPerTurn}`,
-          'Usage: /auto-review on|off|status',
+          t.statusLine(current),
+          t.verdictsLine(autoReviewsInOpenTurn(session.events), this.config.maxReviewsPerTurn),
+          t.failuresLine(autoReviewFailuresInOpenTurn(session.events), this.config.maxFailuresPerTurn),
+          t.allTimeLine(stats.allows, stats.denies, stats.fallbacks, stats.avgDurationMs),
+          ...recent,
+          t.usage,
         ].join('\n'),
       }
     }
     if (input !== 'on' && input !== 'off') {
       return {
         kind: 'error',
-        text: `Unknown /auto-review argument "${invocation.rawInput.trim()}". Usage: /auto-review on|off|status`,
+        text: t.unknownArg(invocation.rawInput.trim()),
       }
     }
     const enabled = input === 'on'
     if (current === enabled) {
-      return { kind: 'success', text: `Auto-review is already ${input.toUpperCase()} for this session.` }
+      return { kind: 'success', text: t.already(input.toUpperCase()) }
     }
     ;(session.append as unknown as StateAppend)('autoReview/state', { enabled }, { ignorable: true })
     agent.inject(createUserMessage({
       content: [{
         type: 'text',
-        text: `AI auto-review was switched ${enabled ? 'ON' : 'OFF'} for this session (changed by the user).`,
+        text: t.switchedNotice(enabled),
       }],
       source: { kind: 'plugin', plugin: 'auto-review' },
     }))
-    return { kind: 'success', text: `Auto-review ${input.toUpperCase()} for this session.` }
+    return { kind: 'success', text: t.switchedResult(input.toUpperCase()) }
+  }
+
+  /**
+   * Execute `/auto-review approve [n]`: record a single-use human override
+   * for the n-th most recent denial (1 = most recent). The override is
+   * consumed by the NEXT same-tool review within `overrideTtlMs`, which
+   * carries the authorization as reviewer context — the reviewer still
+   * decides.
+   * @param invocation - the received command invocation.
+   * @returns the command result shown to the user.
+   */
+  private approveCommand(invocation: CommandInvocation): CommandResult {
+    const agent = invocation.agent
+    const session = agent.session
+    const t = messages(this.config.language)
+    const arg = invocation.rawInput.trim().split(/\s+/u)[1]
+    const index = arg === undefined ? 1 : Number.parseInt(arg, 10)
+    if (!Number.isSafeInteger(index) || index < 1) {
+      return {
+        kind: 'error',
+        text: t.approveInvalid(arg ?? ''),
+      }
+    }
+    const denies = lastDeniedVerdicts(session.events, index)
+    const target = denies[index - 1]
+    if (target === undefined) {
+      return { kind: 'error', text: t.approveNone(index, denies.length) }
+    }
+    ;(session.append as unknown as OverrideAppend)('autoReview/override', {
+      reviewId: target.reviewId,
+      toolName: target.toolName,
+    }, { ignorable: true })
+    return {
+      kind: 'success',
+      text: t.approveResult(target.toolName, String(target.reviewId), Math.round(this.config.overrideTtlMs / 60_000)),
+    }
   }
 }
 
@@ -348,8 +510,8 @@ export function apply(ctx: Context, config: Config): void {
   ctx.on('tools/post-execute', (exec, result, next) => runtime.injectDenyReason(exec, result, next))
   ctx.commands.register({
     name: 'auto-review',
-    description: 'enable or disable second-model AI auto-review for this session',
-    input: { hint: 'on|off|status' },
+    description: messages(resolved.language).description,
+    input: { hint: 'on|off|status|approve [n]' },
     handler: invocation => runtime.command(invocation),
   })
 }

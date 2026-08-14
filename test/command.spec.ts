@@ -29,7 +29,7 @@ describe('/auto-review command', () => {
     expect(harness.commands.registered).toHaveLength(1)
     expect(harness.commands.registered[0]).toMatchObject({
       name: 'auto-review',
-      input: { hint: 'on|off|status' },
+      input: { hint: 'on|off|status|approve [n]' },
     })
   })
 
@@ -77,5 +77,80 @@ describe('/auto-review command', () => {
     // A fresh session created from the same durable events delegates too.
     const agent = makeAgent(restored)
     expect(agent.session.events.some(event => event.type === 'autoReview/state')).toBe(true)
+  })
+
+  it('records a one-shot override for a recent denial', async () => {
+    const harness = await mountHarness()
+    const append = harness.session.append as unknown as (type: string, data: unknown) => unknown
+    append.call(harness.session, 'approval/asked', { id: 'a1', toolName: 'bash' })
+    append.call(harness.session, 'autoReview/verdict', {
+      reviewId: 'r1',
+      approvalId: 'a1',
+      toolName: 'bash',
+      provider: 'fork',
+      durationMs: 5,
+      decision: 'deny',
+      reason: 'no',
+      outcome: 'rejected',
+    })
+    const result = invoke(harness.commands.registered[0], harness, 'approve')
+    expect(result).toMatchObject({ kind: 'success' })
+    expect((result as { text: string }).text).toContain('Authorized ONE retry')
+    const override = harness.session.events.find(event => event.type === 'autoReview/override')
+    expect(override?.data).toEqual({ reviewId: 'r1', toolName: 'bash' })
+  })
+
+  it('errors on approve without a recent denial', async () => {
+    const harness = await mountHarness()
+    const result = invoke(harness.commands.registered[0], harness, 'approve 2')
+    expect(result).toMatchObject({ kind: 'error' })
+    expect((result as { text: string }).text).toContain('No recent denial')
+  })
+
+  it('rejects an invalid approve index', async () => {
+    const harness = await mountHarness()
+    const result = invoke(harness.commands.registered[0], harness, 'approve 0')
+    expect(result).toMatchObject({ kind: 'error' })
+    expect((result as { text: string }).text).toContain('Invalid /auto-review approve index')
+  })
+
+  it('reports cumulative statistics in status', async () => {
+    const harness = await mountHarness()
+    const append = harness.session.append as unknown as (type: string, data: unknown) => unknown
+    append.call(harness.session, 'approval/asked', { id: 'a1', toolName: 'bash' })
+    append.call(harness.session, 'autoReview/verdict', {
+      reviewId: 'r1',
+      approvalId: 'a1',
+      toolName: 'bash',
+      provider: 'fork',
+      durationMs: 10,
+      decision: 'allow',
+      reason: 'ok',
+      outcome: 'allowed-once',
+    })
+    append.call(harness.session, 'approval/asked', { id: 'a2', toolName: 'write' })
+    append.call(harness.session, 'autoReview/verdict', {
+      reviewId: 'r2',
+      approvalId: 'a2',
+      toolName: 'write',
+      provider: 'fork',
+      durationMs: 20,
+      fallback: 'timeout',
+      error: 'slow',
+      outcome: 'rejected',
+    })
+    const result = invoke(harness.commands.registered[0], harness, 'status')
+    const text = (result as { text: string }).text
+    expect(text).toContain('All-time: 1 allows, 0 denies, 1 fallbacks (avg 10 ms per verdict).')
+    expect(text).toContain('Recent verdicts: write: fallback(timeout), bash: allow')
+  })
+
+  it('serves Chinese command output when language is zh', async () => {
+    const harness = await mountHarness({ language: 'zh' })
+    const result = invoke(harness.commands.registered[0], harness, 'status')
+    expect((result as { text: string }).text).toContain('本会话的自动审查已开启。')
+    expect(harness.commands.registered[0]!.description).toContain('第二模型')
+    const bad = invoke(harness.commands.registered[0], harness, 'maybe')
+    expect((bad as { text: string }).text).toContain('未知的 /auto-review 参数')
   })
 })
