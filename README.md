@@ -74,6 +74,8 @@ Pattern-based auto-approvers decide before dispatch, with no evidence. `dsh-auto
         (session events, log-only, invariant-checked)
 ```
 
+**Composition order.** The answerer runs at its registration position in the waterfall: if a human UI answerer is composed BEFORE the `auto-review` row, humans answer first and the reviewer only sees what is delegated downstream. Verify with `dsh --profile <name> --dump-config` and place the `auto-review` row before your human answerer rows when you want ai-policy tools routed to the reviewer first.
+
 ## 🚀 Quick start
 
 Three install channels; the plugin is a **bundle** (`"dsh": { "bundle": { "patch": "./cordis.patch.yml" } }`).

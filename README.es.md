@@ -74,6 +74,8 @@ Los auto-aprobadores basados en patrones deciden antes del despacho, sin evidenc
             (eventos de sesión, log-only, verificados por invariantes)
 ```
 
+**Orden de composición.** El contestador se ejecuta en su posición de registro dentro del waterfall: si un contestador humano de la UI está compuesto ANTES de la fila `auto-review`, los humanos responden primero y el revisor solo ve lo que se delega aguas abajo. Verifícalo con `dsh --profile <name> --dump-config` y coloca la fila `auto-review` antes de tus filas de contestadores humanos si quieres que las herramientas con política ai se enruten primero al revisor.
+
 ## 🚀 Inicio rápido
 
 Tres canales de instalación; el plugin es un **bundle** (`"dsh": { "bundle": { "patch": "./cordis.patch.yml" } }`).

@@ -74,6 +74,8 @@
        （会话事件，log-only，invariant 校验）
 ```
 
+**组合顺序。** answerer 在其注册位置参与 waterfall：若人类 UI answerer 组合在 `auto-review` 行之前，则人类先行应答，审查代理只处理下游委托过来的请求。请用 `dsh --profile <name> --dump-config` 核验；若希望 ai 策略工具优先路由到审查代理，把 `auto-review` 行放在人类 answerer 行之前。
+
 ## 🚀 快速开始
 
 三种安装通道；本插件是 **bundle** 形态（`"dsh": { "bundle": { "patch": "./cordis.patch.yml" } }`）。

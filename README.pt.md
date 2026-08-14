@@ -74,6 +74,8 @@ Aprovadores automáticos baseados em padrões decidem antes do despacho, sem evi
             (eventos de sessão, log-only, verificados por invariantes)
 ```
 
+**Ordem de composição.** O respondente executa na sua posição de registro no waterfall: se um respondente humano da UI estiver composto ANTES da linha `auto-review`, humanos respondem primeiro e o revisor só vê o que é delegado rio abaixo. Verifique com `dsh --profile <name> --dump-config` e coloque a linha `auto-review` antes das linhas de respondentes humanos quando quiser que ferramentas de política ai sejam roteadas primeiro ao revisor.
+
 ## 🚀 Início rápido
 
 Três canais de instalação; o plugin é um **bundle** (`"dsh": { "bundle": { "patch": "./cordis.patch.yml" } }`).
