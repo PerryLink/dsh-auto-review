@@ -5,7 +5,7 @@
  * @module dsh-auto-review/test/answerer.spec
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
 import {
@@ -50,6 +50,20 @@ describe('auto-review answerer', () => {
       reason: 'looks safe',
       outcome: 'allowed-once',
     })
+  })
+
+  it('requests the ignorable envelope marker so any harness build can load the log', async () => {
+    const harness = await mountHarness({ toolsPolicy: { overrides: { bash: 'ai' } } })
+    const append = vi.spyOn(harness.session, 'append')
+    await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+      callId: CallId('call-1'),
+      reason: 'escalate sandbox',
+    }, next)
+    const verdictCall = append.mock.calls.find(([type]) => type === 'autoReview/verdict')
+    expect(verdictCall).toBeDefined()
+    expect(verdictCall?.[2]).toEqual({ ignorable: true })
   })
 
   it('delegates tools not covered by the policy table (default human)', async () => {

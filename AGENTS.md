@@ -8,7 +8,7 @@ Standalone DeepSeek Harness plugin repository (`dsh-auto-review`). Development f
 - `src/config.ts` — Schemastery schema + explicit `resolveConfig` (no hidden `?? default` in `run()` paths).
 - `src/runtime.ts` — `approval/request` answerer, `tools/post-execute` deny-reason injection, `/auto-review` command.
 - `src/review.ts` — reviewer subagent orchestration, prompt, sanitization, verdict parsing.
-- `src/events.ts` — `autoReview/state` + `autoReview/verdict` SessionEventMap members (declaration merging) and pure folds.
+- `src/events.ts` — `autoReview/state` + `autoReview/verdict` SessionEventMap members (declaration merging), pure folds, and the `StateAppend`/`VerdictAppend` surfaces that request the envelope's `ignorable: true` marker.
 - `src/invariant.ts` — invariant companion, exported as `dsh-auto-review/invariant`. Shipped commented-out in the bundle patch: it needs the `invariants` service, which spine compositions (headless/ACP) provide but the plain web profile does not.
 - `test/` — vitest; real `Context` + real `Session`/`ApprovalService`/`InvariantRegistry` from the `0.1.0-rc.6` peers, scripted subagent/commands/tools mocks.
 - `fixtures/` — replayable session logs (invariant specs) + config examples.
@@ -17,6 +17,7 @@ Standalone DeepSeek Harness plugin repository (`dsh-auto-review`). Development f
 
 - Waterfall listeners (`approval/request`, `tools/post-execute`) always call `next()` unless they claim the request.
 - Model-visible ⟺ logged: the only model-visible plugin content is the injected deny reason; it embeds the verdict `reviewId` marker and the invariant companion enforces marker ⟺ verdict.
+- Log-only audit: `autoReview/state` and `autoReview/verdict` are appended with `{ ignorable: true }` via the `StateAppend`/`VerdictAppend` surfaces (rc.6 hosts ignore the options bag — same event, no marker; post-rc.6 hosts stamp the marker so any build loads the log).
 - Fail closed: every reviewer failure path resolves through `fallbackPolicy`, default `rejected`.
 - The `never` approval policy is enforced inside the core service; this plugin never tries to bypass it.
 - No agent-loop changes; the plugin only uses documented seams (approval answerer, subagents, commands, tools/post-execute, invariants).

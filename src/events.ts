@@ -13,7 +13,7 @@
 
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { CallId } from '@deepseek-ai/dsh-llm'
-import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionEvent, SessionEventMap, SessionId } from '@deepseek-ai/dsh-session'
 import type { ApprovalOutcome, ApprovalRequestId } from '@deepseek-ai/dsh-user-approval'
 import type { RiskLevel } from './config.ts'
 
@@ -54,6 +54,29 @@ declare module '@deepseek-ai/dsh-session/types' {
     }
   }
 }
+
+/**
+ * `Session.append` narrowed to the `autoReview/state` event. The options bag
+ * exists only on host builds that expose the `ignorable` envelope-marker
+ * surface (post-rc.6 `@deepseek-ai/dsh-session`); an rc.6 host accepts and
+ * ignores the third argument, appending the identical event without the
+ * marker — no behavior change, no failure either way.
+ */
+export type StateAppend = (
+  type: 'autoReview/state',
+  data: SessionEventMap['autoReview/state'],
+  options?: { ignorable?: true },
+) => unknown
+
+/**
+ * `Session.append` narrowed to the `autoReview/verdict` event — same
+ * `ignorable`-marker contract as {@link StateAppend}.
+ */
+export type VerdictAppend = (
+  type: 'autoReview/verdict',
+  data: SessionEventMap['autoReview/verdict'],
+  options?: { ignorable?: true },
+) => unknown
 
 /** Why the answerer had no reviewer verdict — the closed fallback vocabulary. */
 export type AutoReviewFallback = 'timeout' | 'cancelled' | 'unavailable' | 'schema'

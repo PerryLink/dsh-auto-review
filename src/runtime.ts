@@ -24,6 +24,8 @@ import {
   denyResultText,
   effectiveAutoReviewState,
   type AutoReviewVerdictId,
+  type StateAppend,
+  type VerdictAppend,
 } from './events.ts'
 import { isReviewFailure, newVerdictId, runReview } from './review.ts'
 import type { ReviewFailure } from './review.ts'
@@ -131,7 +133,7 @@ export class AutoReviewRuntime {
       return this.finish(request, approvalId, resolution, next, durationMs)
     }
     const reviewId = newVerdictId()
-    request.agent.session.append('autoReview/verdict', {
+    ;(request.agent.session.append as unknown as VerdictAppend)('autoReview/verdict', {
       reviewId,
       approvalId,
       toolName: request.toolName,
@@ -144,7 +146,7 @@ export class AutoReviewRuntime {
       reason: resolution.reason,
       ...resolution.riskLevel !== undefined ? { riskLevel: resolution.riskLevel } : {},
       outcome: resolution.decision === 'allow' ? 'allowed-once' : 'rejected',
-    })
+    }, { ignorable: true })
     if (resolution.decision === 'deny') {
       this.recordDenyReason(request.callId, request.toolName, reviewId, resolution.reason)
       return 'rejected'
@@ -167,7 +169,7 @@ export class AutoReviewRuntime {
   ): Promise<ApprovalOutcome> {
     const outcome = this.fallbackOutcome(failure)
     if (approvalId !== undefined) {
-      request.agent.session.append('autoReview/verdict', {
+      ;(request.agent.session.append as unknown as VerdictAppend)('autoReview/verdict', {
         reviewId: newVerdictId(),
         approvalId,
         toolName: request.toolName,
@@ -179,7 +181,7 @@ export class AutoReviewRuntime {
         fallback: failure.fallback,
         error: failure.error,
         ...outcome !== undefined ? { outcome } : {},
-      })
+      }, { ignorable: true })
       this.ctx.logger.warn(`auto-review fallback (${failure.fallback}) for ${request.toolName}: ${failure.error}`)
     }
     if (outcome === undefined) return next()
@@ -277,7 +279,7 @@ export class AutoReviewRuntime {
     if (current === enabled) {
       return { kind: 'success', text: `Auto-review is already ${input.toUpperCase()} for this session.` }
     }
-    session.append('autoReview/state', { enabled })
+    ;(session.append as unknown as StateAppend)('autoReview/state', { enabled }, { ignorable: true })
     agent.inject(createUserMessage({
       content: [{
         type: 'text',
