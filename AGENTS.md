@@ -48,3 +48,7 @@ CI (`ci.yml`) additionally proves the packed artifact: `pnpm pack --pack-destina
 Releases flow through the `publish` workflow: push a `v<version>` tag matching `package.json` (`prepublishOnly` re-runs the full gate, then the workflow publishes to npm and cuts a GitHub Release). The `NPM_TOKEN` secret must exist on the repo.
 
 After a version bump, repack the sibling integration tarball for `dsh-permission-rules` (`pnpm --dir ../dsh-auto-review pack --pack-destination ../dsh-permission-rules/vendor`) and update its `file:` devDependency to the new filename, then rerun its test suite.
+
+## Workshop intake
+
+`package.json#dshWorkshop` (`omdsh-workshop-package/v1`) declares the omdsh hub intake facts (author declarations only — verification belongs to the hub). Regenerate the v2 submission against the current HEAD with `node scripts/build-omdsh-submission.mjs <full-sha> <out.json>` (it copies `dshWorkshop` verbatim), validate it with the hub repo's `npm run intake:validate`, then file a `[Submission] dsh-auto-review@<version>` issue on `omdsh-dev/dsh-hub-workshop`. Author-run evidence lives under `docs/omdsh-evidence/`.
