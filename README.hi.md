@@ -11,6 +11,8 @@
 
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![dsh](https://img.shields.io/badge/dsh-0.1.0--rc.6-4c51bf.svg)](https://www.npmjs.com/package/@deepseek-ai/dsh)
+[![npm version](https://img.shields.io/npm/v/dsh-auto-review)](https://www.npmjs.com/package/dsh-auto-review)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-auto-review)](https://www.npmjs.com/package/dsh-auto-review)
 [![tests](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-auto-review/ci.yml?label=tests&logo=githubactions)](.github/workflows/ci.yml)
 [![typescript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](src)
 [![type](https://img.shields.io/badge/type-cordis%20bundle-8a5cf6.svg)](cordis.patch.yml)
@@ -220,6 +222,14 @@ pnpm pack                   # प्रकाशन आर्टिफ़ैक�
 ```
 
 रेपो संरचना (plugin-template संरचना): `src/index.ts` (प्लगइन अनुबंध) · `src/config.ts` (Schemastery schema + रिज़ॉल्यूशन) · `src/runtime.ts` (answerer, कमांड, अस्वीकृति-कारण इंजेक्शन) · `src/review.ts` (समीक्षक ऑर्केस्ट्रेशन, prompt, redaction) · `src/events.ts` (सत्र-ईवेंट शब्दावली + folds) · `src/projection.ts` + `src/projection-types.ts` (`autoReview` सत्र प्रोजेक्शन) · `src/invariant.ts` (invariant companion) · `src/client/` (ब्राउज़र आधा: समीक्षा पैनल, locales, स्टाइल) · `test/` · `fixtures/`।
+
+## 👥 योगदानकर्ता
+
+`dsh-auto-review` में योगदान देने वाले सभी लोगों का धन्यवाद:
+
+- [PerryLink](https://github.com/PerryLink) — लेखक और अनुरक्षक: approval answerer, समीक्षक सबएजेंट, जोखिम नीति व circuit breaker, सत्र-प्रोजेक्शन समीक्षा पैनल, invariant companion, दस्तावेज़, CI/CD और रिलीज़।
+
+मदद करना चाहते हैं? [issue टेम्पलेट](.github/ISSUE_TEMPLATE/), [सुरक्षा नीति](SECURITY.md) और [AGENTS.md](AGENTS.md) की रेपो परंपराएँ देखें — अंग्रेज़ी या चीनी में PR का स्वागत है।
 
 ## 📄 लाइसेंस
 

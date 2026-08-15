@@ -11,6 +11,8 @@ Cuando una acción del agente cruza el límite del sandbox, un **subagente revis
 
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![dsh](https://img.shields.io/badge/dsh-0.1.0--rc.6-4c51bf.svg)](https://www.npmjs.com/package/@deepseek-ai/dsh)
+[![npm version](https://img.shields.io/npm/v/dsh-auto-review)](https://www.npmjs.com/package/dsh-auto-review)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-auto-review)](https://www.npmjs.com/package/dsh-auto-review)
 [![tests](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-auto-review/ci.yml?label=tests&logo=githubactions)](.github/workflows/ci.yml)
 [![typescript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](src)
 [![type](https://img.shields.io/badge/type-cordis%20bundle-8a5cf6.svg)](cordis.patch.yml)
@@ -220,6 +222,14 @@ pnpm pack                   # artefacto de publicación
 ```
 
 Estructura del repositorio (estructura plugin-template): `src/index.ts` (contrato del plugin) · `src/config.ts` (esquema Schemastery + resolución) · `src/runtime.ts` (answerer, comando, inyección del motivo de denegación) · `src/review.ts` (orquestación del revisor, prompt, redacción) · `src/events.ts` (vocabulario de eventos de sesión + folds) · `src/projection.ts` + `src/projection-types.ts` (la proyección de sesión `autoReview`) · `src/invariant.ts` (companion de invariantes) · `src/client/` (mitad navegador: panel de revisión, locales, estilos) · `test/` · `fixtures/`.
+
+## 👥 Contribuidores
+
+Gracias a todos los que han contribuido a `dsh-auto-review`:
+
+- [PerryLink](https://github.com/PerryLink) — autor y mantenedor: answerer de aprobación, subagente revisor, política de riesgo y disyuntor, panel de revisión por proyección de sesión, companion de invariantes, documentación, CI/CD y lanzamientos.
+
+¿Quieres ayudar? Revisa las [plantillas de issues](.github/ISSUE_TEMPLATE/), la [política de seguridad](SECURITY.md) y [AGENTS.md](AGENTS.md) con las convenciones del repositorio — los PR son bienvenidos en inglés o chino.
 
 ## 📄 Licencia
 

@@ -11,6 +11,8 @@ Quando uma ação do agente cruza o limite do sandbox, um **subagente revisor so
 
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![dsh](https://img.shields.io/badge/dsh-0.1.0--rc.6-4c51bf.svg)](https://www.npmjs.com/package/@deepseek-ai/dsh)
+[![npm version](https://img.shields.io/npm/v/dsh-auto-review)](https://www.npmjs.com/package/dsh-auto-review)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-auto-review)](https://www.npmjs.com/package/dsh-auto-review)
 [![tests](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-auto-review/ci.yml?label=tests&logo=githubactions)](.github/workflows/ci.yml)
 [![typescript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](src)
 [![type](https://img.shields.io/badge/type-cordis%20bundle-8a5cf6.svg)](cordis.patch.yml)
@@ -220,6 +222,14 @@ pnpm pack                   # artefato de publicação
 ```
 
 Estrutura do repositório (estrutura plugin-template): `src/index.ts` (contrato do plugin) · `src/config.ts` (schema Schemastery + resolução) · `src/runtime.ts` (answerer, comando, injeção do motivo de negação) · `src/review.ts` (orquestração do revisor, prompt, redação) · `src/events.ts` (vocabulário de eventos de sessão + folds) · `src/projection.ts` + `src/projection-types.ts` (a projeção de sessão `autoReview`) · `src/invariant.ts` (companion de invariantes) · `src/client/` (metade navegador: painel de revisão, locales, estilos) · `test/` · `fixtures/`.
+
+## 👥 Contribuidores
+
+Obrigado a todos que contribuíram com o `dsh-auto-review`:
+
+- [PerryLink](https://github.com/PerryLink) — autor e mantenedor: answerer de aprovação, subagente revisor, política de risco e disjuntor, painel de revisão via projeção de sessão, companion de invariantes, documentação, CI/CD e lançamentos.
+
+Quer ajudar? Veja os [modelos de issues](.github/ISSUE_TEMPLATE/), a [política de segurança](SECURITY.md) e o [AGENTS.md](AGENTS.md) com as convenções do repositório — PRs são bem-vindos em inglês ou chinês.
 
 ## 📄 Licença
 

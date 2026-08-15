@@ -11,6 +11,8 @@
 
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![dsh](https://img.shields.io/badge/dsh-0.1.0--rc.6-4c51bf.svg)](https://www.npmjs.com/package/@deepseek-ai/dsh)
+[![npm version](https://img.shields.io/npm/v/dsh-auto-review)](https://www.npmjs.com/package/dsh-auto-review)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-auto-review)](https://www.npmjs.com/package/dsh-auto-review)
 [![tests](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-auto-review/ci.yml?label=tests&logo=githubactions)](.github/workflows/ci.yml)
 [![typescript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](src)
 [![type](https://img.shields.io/badge/type-cordis%20bundle-8a5cf6.svg)](cordis.patch.yml)
@@ -220,6 +222,14 @@ pnpm pack                   # 发布产物
 ```
 
 仓库结构（plugin-template 结构）：`src/index.ts`（插件契约）· `src/config.ts`（Schemastery schema + 解析）· `src/runtime.ts`（answerer、命令、拒绝理由注入）· `src/review.ts`（审查代理编排、prompt、脱敏）· `src/events.ts`（会话事件词汇 + fold）· `src/projection.ts` + `src/projection-types.ts`（`autoReview` 会话投影）· `src/invariant.ts`（invariant 伴生）· `src/client/`（浏览器半：审查面板、locales、样式）· `test/` · `fixtures/`。
+
+## 👥 贡献者
+
+感谢所有为 `dsh-auto-review` 做出贡献的人：
+
+- [PerryLink](https://github.com/PerryLink) — 作者与维护者：审批 answerer、审查子代理、风险策略与熔断器、会话投影审查面板、invariant 伴生、文档、CI/CD 与发布。
+
+想参与？请先看 [issue 模板](.github/ISSUE_TEMPLATE/)、[安全策略](SECURITY.md) 与 [AGENTS.md](AGENTS.md) 的仓库约定——欢迎中英文 PR。
 
 ## 📄 License
 

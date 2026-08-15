@@ -11,6 +11,8 @@ When an agent's action crosses the sandbox boundary, a **read-only reviewer suba
 
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![dsh](https://img.shields.io/badge/dsh-0.1.0--rc.6-4c51bf.svg)](https://www.npmjs.com/package/@deepseek-ai/dsh)
+[![npm version](https://img.shields.io/npm/v/dsh-auto-review)](https://www.npmjs.com/package/dsh-auto-review)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-auto-review)](https://www.npmjs.com/package/dsh-auto-review)
 [![tests](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-auto-review/ci.yml?label=tests&logo=githubactions)](.github/workflows/ci.yml)
 [![typescript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](src)
 [![type](https://img.shields.io/badge/type-cordis%20bundle-8a5cf6.svg)](cordis.patch.yml)
@@ -220,6 +222,14 @@ pnpm pack                   # publish artifact
 ```
 
 Repository layout (plugin-template structure): `src/index.ts` (plugin contract) · `src/config.ts` (Schemastery schema + resolution) · `src/runtime.ts` (answerer, command, deny-reason injection) · `src/review.ts` (reviewer orchestration, prompt, sanitization) · `src/events.ts` (session-event vocabulary + folds) · `src/projection.ts` + `src/projection-types.ts` (the `autoReview` session projection) · `src/invariant.ts` (invariant companion) · `src/client/` (browser half: review panel, locales, styles) · `test/` · `fixtures/`.
+
+## 👥 Contributors
+
+Thanks to everyone who has contributed to `dsh-auto-review`:
+
+- [PerryLink](https://github.com/PerryLink) — author and maintainer: approval answerer, reviewer subagent, risk policy and circuit breaker, session-projection review panel, invariant companion, docs, CI/CD and releases.
+
+Want to help? Check the [issue templates](.github/ISSUE_TEMPLATE/), the [security policy](SECURITY.md), and [AGENTS.md](AGENTS.md) for repo conventions — PRs are welcome in English or Chinese.
 
 ## 📄 License
 
