@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest an improvement for dsh-auto-review
+title: 'feat: '
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What problem does this feature solve? What is missing or painful today?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: How should it work after the change? Describe the user-visible outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered (optional)
+      description: Workarounds or alternative designs you already considered.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context (optional)
+      description: Anything else — docs links, related plugins, examples.

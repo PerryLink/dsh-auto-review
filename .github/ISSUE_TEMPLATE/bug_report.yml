@@ -1,0 +1,62 @@
+name: Bug report
+description: Report a bug in dsh-auto-review
+title: 'bug: '
+labels: [bug]
+body:
+  - type: input
+    id: package-version
+    attributes:
+      label: Package version
+      description: The installed dsh-auto-review version (`npm ls dsh-auto-review`, or the git commit when installed from source).
+      placeholder: '0.4.1'
+    validations:
+      required: true
+  - type: input
+    id: harness-version
+    attributes:
+      label: Harness runtime version
+      description: The DeepSeek Harness runtime it runs on (e.g. `@deepseek-ai/dsh` version, or `dsh --version` output).
+      placeholder: '0.1.0-rc.6'
+    validations:
+      required: true
+  - type: input
+    id: os-node
+    attributes:
+      label: OS / Node version
+      description: Operating system and Node.js version.
+      placeholder: 'Windows 11 / Node 22.19.0'
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps that trigger the bug — include the relevant config snippet and the exact command(s) run.
+      placeholder: |
+        1. Configure …
+        2. Run …
+        3. Observe …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (optional)
+      description: >
+        ⚠️ **Sanitize before pasting: remove any tokens, API keys, credentials,
+        authorization headers, and other secrets — logs without secrets only.**
+      render: text
