@@ -1,6 +1,6 @@
 {
   "name": "dsh-auto-review",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Second-model AI auto-review for DeepSeek Harness approval requests: a read-only reviewer subagent decides allow/deny on the approval answerer chain, with fail-closed fallback and full session-log audit.",
   "private": false,
   "author": {
@@ -60,6 +60,48 @@
         "@deepseek-ai/dsh-client-ui-slots",
         "@deepseek-ai/dsh-client-ui-conversation"
       ]
+    }
+  },
+  "dshWorkshop": {
+    "schema": "omdsh-workshop-package/v1",
+    "type": "plugin",
+    "integration": {
+      "protocol": "harness-profile",
+      "artifact": "cordis.patch.yml"
+    },
+    "install": {
+      "mode": "transactional",
+      "adapter": "profile-bundle",
+      "failurePolicy": "generation-rollback",
+      "touchesCurrentBeforeActivation": false
+    },
+    "lifecycle": {
+      "activation": "restart-profile",
+      "dispose": "supported"
+    },
+    "permissions": [
+      "session:append",
+      "approval:answer",
+      "subagent:spawn",
+      "command:register",
+      "tools:observe"
+    ],
+    "compatibility": {
+      "dshVersions": [
+        "0.1.0-rc.6"
+      ]
+    },
+    "capability": {
+      "id": "auto-review-command",
+      "kind": "command",
+      "invocation": "/auto-review status",
+      "expected": "reports the session's auto-review switch state, the per-turn AI-verdict and reviewer-failure budgets, any active circuit trip, and the cumulative allows/denies/fallbacks/never-rejects"
+    },
+    "evidence": {
+      "install": "docs/omdsh-evidence/install.md",
+      "failureIsolation": null,
+      "hotReload": null,
+      "remove": "docs/omdsh-evidence/remove.md"
     }
   },
   "keywords": [

@@ -2,6 +2,12 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [0.4.1] — 2026-08-15
+
+### Added
+
+- `package.json#dshWorkshop` manifest (`omdsh-workshop-package/v1`): transactional `profile-bundle` install declaration, `harness-profile` integration protocol, restart-profile lifecycle, the `/auto-review status` named capability, and author-run install/remove evidence under `docs/omdsh-evidence/` — the omdsh hub intake surface (author declarations only; verification stays with the hub).
+
 ## [0.4.0] — 2026-08-15
 
 ### Added
