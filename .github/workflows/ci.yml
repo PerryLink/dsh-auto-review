@@ -38,7 +38,7 @@ jobs:
       # tarball (not the checkout) is what users and dsh profiles consume.
       - run: pnpm pack --pack-destination out
       - run: node scripts/smoke-package.mjs out
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: tarball-node${{ matrix.node-version }}
           path: out/*.tgz
