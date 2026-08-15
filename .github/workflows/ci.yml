@@ -4,9 +4,21 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check:
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [22, 24]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,14 +27,22 @@ jobs:
           version: 11
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node-version }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
       - run: pnpm test
       - run: pnpm run build
       - run: pnpm run verify:self-contained
-      - run: pnpm pack
+      # Pack once, then prove the SHIPPED artifact installs and loads: the
+      # tarball (not the checkout) is what users and dsh profiles consume.
+      - run: pnpm pack --pack-destination out
+      - run: node scripts/smoke-package.mjs out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tarball-node${{ matrix.node-version }}
+          path: out/*.tgz
+          if-no-files-found: error
 
   host-compat:
     runs-on: ubuntu-latest

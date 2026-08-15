@@ -16,7 +16,7 @@ Cuando una acción del agente cruza el límite del sandbox, un **subagente revis
 [![type](https://img.shields.io/badge/type-cordis%20bundle-8a5cf6.svg)](cordis.patch.yml)
 [![repo](https://img.shields.io/badge/repo-PerryLink%2Fdsh--auto--review-181717.svg)](https://github.com/PerryLink/dsh-auto-review)
 
-**Cero operaciones humanas.** La petición va al revisor de IA, el veredicto es allow/deny + motivo + nivel de riesgo, y cada decisión se puede reconstruir desde el registro de sesión: `approval/asked` → `autoReview/verdict` → `approval/decided`.
+**Cero operaciones humanas.** La petición va al revisor de IA, el veredicto es allow/deny + motivo + nivel de riesgo, y cada decisión se puede reconstruir desde el registro de sesión: `approval/asked` → `autoReview/verdict` (o `autoReview/rejection` para desactivaciones duras) → `approval/decided`.
 
 <img src="docs/demo-auto-review.gif" alt="demo de dsh-auto-review" width="720"/>
 
@@ -36,15 +36,15 @@ Los auto-aprobadores basados en patrones deciden antes del despacho, sin evidenc
 | 🧠 **Veredicto de segundo modelo** | Subagente fork de un solo uso con lista blanca de herramientas de solo lectura (`read`/`glob`/`grep`) y esquema de veredicto estructurado `{ decision, reason, riskLevel }`. |
 | 🛡️ **Fail closed** | Un fallo, timeout o esquema inválido del revisor nunca abre la puerta: se aplica `fallbackPolicy`, por defecto `rejected`. |
 | 🧩 **Enrutado por configuración** | Políticas por herramienta (`ai`/`human`/`never`) + reglas de riesgo con regex, todo cambiable desde cordis.yml. |
-| 💬 **Los motivos de denegación llegan al modelo** | El motivo del revisor se inyecta en el resultado de la herramienta denegada (vinculado por callId), para que el agente se adapte. Las denegaciones del fallback fail-closed también inyectan un texto de fallo auditable. |
-| 📜 **Auditoría completa** | Eventos de sesión `autoReview/verdict` (identidad del revisor, veredicto, motivo, riesgo, duración) + un companion de invariantes que exige *model-visible ⟺ logged*. |
+| 💬 **Los motivos de denegación llegan al modelo** | El motivo del revisor se inyecta en el resultado de la herramienta denegada (vinculado por callId), para que el agente se adapte. Las denegaciones del fallback fail-closed y las desactivaciones duras de la política `never` también inyectan textos auditables (marcadores `[auto-review]` / `[auto-review-fallback]` / `[auto-review-never]`). |
+| 📜 **Auditoría completa** | Eventos de sesión `autoReview/verdict` + `autoReview/rejection` (identidad del revisor, veredicto, motivo, riesgo, duración) + un companion de invariantes que exige *model-visible ⟺ logged*. |
 | 🔁 **Sin recursión** | Las peticiones del propio revisor se reconocen por identidad y se delegan; `maxDepth` + la lista blanca mantienen al revisor sin delegar. |
-| 🧯 **Disyuntor de rechazos** | 3 denegaciones consecutivas (o 10 dentro de los últimos 50 veredictos) en un turno disparan el disyuntor: las peticiones posteriores delegan, rechazan o abortan el turno — sin bucles de denegación interminables. |
+| 🧯 **Disyuntor de rechazos** | 3 denegaciones consecutivas (o 6 dentro de los últimos 10 veredictos) en un turno disparan el disyuntor: las peticiones posteriores delegan, rechazan o abortan el turno — sin bucles de denegación interminables. |
 | 🎚️ **Política por nivel de riesgo** | Un veredicto `allow` cuyo riesgo supera `riskPolicy.maxAutoAllow` nunca resuelve la petición: la delega a un humano o la deniega. |
 | ✋ **Anulación humana de un solo uso** | `/auto-review approve [n]` autoriza UN reintento de una denegación reciente; la siguiente revisión de la misma herramienta lleva esa autorización como contexto del revisor (el revisor sigue decidiendo). |
 | 📜 **Contexto del revisor** | Transcripción compacta opcional (mensajes recientes y resultados de herramientas, acotada) + una política de decisión `reviewerPolicyText` en Markdown estilo Codex. |
 | ⌨️ **Comando de sesión** | `/auto-review on|off|status|approve [n]` con una anulación duradera por sesión que sobrevive a la restauración y estadísticas acumuladas de sesión. |
-| 🖥️ **Panel de revisión web** | Un panel en la cabecera de sesión (GUI web) muestra el interruptor, ambos presupuestos por turno, estadísticas acumuladas, el disparo del disyuntor, veredictos recientes y botones de aprobación de un solo uso — impulsado por la proyección de sesión `autoReview`. |
+| 🖥️ **Panel de revisión web** | Un panel en la cabecera de sesión (GUI web) muestra el interruptor (con botones de encendido/apagado), ambos presupuestos por turno, estadísticas acumuladas, el disparo del disyuntor, veredictos recientes y botones de aprobación de un solo uso — impulsado por la proyección de sesión `autoReview`. |
 
 ## Cómo funciona
 
@@ -69,30 +69,35 @@ Los auto-aprobadores basados en patrones deciden antes del despacho, sin evidenc
                         ▼
  allow → allowed-once        deny → rejected + motivo inyectado en el
                                        resultado de la herramienta denegada
-                        │
+                        │   never → rejected + feedback [auto-review-never]
+                        │            (desactivación dura, sin revisor)
                         ▼
- auditoría: approval/asked → autoReview/verdict → approval/decided
-            (eventos de sesión, log-only, verificados por invariantes)
+ auditoría: approval/asked → autoReview/verdict | autoReview/rejection
+            → approval/decided (eventos de sesión, log-only, verificados por invariantes)
 ```
 
 **Orden de composición.** El contestador se ejecuta en su posición de registro dentro del waterfall: si un contestador humano de la UI está compuesto ANTES de la fila `auto-review`, los humanos responden primero y el revisor solo ve lo que se delega aguas abajo. Verifícalo con `dsh --profile <name> --dump-config` y coloca la fila `auto-review` antes de tus filas de contestadores humanos si quieres que las herramientas con política ai se enruten primero al revisor.
 
 ## 🚀 Inicio rápido
 
-Tres canales de instalación; el plugin es un **bundle** (`"dsh": { "bundle": { "patch": "./cordis.patch.yml" } }`).
+Cuatro canales de instalación; el plugin es un **bundle** (`"dsh": { "bundle": { "patch": "./cordis.patch.yml" } }`).
 
 ```sh
-# 1. tarball de npm (artefactos compilados, sin permiso de build)
+# 1. npm (artefacto publicado, sin paso de build)
+dsh plugin --profile web add dsh-auto-review
+dsh --profile web               # reiniciar
+
+# 2. tarball de npm (artefactos compilados, instalación offline)
 pnpm pack                       # → dsh-auto-review-<version>.tgz
 dsh plugin --profile web add ./dsh-auto-review-<version>.tgz
 dsh --profile web               # reiniciar
 
-# 2. fuente git (fija el commit; el `prepare` autocontenido lo compila)
+# 3. fuente git (fija el commit; el `prepare` autocontenido lo compila)
 #    pnpm ≥ 10 bloquea los builds de ciclo de vida: añade primero la clave
 #    allowBuilds impresa al pnpm-workspace.yaml del perfil.
 dsh plugin --profile web add "github:PerryLink/dsh-auto-review#<commit>"
 
-# 3. enlace local (desarrollo)
+# 4. enlace local (desarrollo)
 dsh plugin --profile web add link:/path/to/dsh-auto-review
 ```
 
@@ -127,7 +132,7 @@ Todos los parámetros son campos `Config` de Schemastery (cambiables desde cordi
 | `denyGuidance` | *(texto anti-elusión)* | Guía añadida a cada motivo de denegación inyectado |
 | `contextBudget` | `{turns: 0, maxChars: 4000}` | Presupuesto de transcripción compacta para el prompt del revisor; `turns: 0` lo desactiva |
 | `riskPolicy` | `{maxAutoAllow: high, onHighRisk: delegate}` | Los veredictos `allow` por encima de `maxAutoAllow` delegan (`delegate`) o deniegan (`deny`) |
-| `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 10, windowSize: 50, action: delegate}` | Disyuntor de rechazos; `action`: `delegate` / `reject` / `abort-turn` |
+| `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate}` | Disyuntor de rechazos; se dispara con 3 denegaciones consecutivas o 6 de los últimos 10 veredictos del turno; `action`: `delegate` / `reject` / `abort-turn` |
 | `overrideTtlMs` | `300000` | Cuánto tiempo una anulación `/auto-review approve` sigue siendo utilizable |
 | `language` | `en` | Idioma de la interfaz de la salida del comando `/auto-review` (`en` \| `zh`) |
 
@@ -149,7 +154,7 @@ Ejemplo (forma completa comentada: `fixtures/config/config-full.yaml`):
         reviewerTimeoutMs: 30000
         fallbackPolicy: delegate
         riskPolicy: { maxAutoAllow: medium, onHighRisk: delegate }
-        circuitBreaker: { consecutiveDenies: 3, windowDenies: 10, windowSize: 50, action: delegate }
+        circuitBreaker: { consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate }
 ```
 
 ## ⌨️ Comando de sesión
@@ -158,11 +163,11 @@ Ejemplo (forma completa comentada: `fixtures/config/config-full.yaml`):
 /auto-review on|off|status|approve [n]
 ```
 
-`on`/`off` añaden la anulación duradera `autoReview/state` (el fold sobrevive a reinicios/restauración — la reproducción ES el estado) e inyectan un aviso de cambio visible para el modelo (registrado como evento `user/message`). `status` muestra el estado efectivo, ambos presupuestos por turno (veredictos de IA y fallos del revisor) y las estadísticas acumuladas de la sesión. `approve [n]` registra una `autoReview/override` de un solo uso para la n-ésima denegación más reciente (1 = la más reciente): la siguiente revisión de la misma herramienta dentro de `overrideTtlMs` lleva la autorización como contexto del revisor — el revisor sigue decidiendo, y la anulación se consume con esa revisión independientemente de su resultado.
+`on`/`off` añaden la anulación duradera `autoReview/state` (el fold sobrevive a reinicios/restauración — la reproducción ES el estado) e inyectan un aviso de cambio visible para el modelo (registrado como evento `user/message`). `status` muestra el estado efectivo, ambos presupuestos por turno (veredictos de IA y fallos del revisor), un disyuntor disparado cuando hay uno activo en el turno y las estadísticas acumuladas de la sesión (permisos/denegaciones/fallos/desactivaciones duras, duración media, veredictos recientes). `approve [n]` registra una `autoReview/override` de un solo uso para la n-ésima denegación más reciente (1 = la más reciente): la siguiente revisión de la misma herramienta dentro de `overrideTtlMs` lleva la autorización como contexto del revisor — el revisor sigue decidiendo, y la anulación se consume con esa revisión independientemente de su resultado.
 
 ## 🖥️ Panel de revisión web
 
-En la GUI web (perfil web), el paquete aporta una acción en la cabecera de sesión (**AI Review**) que abre un panel con el estado de auto-revisión de la sesión: el interruptor, ambos presupuestos por turno, estadísticas acumuladas, el disparo del disyuntor, los veredictos recientes y botones de **aprobación** de un solo uso para denegaciones recientes (ejecutan `/auto-review approve [n]`).
+En la GUI web (perfil web), el paquete aporta una acción en la cabecera de sesión (**AI Review**) que abre un panel con el estado de auto-revisión de la sesión: el interruptor con botones de encendido/apagado (ejecutan `/auto-review on|off`), ambos presupuestos por turno, estadísticas acumuladas (incluidas las desactivaciones duras), el disparo del disyuntor, los veredictos recientes y botones de **aprobación** de un solo uso para denegaciones recientes (ejecutan `/auto-review approve [n]`).
 
 Cómo está cableado:
 
@@ -177,6 +182,7 @@ El panel solo lee valores de proyección completos — nunca recibe el flujo cru
 - El revisor corre con una **cara de herramientas de solo lectura** (lista blanca `toolFilter`). No puede escribir, editar, ejecutar shell, acceder a la red ni delegar (`maxDepth` = su propia profundidad). Su registro de sesión persiste y es auditable.
 - **Los argumentos sensibles se redactan** (coincidencia por nombre de clave: `token`, `password`, `api_key`, `Authorization`, credenciales, claves privadas …) antes de entrar en el prompt del revisor; el plugin nunca ejecuta los argumentos revisados. La redacción es por clave, no por contenido — no sometas a revisión de IA herramientas cuyos valores no puedas mostrar a un modelo.
 - **Fail closed por defecto.** Toda ruta anómala (provider ausente, brechas de capacidad, arranque rechazado, timeout, stopReason no `completed`, veredicto ausente/malformado, fallo de correlación de auditoría) se resuelve con `fallbackPolicy`, por defecto `rejected` — y la denegación devuelve un motivo auditable al modelo en lugar del texto genérico "user rejected". `allow-once` concede incondicionalmente — solo existe para despliegues desatendidos cuyo administrador acepta ese riesgo.
+- **Las desactivaciones duras se explican solas.** Una herramienta o regla de riesgo `never` rechaza de forma determinista Y registra un evento log-only `autoReview/rejection` con la regla/entrada que coincidió, e inyecta un texto con el marcador `[auto-review-never]` en el resultado de la herramienta denegada — el modelo aprende que la acción está desactivada en lugar de reintentarla (verificado por invariantes: marcador ⟺ evento).
 - **Disyuntor de rechazos.** Una racha de denegaciones en un turno dispara el disyuntor (`consecutiveDenies` / `windowDenies` dentro de `windowSize`), registrado como evento log-only `autoReview/circuit`; las peticiones posteriores siguen su `action` (`delegate` / `reject` / `abort-turn`). `abort-turn` inyecta una advertencia visible para el modelo y cancela al agente.
 - **El contexto del revisor es transcripción ya presentada.** `contextBudget` alimenta al revisor con contenido de sesión ya presentado (mensajes, resultados de herramientas). Con el modelo de revisor por defecto en la misma ruta, ese contenido permanece dentro de un único provider; configura `reviewerModel` con un provider diferente solo si aceptas presentarle esa transcripción.
 - **`never` es unidireccional en esta capa.** Una herramienta o regla de riesgo `never` rechaza antes de que la cadena humana vea la petición — es un candado, no un valor por defecto.
@@ -207,13 +213,13 @@ Recomendados al publicar: `dsh` · `dsh-plugin` · `deepseek-harness` · `deepse
 ```sh
 pnpm install                # node ^22.19 || >=24
 pnpm run typecheck          # tsc, src + tests
-pnpm test                   # vitest: 124 tests, 8 suites
+pnpm test                   # vitest: 135 tests, 8 suites
 pnpm run build              # declaraciones tsc + bundles tsdown (lib/)
 pnpm run verify:self-contained
 pnpm pack                   # artefacto de publicación
 ```
 
-Estructura del repositorio (estructura plugin-template): `src/index.ts` (contrato del plugin) · `src/config.ts` (esquema Schemastery + resolución) · `src/runtime.ts` (answerer, comando, inyección del motivo de denegación) · `src/review.ts` (orquestación del revisor, prompt, redacción) · `src/events.ts` (vocabulario de eventos de sesión + folds) · `src/invariant.ts` (companion de invariantes) · `test/` · `fixtures/`.
+Estructura del repositorio (estructura plugin-template): `src/index.ts` (contrato del plugin) · `src/config.ts` (esquema Schemastery + resolución) · `src/runtime.ts` (answerer, comando, inyección del motivo de denegación) · `src/review.ts` (orquestación del revisor, prompt, redacción) · `src/events.ts` (vocabulario de eventos de sesión + folds) · `src/projection.ts` + `src/projection-types.ts` (la proyección de sesión `autoReview`) · `src/invariant.ts` (companion de invariantes) · `src/client/` (mitad navegador: panel de revisión, locales, estilos) · `test/` · `fixtures/`.
 
 ## 📄 Licencia
 

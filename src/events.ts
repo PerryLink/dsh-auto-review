@@ -78,6 +78,23 @@ declare module '@deepseek-ai/dsh-session/types' {
       reviewId: AutoReviewVerdictId
       toolName: string
     }
+    /**
+     * A deterministic hard-disable rejection (`never` policy): a risk rule or
+     * the tool policy table refused the request BEFORE any reviewer ran, and
+     * the answerer settled `rejected`. Log-only audit; `rejectionId` links the
+     * injected `[auto-review-never]` feedback text back here. `approvalId` is
+     * present whenever the pending `approval/asked` event could be correlated
+     * (like verdicts, at most one verdict-or-rejection exists per asked).
+     */
+    'autoReview/rejection': {
+      rejectionId: AutoReviewRejectionId
+      approvalId?: ApprovalRequestId
+      toolName: string
+      callId?: CallId
+      /** Why the request was hard-disabled (the matched risk rule or policy table entry). */
+      reason: string
+      outcome: 'rejected'
+    }
   }
 }
 
@@ -118,6 +135,13 @@ export type OverrideAppend = (
   options?: { ignorable?: true },
 ) => unknown
 
+/** `Session.append` narrowed to the `autoReview/rejection` event — same contract as {@link VerdictAppend}. */
+export type RejectionAppend = (
+  type: 'autoReview/rejection',
+  data: SessionEventMap['autoReview/rejection'],
+  options?: { ignorable?: true },
+) => unknown
+
 /** Why the answerer had no reviewer verdict — the closed fallback vocabulary. */
 export type AutoReviewFallback = 'timeout' | 'cancelled' | 'unavailable' | 'schema'
 
@@ -132,6 +156,9 @@ export type AutoReviewVerdictId = Branded<'AutoReviewVerdictId'>
 
 /** Identifies one `autoReview/circuit` audit event. */
 export type AutoReviewCircuitId = Branded<'AutoReviewCircuitId'>
+
+/** Identifies one `autoReview/rejection` audit event. */
+export type AutoReviewRejectionId = Branded<'AutoReviewRejectionId'>
 
 /**
  * Brand a string as an {@link AutoReviewVerdictId}.
@@ -151,6 +178,15 @@ export function AutoReviewCircuitId(id: string): AutoReviewCircuitId {
   return id as AutoReviewCircuitId
 }
 
+/**
+ * Brand a string as an {@link AutoReviewRejectionId}.
+ * @param id - the raw id string.
+ * @returns the same string, branded (a compile-time cast — no runtime cost).
+ */
+export function AutoReviewRejectionId(id: string): AutoReviewRejectionId {
+  return id as AutoReviewRejectionId
+}
+
 /** Stable marker prefix inside every injected deny reason, parsed by the invariant companion. */
 export const DENY_MARKER = '[auto-review]'
 
@@ -168,6 +204,12 @@ export const CIRCUIT_MARKER = '[auto-review-circuit]'
 
 /** Regex extracting the circuitId and tool name from an injected circuit rejection. */
 export const CIRCUIT_MARKER_PATTERN = /\[auto-review-circuit\] circuit ([^\s]+) rejected tool "([^"]+)" before review/u
+
+/** Stable marker prefix inside every injected hard-disable (`never`) rejection text. */
+export const NEVER_MARKER = '[auto-review-never]'
+
+/** Regex extracting the rejectionId and tool name from an injected never rejection. */
+export const NEVER_MARKER_PATTERN = /\[auto-review-never\] rejection ([^\s]+) hard-disabled tool "([^"]+)"/u
 
 /**
  * Build the model-visible deny text injected into a denied tool result. The
@@ -206,6 +248,20 @@ export function fallbackResultText(reviewId: AutoReviewVerdictId, fallback: Auto
  */
 export function circuitResultText(circuitId: AutoReviewCircuitId, toolName: string, explanation: string): string {
   return `Error: ${CIRCUIT_MARKER} circuit ${circuitId} rejected tool "${toolName}" before review: ${explanation}`
+}
+
+/**
+ * Build the model-visible text injected into a tool result rejected by a
+ * `never` policy (a hard disable: risk rule or tool-policy table entry). The
+ * embedded rejectionId links it to the recorded `autoReview/rejection` event
+ * (model-visible ⟺ logged).
+ * @param rejectionId - the rejection event's id.
+ * @param toolName - the hard-disabled tool.
+ * @param source - which rule or policy entry disabled it.
+ * @returns the exact error text shown to the model.
+ */
+export function neverResultText(rejectionId: AutoReviewRejectionId, toolName: string, source: string): string {
+  return `Error: ${NEVER_MARKER} rejection ${rejectionId} hard-disabled tool "${toolName}": ${source}`
 }
 
 /**
@@ -403,6 +459,8 @@ export interface ReviewStats {
   readonly allows: number
   readonly denies: number
   readonly fallbacks: number
+  /** Hard-disable (`never` policy) rejections — no reviewer ran for these. */
+  readonly rejections: number
   /** Mean duration of decision-carrying verdicts, rounded; 0 without any. */
   readonly avgDurationMs: number
   /** The last three verdicts, newest first. */
@@ -410,8 +468,8 @@ export interface ReviewStats {
 }
 
 /**
- * Fold one session's review statistics: verdict counts, mean duration, and
- * the three most recent verdicts.
+ * Fold one session's review statistics: verdict counts, never-rejection
+ * count, mean duration, and the three most recent verdicts.
  * @param events - session events in log order.
  * @returns the statistics.
  */
@@ -419,9 +477,14 @@ export function reviewStats(events: readonly SessionEvent[]): ReviewStats {
   let allows = 0
   let denies = 0
   let fallbacks = 0
+  let rejections = 0
   let decided = 0
   let durationSum = 0
   for (const event of events) {
+    if (event.type === 'autoReview/rejection') {
+      rejections += 1
+      continue
+    }
     if (event.type !== 'autoReview/verdict') continue
     const data = event.data
     if (data.decision === 'allow') allows += 1
@@ -437,7 +500,7 @@ export function reviewStats(events: readonly SessionEvent[]): ReviewStats {
     const event = events[index] as SessionEvent
     if (event.type === 'autoReview/verdict') recent.push(event.data)
   }
-  return { allows, denies, fallbacks, avgDurationMs: decided === 0 ? 0 : Math.round(durationSum / decided), recent }
+  return { allows, denies, fallbacks, rejections, avgDurationMs: decided === 0 ? 0 : Math.round(durationSum / decided), recent }
 }
 
 /**

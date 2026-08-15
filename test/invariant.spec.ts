@@ -15,7 +15,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import { ApprovalRequestId } from '@deepseek-ai/dsh-user-approval'
 import { describe, expect, it } from 'vitest'
 import * as AutoReviewInvariant from '../src/invariant.ts'
-import { AutoReviewCircuitId, AutoReviewVerdictId } from '../src/index.ts'
+import { AutoReviewCircuitId, AutoReviewRejectionId, AutoReviewVerdictId } from '../src/index.ts'
 
 function fixtureEvents(name: string): unknown {
   const url = new URL(`../fixtures/sessions/${name}`, import.meta.url)
@@ -289,5 +289,103 @@ describe('auto-review invariants', () => {
         toolName: 'bash',
       })
     }).toThrow(/invalid trip kind/u)
+  })
+
+  it('accepts a never rejection chain (event + marker) end to end', async () => {
+    const { session } = await mount()
+    session.append('approval/asked', {
+      id: ApprovalRequestId('a-never'),
+      toolName: 'edit',
+      callId: CallId('call-never'),
+    })
+    session.append('autoReview/rejection', {
+      rejectionId: AutoReviewRejectionId('n-live'),
+      approvalId: ApprovalRequestId('a-never'),
+      toolName: 'edit',
+      callId: CallId('call-never'),
+      reason: 'toolsPolicy.overrides.edit',
+      outcome: 'rejected',
+    })
+    expect(() => {
+      appendToolResult(session, 'call-never', 'Error: [auto-review-never] rejection n-live hard-disabled tool "edit": toolsPolicy.overrides.edit')
+    }).not.toThrow()
+    // The decided pair must agree with the rejection's recorded outcome.
+    expect(() => {
+      session.append('approval/decided', { id: ApprovalRequestId('a-never'), outcome: 'rejected' })
+    }).not.toThrow()
+  })
+
+  it('fails a never marker referencing an unknown rejectionId', async () => {
+    const { session } = await mount()
+    expect(() => {
+      appendToolResult(session, 'call-orphan-never', 'Error: [auto-review-never] rejection n-ghost hard-disabled tool "edit": toolsPolicy.overrides.edit')
+    }).toThrow(/unknown rejectionId/u)
+  })
+
+  it('fails a rejection whose outcome is not rejected', async () => {
+    const { session } = await mount()
+    const append = session.append as unknown as (type: string, data: unknown) => unknown
+    expect(() => {
+      append.call(session, 'autoReview/rejection', {
+        rejectionId: 'n-outcome',
+        toolName: 'edit',
+        reason: 'toolsPolicy.overrides.edit',
+        outcome: 'allowed-once',
+      })
+    }).toThrow(/invalid outcome/u)
+  })
+
+  it('fails a rejection that references no prior approval/asked', async () => {
+    const { session } = await mount()
+    expect(() => {
+      session.append('autoReview/rejection', {
+        rejectionId: AutoReviewRejectionId('n-orphan'),
+        approvalId: ApprovalRequestId('a-ghost-never'),
+        toolName: 'edit',
+        reason: 'toolsPolicy.overrides.edit',
+        outcome: 'rejected',
+      })
+    }).toThrow(/no prior approval\/asked/u)
+  })
+
+  it('fails a rejection that shares an approval/asked with a verdict', async () => {
+    const { session } = await mount()
+    session.append('approval/asked', { id: ApprovalRequestId('a-shared'), toolName: 'bash' })
+    session.append('autoReview/verdict', {
+      reviewId: AutoReviewVerdictId('r-shared'),
+      approvalId: ApprovalRequestId('a-shared'),
+      toolName: 'bash',
+      provider: 'fork',
+      durationMs: 1,
+      decision: 'deny',
+      reason: 'no',
+    })
+    expect(() => {
+      session.append('autoReview/rejection', {
+        rejectionId: AutoReviewRejectionId('n-shared'),
+        approvalId: ApprovalRequestId('a-shared'),
+        toolName: 'bash',
+        reason: 'toolsPolicy.overrides.bash',
+        outcome: 'rejected',
+      })
+    }).toThrow(/second decision for approval\/asked/u)
+  })
+
+  it('fails a repeated rejectionId', async () => {
+    const { session } = await mount()
+    session.append('autoReview/rejection', {
+      rejectionId: AutoReviewRejectionId('n-dup'),
+      toolName: 'edit',
+      reason: 'toolsPolicy.overrides.edit',
+      outcome: 'rejected',
+    })
+    expect(() => {
+      session.append('autoReview/rejection', {
+        rejectionId: AutoReviewRejectionId('n-dup'),
+        toolName: 'edit',
+        reason: 'toolsPolicy.overrides.edit',
+        outcome: 'rejected',
+      })
+    }).toThrow(/repeats rejectionId/u)
   })
 })

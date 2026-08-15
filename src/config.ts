@@ -240,10 +240,14 @@ export const Config: z<Config> = z.object({
   }).default({ maxAutoAllow: 'high', onHighRisk: 'delegate' }),
   circuitBreaker: z.object({
     consecutiveDenies: z.number().default(3),
-    windowDenies: z.number().default(10),
-    windowSize: z.number().default(50),
+    // The window defaults must stay reachable under the default
+    // maxReviewsPerTurn (10): a window trip needs 6 denies inside the turn's
+    // at most 10 verdicts, so interleaved denials trip it even when no
+    // 3-deny run occurs (a 10-in-50 default could never trip first).
+    windowDenies: z.number().default(6),
+    windowSize: z.number().default(10),
     action: CIRCUIT_ACTION.default('delegate'),
-  }).default({ consecutiveDenies: 3, windowDenies: 10, windowSize: 50, action: 'delegate' }),
+  }).default({ consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: 'delegate' }),
   overrideTtlMs: z.number().default(5 * 60_000),
   language: z.union(['en', 'zh'] as const).default('en'),
 })
@@ -284,7 +288,7 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     throw new TypeError(`contextBudget.maxChars must be a positive safe integer, got ${String(contextChars)}`)
   }
   const breaker = config.circuitBreaker ?? {}
-  for (const [key, value] of [['consecutiveDenies', breaker.consecutiveDenies ?? 3], ['windowDenies', breaker.windowDenies ?? 10], ['windowSize', breaker.windowSize ?? 50]] as const) {
+  for (const [key, value] of [['consecutiveDenies', breaker.consecutiveDenies ?? 3], ['windowDenies', breaker.windowDenies ?? 6], ['windowSize', breaker.windowSize ?? 10]] as const) {
     if (!Number.isSafeInteger(value) || value <= 0) {
       throw new TypeError(`circuitBreaker.${key} must be a positive safe integer, got ${String(value)}`)
     }
@@ -332,8 +336,8 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     },
     circuitBreaker: {
       consecutiveDenies: breaker.consecutiveDenies ?? 3,
-      windowDenies: breaker.windowDenies ?? 10,
-      windowSize: breaker.windowSize ?? 50,
+      windowDenies: breaker.windowDenies ?? 6,
+      windowSize: breaker.windowSize ?? 10,
       action: breaker.action ?? 'delegate',
     },
     overrideTtlMs: config.overrideTtlMs ?? 5 * 60_000,

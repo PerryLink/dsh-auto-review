@@ -1,0 +1,7 @@
+# Line endings: this repository is developed on Windows but consumed on every
+# platform. Force LF in the index so CRLF/LF conversion warnings never churn
+# diffs and the shipped files stay byte-stable across clones.
+* text=auto eol=lf
+*.gif binary
+*.png binary
+*.tgz binary

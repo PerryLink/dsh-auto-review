@@ -53,6 +53,7 @@ export const AUTO_REVIEW_PROJECTION_SCHEMA = z.object({
   allows: z.number().int().nonnegative(),
   denies: z.number().int().nonnegative(),
   fallbacks: z.number().int().nonnegative(),
+  neverRejects: z.number().int().nonnegative(),
   avgDurationMs: z.number().int().nonnegative(),
   circuit: CIRCUIT_VIEW_SCHEMA,
   recent: z.array(VERDICT_VIEW_SCHEMA),
@@ -68,6 +69,7 @@ export interface AutoReviewProjectionState {
   readonly allows: number
   readonly denies: number
   readonly fallbacks: number
+  readonly neverRejects: number
   readonly durationSum: number
   readonly decided: number
   readonly circuit: AutoReviewProjection['circuit']
@@ -78,16 +80,22 @@ export interface AutoReviewProjectionState {
 /** Drop `readonly` from a view type so a fold can fill optional fields conditionally. */
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 
-/** State for the empty log. */
-export function initAutoReviewProjection(): AutoReviewProjectionState {
+/**
+ * State for the empty log. `enabled` starts at the resolved
+ * `enableByDefault` — the projection cannot know the plugin config on its
+ * own, so the unit is built per mount by {@link makeAutoReviewProjection}.
+ * @param enabledByDefault - the resolved `enableByDefault` config value.
+ */
+export function initAutoReviewProjection(enabledByDefault: boolean): AutoReviewProjectionState {
   return {
-    enabled: true,
+    enabled: enabledByDefault,
     turnOpen: false,
     verdictsUsed: 0,
     failuresUsed: 0,
     allows: 0,
     denies: 0,
     fallbacks: 0,
+    neverRejects: 0,
     durationSum: 0,
     decided: 0,
     circuit: null,
@@ -145,6 +153,8 @@ export function applyAutoReview(state: AutoReviewProjectionState, event: Session
         ...state,
         circuit: { action: event.data.action, trip: event.data.trip, toolName: event.data.toolName },
       }
+    case 'autoReview/rejection':
+      return { ...state, neverRejects: state.neverRejects + 1 }
     case 'autoReview/verdict': {
       const data = event.data
       const decision = data.decision !== undefined
@@ -180,6 +190,7 @@ export function viewAutoReview(state: AutoReviewProjectionState): AutoReviewProj
     allows: state.allows,
     denies: state.denies,
     fallbacks: state.fallbacks,
+    neverRejects: state.neverRejects,
     avgDurationMs: state.decided === 0 ? 0 : Math.round(state.durationSum / state.decided),
     circuit: state.circuit,
     recent: state.recent,
@@ -187,14 +198,27 @@ export function viewAutoReview(state: AutoReviewProjectionState): AutoReviewProj
   }
 }
 
-/** The registered unit (see `ctx.sessionProjections.register`). */
-export const AUTO_REVIEW_PROJECTION: ProjectionDefinition<'autoReview', AutoReviewProjectionState> = {
-  key: 'autoReview',
-  // zod v4's `.optional()` output carries `| undefined`, which exact-optional
-  // property types reject; the runtime validation is what matters on the wire.
-  schema: AUTO_REVIEW_PROJECTION_SCHEMA as unknown as ProjectionDefinition<'autoReview', AutoReviewProjectionState>['schema'],
-  init: initAutoReviewProjection,
-  apply: applyAutoReview,
-  view: viewAutoReview,
-  stateVersion: 1,
+/**
+ * Build the registered unit for one mount. The unit's initial `enabled` is
+ * the mount's resolved `enableByDefault` (the pure `init` cannot see plugin
+ * config otherwise), and the panel therefore reports the same switch state
+ * the answerer applies. Registrants sharing the `autoReview` key share one
+ * unit; the first mount's default wins, which only matters for a double
+ * mount with conflicting `enableByDefault` values.
+ * @param enabledByDefault - the resolved `enableByDefault` config value.
+ * @returns the projection unit for `ctx.sessionProjections.register`.
+ */
+export function makeAutoReviewProjection(enabledByDefault: boolean): ProjectionDefinition<'autoReview', AutoReviewProjectionState> {
+  return {
+    key: 'autoReview',
+    // zod v4's `.optional()` output carries `| undefined`, which exact-optional
+    // property types reject; the runtime validation is what matters on the wire.
+    schema: AUTO_REVIEW_PROJECTION_SCHEMA as unknown as ProjectionDefinition<'autoReview', AutoReviewProjectionState>['schema'],
+    init: () => initAutoReviewProjection(enabledByDefault),
+    apply: applyAutoReview,
+    view: viewAutoReview,
+    // v2: `init.enabled` follows `enableByDefault` (was hardcoded true) and the
+    // wire gained the cumulative `neverRejects` counter.
+    stateVersion: 2,
+  }
 }

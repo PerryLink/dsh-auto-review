@@ -39,8 +39,12 @@ Standalone DeepSeek Harness plugin repository (`dsh-auto-review`). Development f
 
 `pnpm run typecheck && pnpm test && pnpm run build && pnpm run verify:self-contained && pnpm pack`.
 
+CI (`ci.yml`) additionally proves the packed artifact: `pnpm pack --pack-destination out` followed by `node scripts/smoke-package.mjs out` (installs the tarball into a scratch project and loads the node faces through the package exports).
+
 `scripts/check-host-versions.mjs` (run by the CI job `host-compat`) fails when the exact-pinned `@deepseek-ai/dsh-*` peers no longer match the npm `latest` of `@deepseek-ai/dsh` — bump the pins (or document a deliberate stay-behind) before publishing.
 
 ## Publishing
+
+Releases flow through the `publish` workflow: push a `v<version>` tag matching `package.json` (`prepublishOnly` re-runs the full gate, then the workflow publishes to npm with provenance and cuts a GitHub Release). The `NPM_TOKEN` secret must exist on the repo.
 
 After a version bump, repack the sibling integration tarball for `dsh-permission-rules` (`pnpm --dir ../dsh-auto-review pack --pack-destination ../dsh-permission-rules/vendor`) and update its `file:` devDependency to the new filename, then rerun its test suite.

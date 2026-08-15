@@ -1,8 +1,23 @@
 {
   "name": "dsh-auto-review",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Second-model AI auto-review for DeepSeek Harness approval requests: a read-only reviewer subagent decides allow/deny on the approval answerer chain, with fail-closed fallback and full session-log audit.",
   "private": false,
+  "author": {
+    "name": "PerryLink"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PerryLink/dsh-auto-review.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PerryLink/dsh-auto-review/issues"
+  },
+  "homepage": "https://github.com/PerryLink/dsh-auto-review#readme",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "type": "module",
   "main": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
@@ -113,7 +128,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "vitest run",
     "prepare": "node scripts/prepare.mjs",
-    "verify:self-contained": "node scripts/verify-self-contained.mjs"
+    "verify:self-contained": "node scripts/verify-self-contained.mjs",
+    "prepublishOnly": "pnpm run typecheck && pnpm test && pnpm run build && pnpm run verify:self-contained"
   },
   "license": "Apache-2.0"
 }

@@ -5,6 +5,7 @@ coverage/
 *.tgz
 .pnpm-store/
 dist/
+out/
 .DS_Store
 .playwright-mcp/
 demo/boot.log

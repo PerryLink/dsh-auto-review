@@ -52,17 +52,21 @@ export function apply(ctx: ClientContext): void {
       id: 'auto-review',
       order: 40,
       locale: NS,
-      inject: (sessionId: SessionId): ReviewPanelInjected => ({
-        approve: async (n: number): Promise<string> => {
-          const result = await ctx.remote.commands.execute(sessionId, `/auto-review approve ${n}`)
+      inject: (sessionId: SessionId): ReviewPanelInjected => {
+        const executeCommand = async (line: string): Promise<string> => {
+          const result = await ctx.remote.commands.execute(sessionId, line)
           if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
           if (result.value === undefined) throw new Error('unknown command: /auto-review')
           const command = result.value.result
           if (command === undefined) throw new Error('/auto-review produced no command result')
           const text = command.text ?? ''
           return command.kind === 'success' ? text : `${command.kind}: ${text}`
-        },
-      }),
+        }
+        return {
+          approve: async (n: number): Promise<string> => executeCommand(`/auto-review approve ${n}`),
+          setEnabled: async (enabled: boolean): Promise<string> => executeCommand(`/auto-review ${enabled ? 'on' : 'off'}`),
+        }
+      },
     }, ReviewPanel),
   )
 }

@@ -139,10 +139,32 @@ describe('/auto-review command', () => {
       error: 'slow',
       outcome: 'rejected',
     })
+    append.call(harness.session, 'approval/asked', { id: 'a3', toolName: 'edit' })
+    append.call(harness.session, 'autoReview/rejection', {
+      rejectionId: 'n1',
+      approvalId: 'a3',
+      toolName: 'edit',
+      reason: 'toolsPolicy.overrides.edit',
+      outcome: 'rejected',
+    })
     const result = invoke(harness.commands.registered[0], harness, 'status')
     const text = (result as { text: string }).text
-    expect(text).toContain('All-time: 1 allows, 0 denies, 1 fallbacks (avg 10 ms per verdict).')
+    expect(text).toContain('All-time: 1 allows, 0 denies, 1 fallbacks, 1 never rejects (avg 10 ms per verdict).')
     expect(text).toContain('Recent verdicts: write: fallback(timeout), bash: allow')
+  })
+
+  it('reports a tripped circuit breaker in status', async () => {
+    const harness = await mountHarness()
+    const append = harness.session.append as unknown as (type: string, data: unknown) => unknown
+    append.call(harness.session, 'autoReview/circuit', {
+      circuitId: 'c1',
+      action: 'reject',
+      trip: { kind: 'window', count: 6 },
+      toolName: 'write',
+    })
+    const result = invoke(harness.commands.registered[0], harness, 'status')
+    const text = (result as { text: string }).text
+    expect(text).toContain('Rejection circuit breaker tripped (window: 6 denials); later requests in this turn follow "reject".')
   })
 
   it('serves Chinese command output when language is zh', async () => {

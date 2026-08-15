@@ -20,7 +20,7 @@ import type { PostToolDecision, ToolExecution, ToolExecutionResult } from '@deep
 import { resolveConfig, riskExceeds } from './config.ts'
 import type { Config, ResolvedConfig, ToolReviewPolicy } from './config.ts'
 import { messages } from './messages.ts'
-import { AUTO_REVIEW_PROJECTION } from './projection.ts'
+import { makeAutoReviewProjection } from './projection.ts'
 import {
   activeOverride,
   autoReviewFailuresInOpenTurn,
@@ -34,15 +34,17 @@ import {
   effectiveAutoReviewState,
   fallbackResultText,
   lastDeniedVerdicts,
+  neverResultText,
   reviewStats,
   type AutoReviewFallback,
   type AutoReviewVerdictId,
   type CircuitAppend,
   type OverrideAppend,
+  type RejectionAppend,
   type StateAppend,
   type VerdictAppend,
 } from './events.ts'
-import { isReviewFailure, newCircuitId, newVerdictId, runReview, sanitizedArgumentsText, truncate } from './review.ts'
+import { isReviewFailure, newCircuitId, newRejectionId, newVerdictId, runReview, sanitizedArgumentsText, truncate } from './review.ts'
 import type { OverrideContext, ReviewFailure } from './review.ts'
 
 export const name = 'auto-review'
@@ -62,6 +64,13 @@ function assertNever(value: never, label: string): never {
   throw new TypeError(`unknown ${label}: ${String(value)}`)
 }
 
+/** One policy resolution: the policy plus which rule or table entry produced it. */
+interface ResolvedPolicy {
+  readonly policy: ToolReviewPolicy
+  /** The matched risk rule or policy table entry, for prompts and the never-rejection audit. */
+  readonly source: string
+}
+
 /**
  * Answerer policy resolution for one request: the first matching risk rule
  * (security invariants win over tool defaults), then the exact tool override,
@@ -70,20 +79,20 @@ function assertNever(value: never, label: string): never {
  * @param config - the resolved config.
  * @param request - the pending approval request.
  * @param argumentsText - the sanitized call-arguments JSON, when the log has it.
- * @returns the policy this request resolves to.
+ * @returns the policy this request resolves to, with its provenance.
  */
-function policyFor(config: ResolvedConfig, request: ApprovalRequest, argumentsText: string | undefined): ToolReviewPolicy {
+function policyFor(config: ResolvedConfig, request: ApprovalRequest, argumentsText: string | undefined): ResolvedPolicy {
   for (const rule of config.riskRules) {
     const subject = rule.field === 'reason'
       ? request.reason ?? ''
       : rule.field === 'toolName'
         ? request.toolName
         : argumentsText ?? ''
-    if (rule.regex.test(subject)) return rule.policy
+    if (rule.regex.test(subject)) return { policy: rule.policy, source: `risk rule /${rule.pattern}/ (${rule.field})` }
   }
   const override = config.toolsPolicy.overrides[request.toolName]
-  if (override !== undefined) return override
-  return config.toolsPolicy.default
+  if (override !== undefined) return { policy: override, source: `toolsPolicy.overrides.${request.toolName}` }
+  return { policy: config.toolsPolicy.default, source: 'toolsPolicy.default' }
 }
 
 /**
@@ -123,8 +132,8 @@ export class AutoReviewRuntime {
     const argumentsText = needsArguments && request.callId !== undefined
       ? sanitizedArgumentsText(session.events, request.callId)
       : undefined
-    const policy = policyFor(this.config, request, argumentsText)
-    if (policy === 'never') return Promise.resolve<ApprovalOutcome>('rejected')
+    const { policy, source } = policyFor(this.config, request, argumentsText)
+    if (policy === 'never') return this.neverReject(request, source)
     if (policy !== 'ai') return next()
     // Separate budgets: real AI verdicts vs reviewer failures. A broken
     // reviewer burns the failure budget (then delegates) without eating the
@@ -147,6 +156,33 @@ export class AutoReviewRuntime {
       ? undefined
       : { reviewId: overrideId, toolName: request.toolName }
     return this.review(request, approvalId, next, override)
+  }
+
+  /**
+   * Settle a `never`-policy request deterministically: record the log-only
+   * `autoReview/rejection` audit event, and feed a model-visible
+   * `[auto-review-never]` marker text (plus the deny guidance) into the
+   * denied call's tool result — without it the model only sees the generic
+   * rejection and keeps retrying a hard-disabled action. No reviewer runs
+   * and no budget is consumed.
+   * @param request - the hard-disabled decision.
+   * @param source - the matched risk rule or policy table entry.
+   * @returns the closed rejection.
+   */
+  private neverReject(request: ApprovalRequest, source: string): Promise<ApprovalOutcome> {
+    const rejectionId = newRejectionId()
+    const reason = truncate(source, this.config.reasonMaxChars)
+    const approvalId = correlateApprovalId(request.agent.session.events, request.toolName, request.callId)
+    ;(request.agent.session.append as unknown as RejectionAppend)('autoReview/rejection', {
+      rejectionId,
+      ...approvalId !== undefined ? { approvalId } : {},
+      toolName: request.toolName,
+      ...request.callId !== undefined ? { callId: request.callId } : {},
+      reason,
+      outcome: 'rejected',
+    }, { ignorable: true })
+    this.recordFeedback(request.callId, `${neverResultText(rejectionId, request.toolName, reason)}\n${this.config.denyGuidance}`)
+    return Promise.resolve<ApprovalOutcome>('rejected')
   }
 
   /**
@@ -420,6 +456,7 @@ export class AutoReviewRuntime {
     const current = effectiveAutoReviewState(session.events) ?? this.config.enableByDefault
     if (input === 'status' || input === '') {
       const stats = reviewStats(session.events)
+      const circuit = circuitInOpenTurn(session.events)
       const recent = stats.recent.length === 0
         ? []
         : [t.recentLine(stats.recent.map(verdict => {
@@ -434,7 +471,8 @@ export class AutoReviewRuntime {
           t.statusLine(current),
           t.verdictsLine(autoReviewsInOpenTurn(session.events), this.config.maxReviewsPerTurn),
           t.failuresLine(autoReviewFailuresInOpenTurn(session.events), this.config.maxFailuresPerTurn),
-          t.allTimeLine(stats.allows, stats.denies, stats.fallbacks, stats.avgDurationMs),
+          ...circuit === undefined ? [] : [t.circuitLine(circuit.trip.kind, circuit.trip.count, circuit.action)],
+          t.allTimeLine(stats.allows, stats.denies, stats.fallbacks, stats.rejections, stats.avgDurationMs),
           ...recent,
           t.usage,
         ].join('\n'),
@@ -519,6 +557,6 @@ export function apply(ctx: Context, config: Config): void {
     handler: invocation => runtime.command(invocation),
   })
   if (ctx.get('sessionProjections') !== undefined) {
-    ctx.inject(['sessionProjections'], scope => scope.sessionProjections.register(AUTO_REVIEW_PROJECTION))
+    ctx.inject(['sessionProjections'], scope => scope.sessionProjections.register(makeAutoReviewProjection(resolved.enableByDefault)))
   }
 }

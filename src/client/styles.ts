@@ -92,6 +92,26 @@ const CSS = `
 [data-dsh-auto-review-approve]:hover {
   background: rgba(128, 128, 128, 0.12);
 }
+[data-dsh-auto-review-switch] {
+  cursor: pointer;
+  border: 1px solid var(--ar-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ar-fg);
+  padding: 1px 6px;
+  font-size: 11px;
+}
+[data-dsh-auto-review-switch] + [data-dsh-auto-review-switch] {
+  margin-left: 4px;
+}
+[data-dsh-auto-review-switch]:hover:not(:disabled) {
+  background: rgba(128, 128, 128, 0.12);
+}
+[data-dsh-auto-review-approve]:disabled,
+[data-dsh-auto-review-switch]:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 [data-dsh-auto-review-circuit] {
   color: var(--ar-deny);
   font-weight: 600;

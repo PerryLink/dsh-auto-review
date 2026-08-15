@@ -1,0 +1,65 @@
+name: publish
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # GitHub Release
+  id-token: write # npm provenance
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: pnpm test
+      - run: pnpm run build
+      - run: pnpm run verify:self-contained
+      - run: node scripts/check-host-versions.mjs
+
+  publish:
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Verify the tag matches the package version
+        shell: bash
+        run: |
+          tag="v$(node -p "require('./package.json').version")"
+          if [ "${GITHUB_REF_NAME}" != "${tag}" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match package version ${tag}"
+            exit 1
+          fi
+      - name: Publish to npm
+        # prepublishOnly re-runs the full gate on the fresh checkout.
+        # --provenance signs the artifact via the id-token OIDC permission.
+        run: pnpm publish --no-git-checks --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true

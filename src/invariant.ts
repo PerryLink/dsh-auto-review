@@ -4,11 +4,13 @@
  * 1. Every `autoReview/verdict` audit event references an `approval/asked`
  *    event that precedes it in the same session, at most one verdict exists
  *    per asked event, and payload fields obey the closed vocabularies
- *    (decision/reason/riskLevel/outcome/fallback).
+ *    (decision/reason/riskLevel/outcome/fallback). The same chain holds for
+ *    `autoReview/rejection` events (hard-disable rejections).
  * 2. Model-visible ⟺ logged: every `tool/result` carrying the deny marker
- *    links to a recorded `deny` verdict with a matching call id, and every
+ *    links to a recorded `deny` verdict with a matching call id, every
  *    `tool/result` carrying the fallback marker links to a recorded fallback
- *    verdict that was rejected.
+ *    verdict that was rejected, and every `tool/result` carrying the never
+ *    marker links to a recorded rejection that settled rejected.
  *
  * @module dsh-auto-review/invariant
  */
@@ -16,7 +18,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { InvariantFailure, InvariantInstaller } from '@deepseek-ai/dsh-invariants'
-import { AUTO_REVIEW_FALLBACKS, CIRCUIT_MARKER_PATTERN, DENY_MARKER_PATTERN, FALLBACK_MARKER_PATTERN } from './events.ts'
+import { AUTO_REVIEW_FALLBACKS, CIRCUIT_MARKER_PATTERN, DENY_MARKER_PATTERN, FALLBACK_MARKER_PATTERN, NEVER_MARKER_PATTERN } from './events.ts'
 
 const PACKAGE_NAME = 'dsh-auto-review'
 
@@ -39,6 +41,12 @@ interface VerdictRecord {
   readonly escalation: string | undefined
 }
 
+/** One recorded hard-disable rejection, for never-marker reconstruction. */
+interface RejectionRecord {
+  readonly callId: string | undefined
+  readonly outcome: string | undefined
+}
+
 /* jscpd:ignore-start -- package companions share replay and dispatch plumbing */
 /** Install verdict-chain and deny-marker validation over loaded logs and newly appended events. */
 const install: InvariantInstaller = Object.assign((ctx: Context, fail: InvariantFailure) => {
@@ -47,6 +55,7 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
   const verdicts = new WeakMap<Session, Map<string, VerdictRecord>>()
   const verdictByApproval = new WeakMap<Session, Map<string, VerdictRecord>>()
   const circuits = new WeakMap<Session, Map<string, string>>()
+  const rejections = new WeakMap<Session, Map<string, RejectionRecord>>()
 
   const validateEvent = (session: Session, event: SessionEvent): void => {
     if (event.type === 'approval/asked') {
@@ -158,6 +167,46 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
       }
       return
     }
+    if (event.type === 'autoReview/rejection') {
+      const data = event.data
+      if (typeof data.reason !== 'string' || data.reason.length === 0) {
+        fail(`autoReview/rejection ${JSON.stringify(data.rejectionId)} has no hard-disable reason`)
+      }
+      if (data.outcome !== 'rejected') {
+        fail(`autoReview/rejection ${JSON.stringify(data.rejectionId)} has invalid outcome ${JSON.stringify(data.outcome)}`)
+      }
+      if (data.approvalId !== undefined) {
+        const count = askedIds.get(session)?.get(data.approvalId) ?? 0
+        if (count < 1) {
+          fail(`autoReview/rejection ${JSON.stringify(data.rejectionId)} references no prior approval/asked ${JSON.stringify(data.approvalId)}`)
+        }
+        let byApproval = verdictByApproval.get(session)
+        if (byApproval === undefined) {
+          byApproval = new Map<string, VerdictRecord>()
+          verdictByApproval.set(session, byApproval)
+        }
+        if (byApproval.has(data.approvalId)) {
+          fail(`autoReview/rejection ${JSON.stringify(data.rejectionId)} is the second decision for approval/asked ${JSON.stringify(data.approvalId)}`)
+        }
+        byApproval.set(data.approvalId, {
+          callId: data.callId,
+          decision: undefined,
+          outcome: data.outcome,
+          fallback: undefined,
+          escalation: undefined,
+        })
+      }
+      let rejectionIds = rejections.get(session)
+      if (rejectionIds === undefined) {
+        rejectionIds = new Map<string, RejectionRecord>()
+        rejections.set(session, rejectionIds)
+      }
+      if (rejectionIds.has(data.rejectionId)) {
+        fail(`autoReview/rejection repeats rejectionId ${JSON.stringify(data.rejectionId)}`)
+      }
+      rejectionIds.set(data.rejectionId, { callId: data.callId, outcome: data.outcome })
+      return
+    }
     if (event.type === 'approval/decided') {
       // The answerer claims a request by appending its verdict BEFORE the
       // service settles the decided pair; a claimed verdict must therefore
@@ -220,20 +269,40 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
         return
       }
       const circuitMatch = CIRCUIT_MARKER_PATTERN.exec(text)
-      if (circuitMatch === null) return
-      const circuitId = circuitMatch[1]
-      const toolName = circuitMatch[2]
-      if (circuitId === undefined || toolName === undefined) {
-        fail(`tool/result carries an unparseable circuit marker: ${JSON.stringify(circuitMatch[0])}`)
+      if (circuitMatch !== null) {
+        const circuitId = circuitMatch[1]
+        const toolName = circuitMatch[2]
+        if (circuitId === undefined || toolName === undefined) {
+          fail(`tool/result carries an unparseable circuit marker: ${JSON.stringify(circuitMatch[0])}`)
+          return
+        }
+        const action = circuits.get(session)?.get(circuitId)
+        if (action === undefined) {
+          fail(`tool/result circuit marker references unknown circuitId ${JSON.stringify(circuitId)}`)
+          return
+        }
+        if (action === 'delegate') {
+          fail(`tool/result circuit marker references a delegate-action circuit ${JSON.stringify(circuitId)}`)
+        }
         return
       }
-      const action = circuits.get(session)?.get(circuitId)
-      if (action === undefined) {
-        fail(`tool/result circuit marker references unknown circuitId ${JSON.stringify(circuitId)}`)
+      const neverMatch = NEVER_MARKER_PATTERN.exec(text)
+      if (neverMatch === null) return
+      const rejectionId = neverMatch[1]
+      if (rejectionId === undefined) {
+        fail(`tool/result carries an unparseable never marker: ${JSON.stringify(neverMatch[0])}`)
         return
       }
-      if (action === 'delegate') {
-        fail(`tool/result circuit marker references a delegate-action circuit ${JSON.stringify(circuitId)}`)
+      const rejection = rejections.get(session)?.get(rejectionId)
+      if (rejection === undefined) {
+        fail(`tool/result never marker references unknown rejectionId ${JSON.stringify(rejectionId)}`)
+        return
+      }
+      if (rejection.outcome !== 'rejected') {
+        fail(`tool/result never marker references a rejection that did not settle rejected ${JSON.stringify(rejectionId)}`)
+      }
+      if (rejection.callId !== undefined && rejection.callId !== block.toolCallId) {
+        fail(`tool/result never marker for rejection ${JSON.stringify(rejectionId)} has call id ${JSON.stringify(block.toolCallId)}, expected ${JSON.stringify(rejection.callId)}`)
       }
     }
   }

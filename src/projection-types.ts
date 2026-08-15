@@ -38,6 +38,8 @@ export interface AutoReviewProjection {
   readonly allows: number
   readonly denies: number
   readonly fallbacks: number
+  /** Hard-disable (`never` policy) rejections — no reviewer ran for these. */
+  readonly neverRejects: number
   /** Mean duration of decision-carrying verdicts, rounded; 0 without any. */
   readonly avgDurationMs: number
   /** The current turn's circuit trip, or null. */

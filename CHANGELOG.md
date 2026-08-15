@@ -2,7 +2,26 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
-## [0.3.0] — unreleased
+## [0.4.0] — 2026-08-15
+
+### Added
+
+- **Hard-disable feedback**: a `never`-policy rejection (risk rule or tool-policy table entry) now records a log-only `autoReview/rejection` event (with the matched rule/entry as the reason and the correlated `approvalId`) and injects a `[auto-review-never]` marker text plus the deny guidance into the denied tool result — the model learns the action is hard-disabled instead of retrying it. The invariant companion validates the rejection chain (marker ⟺ event, one decision per `approval/asked`, `decided` agreement); the panel and `/auto-review status` count never rejects.
+- `/auto-review status` reports a tripped circuit breaker (kind, count, action) when one is active in the turn.
+- The web review panel's switch gains explicit on/off buttons (they execute `/auto-review on|off`).
+
+### Changed
+
+- **Circuit-breaker defaults are now reachable**: `windowDenies` 10 → 6 and `windowSize` 50 → 10, so the window mode (6 of the last 10 verdicts) can trip under the default `maxReviewsPerTurn: 10` even without a 3-deny run (the old 10-in-50 window could never trip first). Explicit configs are unaffected.
+- The projection unit is now built per mount (`makeAutoReviewProjection(enabledByDefault)`), so the panel's initial switch state follows the resolved `enableByDefault` instead of a hardcoded `true`; `stateVersion` bumped to 2 (also for the new `neverRejects` wire field).
+- tsdown `external`/`noExternal` migrated to the non-deprecated `deps.neverBundle`/`deps.alwaysBundle`.
+- Published on npm; the README install section now lists the npm channel first.
+
+### Fixed
+
+- The panel's switch row no longer renders the localized "ON" text as its label (it now reads "State: ON/OFF").
+
+## [0.3.0] — 2026-08-14
 
 ### Added
 

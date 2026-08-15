@@ -48,10 +48,13 @@ export default defineConfig([
     clean: false,
     // ESM output under a "type": "module" package must land on .js, not .mjs.
     fixedExtension: false,
-    external: [/^node:/, /^@deepseek-ai\//],
-    // zod is a non-peer dependency: bundle it so the host half stays
-    // self-contained when a profile resolves the package outside pnpm's tree.
-    noExternal: ['zod'],
+    deps: {
+      // Every @deepseek-ai peer resolves at runtime from the host profile.
+      neverBundle: [/^node:/, /^@deepseek-ai\//],
+      // zod is a non-peer dependency: bundle it so the host half stays
+      // self-contained when a profile resolves the package outside pnpm's tree.
+      alwaysBundle: ['zod'],
+    },
   },
   {
     name: `${PLUGIN_ID}/client`,
@@ -62,8 +65,10 @@ export default defineConfig([
     dts: false,
     sourcemap: true,
     clean: false,
-    external: [...PLATFORM_EXTERNALS],
-    noExternal: (id: string) => (PLATFORM_EXTERNALS.includes(id) ? undefined : true),
+    deps: {
+      neverBundle: [...PLATFORM_EXTERNALS],
+      alwaysBundle: (id: string): boolean | undefined => (PLATFORM_EXTERNALS.includes(id) ? undefined : true),
+    },
     define: {
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
       'import.meta.env.MODE': JSON.stringify(process.env.NODE_ENV ?? 'production'),

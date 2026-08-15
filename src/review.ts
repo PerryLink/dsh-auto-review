@@ -15,7 +15,7 @@ import type { ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-subagent'
 import { assertObjectJsonSchema, type ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
 import type { AutoReviewFallback } from './events.ts'
-import { AutoReviewCircuitId, AutoReviewVerdictId, findPresentedCall } from './events.ts'
+import { AutoReviewCircuitId, AutoReviewRejectionId, AutoReviewVerdictId, findPresentedCall } from './events.ts'
 import type { ContextBudgetConfig, ResolvedConfig, RiskLevel } from './config.ts'
 
 /** A reviewer verdict, validated against the closed decision vocabulary. */
@@ -416,4 +416,13 @@ export function newVerdictId(): AutoReviewVerdictId {
  */
 export function newCircuitId(): AutoReviewCircuitId {
   return AutoReviewCircuitId(randomUUID())
+}
+
+/**
+ * Mint one hard-disable rejection id. Wrapped for testability (audit
+ * uniqueness is a UUID).
+ * @returns a fresh branded id.
+ */
+export function newRejectionId(): AutoReviewRejectionId {
+  return AutoReviewRejectionId(randomUUID())
 }

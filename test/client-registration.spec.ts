@@ -14,12 +14,12 @@ interface Registered {
     readonly name: string
     readonly id: string
     readonly locale: string
-    readonly inject: (sessionId: string) => { approve: (n: number) => Promise<string> }
+    readonly inject: (sessionId: string) => { approve: (n: number) => Promise<string>; setEnabled: (enabled: boolean) => Promise<string> }
   }
 }
 
 describe('client plugin registration', () => {
-  it('registers dictionaries, the stylesheet, and the header action with the approve face', async () => {
+  it('registers dictionaries, the stylesheet, and the header action with the approve and switch faces', async () => {
     const registered: Registered[] = []
     const registerLocale = vi.fn()
     const execute = vi.fn(async (_sessionId: string, _line: string) => ({
@@ -58,6 +58,10 @@ describe('client plugin registration', () => {
     const face = registered[0]!.options.inject('session-1')
     await expect(face.approve(2)).resolves.toBe('ok')
     expect(execute).toHaveBeenCalledWith('session-1', '/auto-review approve 2')
+    await expect(face.setEnabled(false)).resolves.toBe('ok')
+    expect(execute).toHaveBeenCalledWith('session-1', '/auto-review off')
+    await expect(face.setEnabled(true)).resolves.toBe('ok')
+    expect(execute).toHaveBeenCalledWith('session-1', '/auto-review on')
   })
 
   it('surfaces command failures as errors', async () => {

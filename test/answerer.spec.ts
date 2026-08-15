@@ -8,7 +8,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
-import { CIRCUIT_MARKER_PATTERN, DENY_MARKER_PATTERN, FALLBACK_MARKER_PATTERN } from '../src/index.ts'
+import { CIRCUIT_MARKER_PATTERN, DENY_MARKER_PATTERN, FALLBACK_MARKER_PATTERN, NEVER_MARKER_PATTERN, autoReviewFailuresInOpenTurn, autoReviewsInOpenTurn } from '../src/index.ts'
 import {
   dispatchApproval,
   dispatchAskedApproval,
@@ -117,10 +117,12 @@ describe('auto-review answerer', () => {
 
   it('rejects deterministically for a never-listed tool without asking anyone', async () => {
     const harness = await mountHarness({ toolsPolicy: { overrides: { bash: 'never' } } })
+    const callId = CallId('call-never')
     let downstreamCalled = false
-    const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
+    const { outcome, askedId } = await dispatchAskedApproval(harness.ctx, harness.session, {
       agent: harness.agent,
       toolName: 'bash',
+      callId,
     }, async () => {
       downstreamCalled = true
       return 'allowed-once'
@@ -128,6 +130,57 @@ describe('auto-review answerer', () => {
     expect(outcome).toBe('rejected')
     expect(downstreamCalled).toBe(false)
     expect(harness.subagents.starts).toHaveLength(0)
+    // The hard-disable is audited: log-only rejection event with the
+    // provenance and the correlated approval id.
+    const rejection = lastEvent(harness.session.events, 'autoReview/rejection')
+    expect(dataOf(rejection)).toMatchObject({
+      approvalId: askedId,
+      toolName: 'bash',
+      callId,
+      reason: 'toolsPolicy.overrides.bash',
+      outcome: 'rejected',
+    })
+    expect(typeof dataOf(rejection).rejectionId).toBe('string')
+    // The model sees an auditable hard-disable reason instead of the generic
+    // rejection text.
+    const decision = await dispatchPostExecute(harness.ctx, { callId } as never, {
+      isError: true,
+      content: [{ type: 'text', text: 'Error: the user rejected tool "bash"' }],
+    }, async () => ({ kind: 'accept' }))
+    expect(decision).toMatchObject({ kind: 'block' })
+    const feedback = (decision as { feedback: { text: string }[] }).feedback
+    expect(feedback[0]!.text).toMatch(NEVER_MARKER_PATTERN)
+    expect(feedback[0]!.text).toContain(`rejection ${String(dataOf(rejection).rejectionId)}`)
+    expect(feedback[0]!.text).toContain('hard-disabled tool "bash"')
+    expect(feedback[0]!.text).toContain('Do not attempt to work around this denial')
+  })
+
+  it('names the matched risk rule in the never-rejection audit', async () => {
+    const harness = await mountHarness({
+      riskRules: [{ pattern: 'killall', policy: 'never' }],
+    })
+    await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+      reason: 'killall cleanup',
+    }, next)
+    const rejection = lastEvent(harness.session.events, 'autoReview/rejection')
+    expect(dataOf(rejection)).toMatchObject({
+      toolName: 'bash',
+      reason: 'risk rule /killall/ (reason)',
+      outcome: 'rejected',
+    })
+  })
+
+  it('does not consume review budgets for a never rejection', async () => {
+    const harness = await mountHarness({ toolsPolicy: { overrides: { bash: 'never' } } })
+    const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+    }, next)
+    expect(outcome).toBe('rejected')
+    expect(autoReviewsInOpenTurn(harness.session.events)).toBe(0)
+    expect(autoReviewFailuresInOpenTurn(harness.session.events)).toBe(0)
   })
 
   it('lets risk rules win over tool overrides', async () => {

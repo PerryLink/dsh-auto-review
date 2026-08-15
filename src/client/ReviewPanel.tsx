@@ -1,10 +1,11 @@
 /**
  * The session-header review panel: a button in the conversation header that
- * opens a popover with this session's auto-review state — budgets, cumulative
- * statistics, the circuit trip, recent verdicts, and one-shot approve
- * buttons for recent denials. Data arrives through the `autoReview`
- * session projection; approves execute the `/auto-review approve [n]`
- * command through the commands Remote.
+ * opens a popover with this session's auto-review state — the on/off switch,
+ * budgets, cumulative statistics (including hard-disable rejections), the
+ * circuit trip, recent verdicts, and one-shot approve buttons for recent
+ * denials. Data arrives through the `autoReview` session projection;
+ * switches and approves execute the `/auto-review` command through the
+ * commands Remote.
  * @module dsh-auto-review/client/ReviewPanel
  */
 
@@ -18,6 +19,8 @@ import { NS } from './locales.ts'
 export interface ReviewPanelInjected {
   /** Approve the n-th most recent denial (1 = most recent); resolves with the command result text. */
   approve: (n: number) => Promise<string>
+  /** Switch the session's auto-review on/off (`/auto-review on|off`); resolves with the command result text. */
+  setEnabled: (enabled: boolean) => Promise<string>
 }
 
 /** Full component props assembled by the session-header slot renderer. */
@@ -53,7 +56,7 @@ function verdictBadge(
  * @param props - framework kit (sessionId, useProjection), locale, and the approve face.
  * @returns the header button with its popover.
  */
-export function ReviewPanel({ useProjection, approve, t }: ReviewPanelProps): ReactNode {
+export function ReviewPanel({ useProjection, approve, setEnabled, t }: ReviewPanelProps): ReactNode {
   const value = useProjection('autoReview')
   const [open, setOpen] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
@@ -65,6 +68,14 @@ export function ReviewPanel({ useProjection, approve, t }: ReviewPanelProps): Re
       setNotice(t('approveResult').replace('{text}', text))
     } catch (error: unknown) {
       setNotice(t('approveFailed').replace('{text}', error instanceof Error ? error.message : String(error)))
+    }
+  }
+  const runSwitch = async (enabled: boolean): Promise<void> => {
+    try {
+      const text = await setEnabled(enabled)
+      setNotice(t('switchedResult').replace('{text}', text))
+    } catch (error: unknown) {
+      setNotice(t('switchFailed').replace('{text}', error instanceof Error ? error.message : String(error)))
     }
   }
   return (
@@ -80,8 +91,29 @@ export function ReviewPanel({ useProjection, approve, t }: ReviewPanelProps): Re
             : (
               <div>
                 <div data-dsh-auto-review-row>
-                  <span>{t('stateOn')}</span>
+                  <span>{t('state')}</span>
                   <span>{value.enabled ? t('stateOn') : t('stateOff')}</span>
+                </div>
+                <div data-dsh-auto-review-row>
+                  <span>{t('enable')} / {t('disable')}</span>
+                  <span>
+                    <button
+                      type="button"
+                      data-dsh-auto-review-switch
+                      disabled={value.enabled}
+                      onClick={() => void runSwitch(true)}
+                    >
+                      {t('enable')}
+                    </button>
+                    <button
+                      type="button"
+                      data-dsh-auto-review-switch
+                      disabled={!value.enabled}
+                      onClick={() => void runSwitch(false)}
+                    >
+                      {t('disable')}
+                    </button>
+                  </span>
                 </div>
                 <div data-dsh-auto-review-row>
                   <span>{t('verdicts')}</span>
@@ -94,7 +126,7 @@ export function ReviewPanel({ useProjection, approve, t }: ReviewPanelProps): Re
                 <div data-dsh-auto-review-row>
                   <span>{t('allTime')}</span>
                   <span>
-                    {value.allows} {t('allows')} · {value.denies} {t('denies')} · {value.fallbacks} {t('fallbacks')} · {t('avg')} {value.avgDurationMs} {t('ms')}
+                    {value.allows} {t('allows')} · {value.denies} {t('denies')} · {value.fallbacks} {t('fallbacks')} · {value.neverRejects} {t('neverRejects')} · {t('avg')} {value.avgDurationMs} {t('ms')}
                   </span>
                 </div>
                 {value.circuit !== null && (

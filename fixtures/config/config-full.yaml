@@ -38,7 +38,7 @@ denyGuidance: >
   alternative or ask the user before retrying this action.
 contextBudget: { turns: 2, maxChars: 4000 }   # compact transcript for the reviewer; turns: 0 disables
 riskPolicy: { maxAutoAllow: medium, onHighRisk: delegate }   # allow verdicts above medium delegate to humans
-circuitBreaker: { consecutiveDenies: 3, windowDenies: 10, windowSize: 50, action: delegate }  # delegate | reject | abort-turn
+circuitBreaker: { consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate }  # delegate | reject | abort-turn; trips on 3 consecutive denies or 6 of the last 10
 overrideTtlMs: 300000          # /auto-review approve validity window
 language: en                   # /auto-review command UI language (en | zh)
 # reviewerPolicyText: see fixtures/config/policy-template.md
