@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import path from 'node:path'
 import { Session } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { CallId } from '@deepseek-ai/dsh-llm'
@@ -23,13 +24,16 @@ import { denyResultText, AutoReviewVerdictId, DENY_MARKER_PATTERN } from '../src
 import type { ResolvedConfig } from '../src/index.ts'
 import { dispatchAskedApproval, dispatchPostExecute, makeAgent, mountHarness } from './harness.ts'
 
+/** A portable absolute workspace path — `path.resolve` anchors it on every platform (the session header rejects non-absolute cwd). */
+const WORKSPACE = path.resolve('work')
+
 /** A session seeded with raw-typed events (append casts keep the fixtures compact). */
 function sessionWithEvents(events: { type: string; data: unknown }[]): Session {
   const session = Session.create(SessionId(`ctx-${events.length}`), undefined, {
     version: 0,
     id: SessionId(`ctx-${events.length}`),
     createdAt: 0,
-    cwd: 'D:\\work',
+    cwd: WORKSPACE,
   })
   const surface = new Set(['user/message', 'assistant/message', 'tool/result'])
   const append = session.append as unknown as (type: string, data: unknown, options?: { surfaceOp: 'append' }) => unknown
@@ -71,7 +75,7 @@ describe('reviewer prompt', () => {
       version: 0,
       id: SessionId('prompt-session'),
       createdAt: 0,
-      cwd: 'D:\\work',
+      cwd: WORKSPACE,
     })
     const prompt = buildReviewPrompt({
       agent: makeAgent(session),
@@ -100,7 +104,7 @@ describe('reviewer prompt', () => {
     })
     expect(prompt).toContain('Tool name: bash')
     expect(prompt).toContain('escalate sandbox to danger-full-access')
-    expect(prompt).toContain('Workspace: D:\\work')
+    expect(prompt).toContain(`Workspace: ${WORKSPACE}`)
     expect(prompt).toContain('/killall/u → never')
     expect(prompt).toContain('structured_output')
     expect(prompt).toContain('When unsure, DENY')
@@ -111,7 +115,7 @@ describe('reviewer prompt', () => {
       version: 0,
       id: SessionId('prompt-trunc'),
       createdAt: 0,
-      cwd: 'D:\\work',
+      cwd: WORKSPACE,
     })
     const prompt = buildReviewPrompt({
       agent: makeAgent(session),
@@ -310,7 +314,7 @@ describe('Phase B prompt sections', () => {
       version: 0,
       id: SessionId('prompt-phaseb'),
       createdAt: 0,
-      cwd: 'D:\\work',
+      cwd: WORKSPACE,
     })
     const prompt = buildReviewPrompt({
       agent: makeAgent(session),
@@ -332,7 +336,7 @@ describe('Phase B prompt sections', () => {
       version: 0,
       id: SessionId('prompt-phaseb-plain'),
       createdAt: 0,
-      cwd: 'D:\\work',
+      cwd: WORKSPACE,
     })
     const prompt = buildReviewPrompt({ agent: makeAgent(session), toolName: 'bash' }, promptConfig())
     expect(prompt).not.toContain('HUMAN OVERRIDE')
