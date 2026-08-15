@@ -6,7 +6,6 @@ on:
 
 permissions:
   contents: write # GitHub Release
-  id-token: write # npm provenance
 
 concurrency:
   group: publish-${{ github.ref }}
@@ -55,8 +54,7 @@ jobs:
           fi
       - name: Publish to npm
         # prepublishOnly re-runs the full gate on the fresh checkout.
-        # --provenance signs the artifact via the id-token OIDC permission.
-        run: pnpm publish --no-git-checks --provenance
+        run: pnpm publish --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Create GitHub Release

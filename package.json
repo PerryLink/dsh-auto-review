@@ -15,8 +15,7 @@
   },
   "homepage": "https://github.com/PerryLink/dsh-auto-review#readme",
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "type": "module",
   "main": "./lib/index.js",
