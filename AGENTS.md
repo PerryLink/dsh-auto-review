@@ -45,6 +45,6 @@ CI (`ci.yml`) additionally proves the packed artifact: `pnpm pack --pack-destina
 
 ## Publishing
 
-Releases flow through the `publish` workflow: push a `v<version>` tag matching `package.json` (`prepublishOnly` re-runs the full gate, then the workflow publishes to npm with provenance and cuts a GitHub Release). The `NPM_TOKEN` secret must exist on the repo.
+Releases flow through the `publish` workflow: push a `v<version>` tag matching `package.json` (`prepublishOnly` re-runs the full gate, then the workflow publishes to npm and cuts a GitHub Release). The `NPM_TOKEN` secret must exist on the repo.
 
 After a version bump, repack the sibling integration tarball for `dsh-permission-rules` (`pnpm --dir ../dsh-auto-review pack --pack-destination ../dsh-permission-rules/vendor`) and update its `file:` devDependency to the new filename, then rerun its test suite.
