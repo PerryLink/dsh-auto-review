@@ -1,7 +1,13 @@
 packages:
   - .
 allowBuilds:
-  # esbuild's postinstall only validates its platform binary; allow it so the
-  # isolated git-install prepare env (which reads THIS file from the tarball)
-  # does not fail with ERR_PNPM_IGNORED_BUILDS.
+  # Lifecycle scripts of these packages only validate or restore their shipped
+  # prebuilt native binaries (no compilation); allow them so the isolated
+  # git-install prepare env (which reads THIS file from the tarball) and local
+  # installs do not fail with ERR_PNPM_IGNORED_BUILDS. Git users still need
+  # the same keys in the profile's pnpm-workspace.yaml — the `dsh` CLI prints
+  # them verbatim.
   esbuild: true
+  '@deepseek-ai/dsh-subprocess-local': true
+  node-pty: true
+  koffi: true

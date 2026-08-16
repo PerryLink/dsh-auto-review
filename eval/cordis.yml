@@ -1,0 +1,131 @@
+# dsh-eval standalone evaluation composition (dsh-auto-review).
+#
+# Booted by the `dsh-eval` CLI through @deepseek-ai/dsh-app-boot; every bare
+# package name below resolves from this package's own node_modules (they are
+# exact-pinned dependencies of dsh-auto-review, so one harness version runs
+# every evaluation — cross-version comparability by construction).
+#
+# Baseline policy (kept minimal on purpose):
+#   - persona: the official Minimal persona, exactly one sentence.
+#   - includeHarnessIdentity / includeRuntimeContext: false — no harness
+#     identity or runtime-context prompt sections on top of the persona.
+#   - workspaceContext: false — hermetic prompts (no workspace-dependent
+#     AGENTS.md injection); the case `files` seed controls the workspace.
+#   - approval policy: never — the strict headless/CI stance. Escalating
+#     tools are deterministically rejected; nothing can hang on an answerer.
+#   - sandbox: workspace-write, rooted at DSH_EVAL_WORKSPACE_ROOT (the CLI
+#     sets it to the scratch-workspace root, OS temp by default).
+#   - session persistence: DSH_EVAL_SESSIONS_ROOT (the CLI sets it to
+#     <out>/sessions), plain JSONL — every case leaves a replayable log.
+#
+# Shell execution (bash/pwsh) is deliberately NOT mounted: it drags native
+# build steps into every install. Add the base rows (subprocess-local +
+# bash-local, or pwsh-local + pwsh-sandbox + tool-pwsh) to your own overlay
+# when your cases need shells.
+
+- id: spine
+  name: '@deepseek-ai/dsh-agent-spine-demo'
+  config:
+    agents: []
+    includeHarnessIdentity: false
+    includeRuntimeContext: false
+    persona: 'You are a helpful software engineer assistant.'
+    workspaceContext: false
+    goals: false
+    toolBash: false
+    toolJobs: false
+
+- id: settings
+  name: '@deepseek-ai/dsh-settings-file'
+
+- id: credentials
+  name: '@deepseek-ai/dsh-credentials-local'
+
+# The native DeepSeek adapter. Key and endpoint resolve per request through
+# the credential store and the `llm-deepseek:` settings section — nothing is
+# inlined. Swap this row for any other adapter to evaluate other providers.
+- id: llm-deepseek
+  name: '@deepseek-ai/dsh-llm-deepseek'
+  config:
+    thinking: enabled
+    reasoningEffort: max
+    models:
+      - id: deepseek-v4-pro
+        contextWindow: 128000
+      - id: deepseek-v4-flash
+        contextWindow: 128000
+
+# Plain-JSONL session persistence under the report directory: each case's
+# canonical session log (the trace replay artifact) lands beside the reports.
+- id: session-persistence-jsonl
+  name: '@deepseek-ai/dsh-session-persistence-jsonl'
+  config:
+    root: !!js "process.env.DSH_EVAL_SESSIONS_ROOT ?? dshHomePath('sessions')"
+    compression: !!js "process.env.DSH_EVAL_SESSION_COMPRESSION ?? 'none'"
+
+# Shared projection registry (the autoReview panel projection registers here
+# when the capability exists; subagent identity folds use it too).
+- id: session-projection
+  name: '@deepseek-ai/dsh-session-projection'
+
+# Second-model review providers (the eval reviewer reuses these same seams).
+- id: subagent
+  name: '@deepseek-ai/dsh-subagent'
+
+- id: subagent-spawn-in-process
+  name: '@deepseek-ai/dsh-subagent-spawn-in-process'
+  config:
+    providerName: spawn
+
+- id: subagent-fork-in-process
+  name: '@deepseek-ai/dsh-subagent-fork-in-process'
+  config:
+    providerName: fork
+
+# Strict headless stance: deterministically reject, never prompt, never hang.
+- id: approval
+  name: '@deepseek-ai/dsh-user-approval'
+  config:
+    policy: never
+
+# File-effect boundary: workspace-write inside DSH_EVAL_WORKSPACE_ROOT.
+- id: sandbox
+  name: '@deepseek-ai/dsh-sandbox-local'
+
+- id: sandbox-policy
+  name: '@deepseek-ai/dsh-sandbox-policy'
+  config:
+    mode: workspace-write
+    workspaceRoot: !!js "process.env.DSH_EVAL_WORKSPACE_ROOT ?? process.cwd()"
+
+# Managed child-process groups: the ripgrep backend of glob/grep spawns
+# through this seam (node-pty ships prebuilt binaries — no compilation).
+- id: subprocess
+  name: '@deepseek-ai/dsh-subprocess-local'
+
+# The model-facing filesystem tools (read/glob/grep/write/edit/rm).
+- id: fs-sandbox
+  name: '@deepseek-ai/dsh-fs-sandbox'
+
+- id: fs-observation-policy
+  name: '@deepseek-ai/dsh-fs-observation-policy'
+
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
+
+# Slash commands (the mounted auto-review row registers /auto-review here).
+- id: commands
+  name: '@deepseek-ai/dsh-commands'
+
+# The plugin itself: its answerer never fires under the `never` policy, and
+# the mounted runtime also carries the reviewer configuration the eval
+# engine reuses (provider/tools/timeout/model) — one config, both layers.
+# The relative path resolves to this package's built plugin face (the `..`
+# directory import is unsupported by Node ESM, so the file is named).
+- id: auto-review
+  name: '../lib/index.js'

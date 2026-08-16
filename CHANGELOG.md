@@ -2,6 +2,20 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [0.5.0] — 2026-08-16
+
+### Added
+
+- **dsh-eval agent evaluation engine** (`dsh-auto-review/eval` + the `dsh-eval` CLI): a YAML case DSL (`input`, structured `expect` block — tool-call sequence with argument matchers, per-tool results, final-output matchers, turn outcome, token budget — optional second-model `review` block, per-case `timeoutMs`/`model`/`tier`, workspace `files`/`seedFrom`, batch suites), one isolated headless session per case (fresh scratch workspace, official Minimal persona as the baseline system prompt, approval `never`, workspace-write sandbox), tool-call-trace collection from the session event log, and Markdown/JSON reports with token stats, per-assertion explanations, replayable session-log artifacts, and a CI gate (exit 0 only when every case of every suite passed).
+- The second-model review is a supplementary assertion layer over the same run, reusing the approval reviewer's subagent seam (the mounted runtime is now published as `ctx.autoReviewRuntime`, so the eval engine reads the exact mounted configuration instead of a driftable copy).
+- Shipped evaluation composition `eval/cordis.yml`, the self-regression suite `eval/cases/demo.yaml` (output assertion, tool-trace assertion, second-model review — three cases over this repository), the `bin/dsh-eval.mjs` launcher, and the `./eval` / `./eval-cli` package exports.
+- CLI flags: `--provider`, `--model`, `--tier`, `--timeout-ms`, `--concurrency`, `--out`, `--workspace-root`, `--keep-workspaces`, `--no-markdown`, `--no-gate`, `--review-provider`, `--review-model`, `--review-timeout-ms`. A case whose model or timeout resolves from nothing fails the suite loudly (no hardcoded defaults); runs are cancellable (`AbortSignal` + SIGINT/SIGTERM) and the worker pool respects the concurrency cap.
+
+### Changed
+
+- README (all five languages) documents the evaluation engine with a case example, a CI integration snippet, and the contrast with codex-research.
+- The unit suite covers the eval engine end to end (DSL, assertion engine, trace collection, runner, reports, CLI).
+
 ## [0.4.1] — 2026-08-15
 
 ### Added

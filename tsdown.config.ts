@@ -51,9 +51,27 @@ export default defineConfig([
     deps: {
       // Every @deepseek-ai peer resolves at runtime from the host profile.
       neverBundle: [/^node:/, /^@deepseek-ai\//],
-      // zod is a non-peer dependency: bundle it so the host half stays
-      // self-contained when a profile resolves the package outside pnpm's tree.
-      alwaysBundle: ['zod'],
+      // zod + yaml are non-peer dependencies: bundle them so the node faces
+      // stay self-contained when a profile resolves the package outside
+      // pnpm's tree.
+      alwaysBundle: ['zod', 'yaml'],
+    },
+  },
+  {
+    name: `${PLUGIN_ID}/eval`,
+    entry: { eval: 'src/eval/index.ts', 'eval-cli': 'src/eval/cli.ts' },
+    outDir: 'lib',
+    format: ['esm'],
+    platform: 'node',
+    target: 'es2024',
+    dts: false,
+    clean: false,
+    fixedExtension: false,
+    deps: {
+      // The composition rows and every @deepseek-ai runtime resolve from the
+      // package's own node_modules (exact-pinned dependencies).
+      neverBundle: [/^node:/, /^@deepseek-ai\//],
+      alwaysBundle: ['zod', 'yaml'],
     },
   },
   {

@@ -1,0 +1,156 @@
+/**
+ * Report writers for dsh-eval: a machine-readable JSON report (the complete
+ * owned run data, including every case trace) and a human-readable Markdown
+ * report with per-case assertion tables, review verdicts, and replay links
+ * to the per-case session artifacts. Pure over owned {@link SuiteReport}
+ * data — no live DSH references.
+ * @module dsh-auto-review/eval/report
+ */
+
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import type { CaseResult, SuiteReport } from './runner.ts'
+import { summarizeCaseResult } from './runner.ts'
+import { renderToolCall } from './trace.ts'
+
+/** The CI gate: exit 0 exactly when every case passed. */
+export function exitCodeFor(report: SuiteReport): number {
+  return report.summary.pass === report.summary.total && report.summary.total > 0 ? 0 : 1
+}
+
+/** Escape a string for a Markdown table cell. */
+function cell(text: string): string {
+  return text.replaceAll('|', '\\|').replaceAll('\n', ' ')
+}
+
+const ICONS: Record<string, string> = {
+  pass: '[PASS]',
+  fail: '[FAIL]',
+  error: '[ERROR]',
+  cancelled: '[SKIP]',
+}
+
+/** Render one case's Markdown section. */
+function renderCaseMarkdown(result: CaseResult): string {
+  const lines: string[] = []
+  const icon = ICONS[result.status] ?? '[?]'
+  lines.push(`### ${icon} ${result.id} -- ${result.status.toUpperCase()}`)
+  if (result.description !== undefined) lines.push('', result.description)
+  lines.push('', '| | |', '|---|---|')
+  lines.push(`| Model | \`${cell(result.provider)}\` / \`${cell(result.model)}\` |`)
+  lines.push(`| Duration | ${result.durationMs} ms (timeout ${result.timeoutMs} ms) |`)
+  if (result.sessionId !== undefined && result.sessionId !== '') lines.push(`| Session | \`${result.sessionId}\` |`)
+  if (result.workspace !== undefined) lines.push(`| Workspace | \`${result.workspace}\` |`)
+  if (result.error !== undefined) lines.push(`| Error | ${cell(result.error)} |`)
+  const links: string[] = []
+  if (result.tracePath !== undefined) links.push(`[trace](${result.tracePath})`)
+  if (result.sessionLogPath !== undefined) links.push(`[replayable session log](${result.sessionLogPath})`)
+  if (links.length > 0) lines.push(`| Artifacts | ${links.join(' / ')} |`)
+  lines.push('', '<details><summary>Input</summary>', '', '```text', result.input, '```', '', '</details>', '')
+  if (result.assertions.length > 0) {
+    lines.push('**Assertions**', '', '| Assertion | Result | Expected | Actual |', '|---|---|---|---|')
+    for (const assertion of result.assertions) {
+      lines.push(`| \`${cell(assertion.id)}\` | ${assertion.passed ? 'pass' : 'FAIL'} | ${cell(assertion.expected)} | ${cell(assertion.actual)} |`)
+    }
+    lines.push('')
+  }
+  if (result.review !== undefined) {
+    lines.push('**Second-model review**', '', '| | |', '|---|---|')
+    const verdict = result.review.failure !== undefined
+      ? `unavailable (${result.review.failure})`
+      : result.review.pass === true ? 'pass' : 'FAIL'
+    lines.push(`| Verdict | ${verdict} |`)
+    if (result.review.reason !== undefined) lines.push(`| Reason | ${cell(result.review.reason)} |`)
+    if (result.review.error !== undefined) lines.push(`| Error | ${cell(result.review.error)} |`)
+    lines.push(`| Provider / model | \`${cell(result.review.provider)}\`${result.review.model !== undefined ? ` / \`${cell(result.review.model)}\`` : ''} / ${result.review.durationMs} ms |`)
+    lines.push('')
+  }
+  lines.push('<details><summary>Tool-call trace</summary>', '')
+  if (result.trace.toolCalls.length === 0) {
+    lines.push('*(no tool calls)*')
+  } else {
+    lines.push('```text', ...result.trace.toolCalls.map(renderToolCall), '```')
+  }
+  if (result.trace.tokenUsage !== undefined) {
+    const usage = result.trace.tokenUsage
+    lines.push(`Tokens: ${usage.inputTokens} in / ${usage.outputTokens} out${usage.cacheReadTokens > 0 ? ` / ${usage.cacheReadTokens} cache-read` : ''}${usage.reasoningTokens > 0 ? ` / ${usage.reasoningTokens} reasoning` : ''}`)
+  }
+  lines.push('', '</details>', '')
+  return lines.join('\n')
+}
+
+/** Render the complete Markdown report. */
+export function renderMarkdownReport(report: SuiteReport): string {
+  const lines: string[] = [
+    `# dsh-eval report -- ${report.suite}`,
+    '',
+  ]
+  if (report.description !== undefined) lines.push(report.description, '')
+  const s = report.summary
+  lines.push(
+    '| Summary | |',
+    '|---|---|',
+    `| Result | ${s.fail + s.error + s.cancelled === 0 ? 'all passed' : 'NOT all passed'} |`,
+    `| Total | ${s.total} |`,
+    `| Pass / Fail / Error / Cancelled | ${s.pass} / ${s.fail} / ${s.error} / ${s.cancelled} |`,
+    `| Provider | \`${report.provider}\` |`,
+    `| Concurrency | ${report.concurrency} |`,
+    `| Duration | ${report.durationMs} ms |`,
+    `| Window | ${new Date(report.startedAt).toISOString()} -> ${new Date(report.finishedAt).toISOString()} |`,
+    '',
+    '## Cases',
+    '',
+    ...report.cases.map(renderCaseMarkdown),
+    '---',
+    '',
+    '*Generated by dsh-eval (dsh-auto-review). The per-case `traces/*.session.jsonl` artifacts are canonical DSH session logs, replayable by the harness session-persistence tooling.*',
+    '',
+  )
+  return lines.join('\n')
+}
+
+/** A report write outcome. */
+export interface ReportPaths {
+  /** Absolute path of the JSON report. */
+  readonly json: string
+  /** Absolute path of the Markdown report, when one was written. */
+  readonly markdown?: string
+}
+
+/**
+ * Write the JSON and Markdown reports into the report directory.
+ * @param report - the owned suite report.
+ * @param dir - the report directory (created when missing).
+ * @param names - optional file names (`json` defaults `report.json`,
+ *   `markdown` defaults `report.md`; `markdown: null` skips the Markdown file).
+ * @returns the written absolute paths.
+ */
+export async function writeReports(
+  report: SuiteReport,
+  dir: string,
+  names: { json?: string; markdown?: string | null } = {},
+): Promise<ReportPaths> {
+  await mkdir(dir, { recursive: true })
+  const jsonPath = join(dir, names.json ?? 'report.json')
+  await writeFile(jsonPath, `${JSON.stringify(report, undefined, 2)}\n`)
+  const markdownName = names.markdown === undefined ? 'report.md' : names.markdown
+  if (markdownName === null) return { json: jsonPath }
+  const markdownPath = join(dir, markdownName)
+  await writeFile(markdownPath, renderMarkdownReport(report))
+  return { json: jsonPath, markdown: markdownPath }
+}
+
+/**
+ * Render the terminal summary block printed by the CLI after a run.
+ * @param report - the owned suite report.
+ * @returns the summary text.
+ */
+export function renderTerminalSummary(report: SuiteReport): string {
+  const s = report.summary
+  const lines = [
+    '',
+    `suite "${report.suite}": ${s.pass}/${s.total} passed (${s.fail} fail, ${s.error} error, ${s.cancelled} cancelled) in ${report.durationMs} ms`,
+    ...report.cases.map(caze => `  ${summarizeCaseResult(caze)}`),
+  ]
+  return lines.join('\n')
+}

@@ -179,6 +179,43 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 
 पैनल केवल संपूर्ण प्रोजेक्शन मान पढ़ता है — ब्राउज़र प्लगइन को कच्ची सत्र-ईवेंट धारा कभी नहीं मिलती।
 
+## 🧪 dsh-eval — एजेंट मूल्यांकन इंजन
+
+अनुमोदन समीक्षक के अलावा, `dsh-auto-review` `dsh-eval` भी देता है: एक YAML-चालित एजेंट मूल्यांकन प्लेटफ़ॉर्म जो वास्तविक headless DSH सत्र चलाता है (प्रति केस एक अलग-थलग एजेंट + scratch workspace, आधारभूत सिस्टम prompt के रूप में आधिकारिक Minimal persona), सत्र ईवेंट लॉग से टूल-कॉल ट्रेस एकत्र करता है, और संरचित assertions तथा एक वैकल्पिक द्वितीय-मॉडल समीक्षा का मूल्यांकन करता है — वही समीक्षक seam जो अनुमोदन answerer का है।
+
+```yaml
+# eval/cases/demo.yaml (संक्षिप्त)
+suite:
+  name: my-suite
+  cases:
+    - id: math-output
+      input: Solve 17 × 24 and reply with only the final number, nothing else.
+      expect:
+        output: { contains: "408" }
+    - id: glob-trace
+      seedFrom: '.'
+      input: Use the glob tool with pattern "src/**" to list the source files…
+      expect:
+        toolCalls: [{ tool: glob, arguments: { contains: { pattern: "src" } } }]
+        results: [{ tool: glob, contains: "index.ts" }]
+    - id: review-write
+      input: Read src/config.ts, write the default reviewerTimeoutMs into scratch/answer.txt…
+      expect:
+        output: { contains: "60000" }
+      review:
+        statement: The agent read the default reviewerTimeoutMs and wrote it to the file.
+```
+
+इसे चलाएँ (वातावरण में एक DeepSeek API कुंजी मौजूद होनी चाहिए):
+
+```sh
+dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+```
+
+CI द्वार: प्रक्रिया 0 से तभी बाहर निकलती है जब हर suite के हर केस पास हुए हों — इसे एक GitHub Action चरण में डालें और विफल मूल्यांकन build को विफल कर देंगे। हर केस `report.md`/`report.json` के पास एक रीप्ले-योग्य सत्र JSONL और एक ट्रेस JSON छोड़ता है; assertion परिणाम, token उपयोग और समीक्षा फ़ैसला सभी रिपोर्ट फ़ाइलों में लिखे जाते हैं। इंजन कभी भी hardcoded मॉडल या टाइमआउट डिफ़ॉल्ट नहीं डालता, SIGINT/SIGTERM पर साफ़-सुथरे ढंग से रुकता है, और worker pool को कॉन्फ़िगर की गई concurrency तक सीमित रखता है।
+
+[codex-research](https://github.com/openai/codex/tree/main/codex-rs/research) (ब्राउज़र-ऑटोमेशन एजेंट अनुसंधान) के विपरीत, `dsh-eval` harness-स्तर एजेंट मूल्यांकन को लक्ष्य करता है: सत्र ईवेंट लॉग के विरुद्ध टूल-कॉल-ट्रेस assertions, पूरक assertion परत के रूप में द्वितीय-मॉडल समीक्षा, और प्रति-केस अलग-थलग headless सत्र — कोई ब्राउज़र या Selenium स्टैक नहीं।
+
 ## 🔒 सुरक्षा
 
 - समीक्षक **केवल-पढ़ने वाले टूल-सेट** (`toolFilter` अनुमति-सूची) में चलता है। वह लिख, बदल, shell चला, नेटवर्क छू या आगे delegation नहीं कर सकता (`maxDepth` = उसकी अपनी गहराई)। उसका सत्र लॉग स्थायी और ऑडिट-योग्य है।
@@ -215,13 +252,13 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 ```sh
 pnpm install                # node ^22.19 || >=24
 pnpm run typecheck          # tsc, src + टेस्ट
-pnpm test                   # vitest: 135 टेस्ट, 8 सुइट
+pnpm test                   # vitest: 190 टेस्ट, 14 फ़ाइलें
 pnpm run build              # tsc डिक्लेरेशन + tsdown बंडल (lib/)
 pnpm run verify:self-contained
 pnpm pack                   # प्रकाशन आर्टिफ़ैक्ट
 ```
 
-रेपो संरचना (plugin-template संरचना): `src/index.ts` (प्लगइन अनुबंध) · `src/config.ts` (Schemastery schema + रिज़ॉल्यूशन) · `src/runtime.ts` (answerer, कमांड, अस्वीकृति-कारण इंजेक्शन) · `src/review.ts` (समीक्षक ऑर्केस्ट्रेशन, prompt, redaction) · `src/events.ts` (सत्र-ईवेंट शब्दावली + folds) · `src/projection.ts` + `src/projection-types.ts` (`autoReview` सत्र प्रोजेक्शन) · `src/invariant.ts` (invariant companion) · `src/client/` (ब्राउज़र आधा: समीक्षा पैनल, locales, स्टाइल) · `test/` · `fixtures/`।
+रेपो संरचना (plugin-template संरचना): `src/index.ts` (प्लगइन अनुबंध) · `src/config.ts` (Schemastery schema + रिज़ॉल्यूशन) · `src/runtime.ts` (answerer, कमांड, अस्वीकृति-कारण इंजेक्शन) · `src/review.ts` (समीक्षक ऑर्केस्ट्रेशन, prompt, redaction) · `src/events.ts` (सत्र-ईवेंट शब्दावली + folds) · `src/projection.ts` + `src/projection-types.ts` (`autoReview` सत्र प्रोजेक्शन) · `src/invariant.ts` (invariant companion) · `src/eval/` (dsh-eval इंजन: DSL, runner, assertions, trace, review, reports, CLI) · `eval/` (शामिल मूल्यांकन संयोजन + demo suite) · `bin/dsh-eval.mjs` (CLI लॉन्चर) · `src/client/` (ब्राउज़र आधा: समीक्षा पैनल, locales, स्टाइल) · `test/` · `fixtures/`।
 
 ## 👥 योगदानकर्ता
 

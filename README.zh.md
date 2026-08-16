@@ -179,6 +179,43 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 
 面板只读取投影整值——浏览器插件永远不会收到原始会话事件流。
 
+## 🧪 dsh-eval — agent 评估引擎
+
+除审批审查代理之外，`dsh-auto-review` 还附带 `dsh-eval`：一个由 YAML 驱动的 agent 评估平台，运行真实的 headless DSH 会话（每个用例一个隔离 agent + scratch 工作区，以官方 Minimal persona 作为基线系统提示词），从会话事件日志中收集工具调用轨迹，并评估结构化断言以及可选的第二模型审查——与审批 answerer 使用同一个审查接缝。
+
+```yaml
+# eval/cases/demo.yaml（节选）
+suite:
+  name: my-suite
+  cases:
+    - id: math-output
+      input: Solve 17 × 24 and reply with only the final number, nothing else.
+      expect:
+        output: { contains: "408" }
+    - id: glob-trace
+      seedFrom: '.'
+      input: Use the glob tool with pattern "src/**" to list the source files…
+      expect:
+        toolCalls: [{ tool: glob, arguments: { contains: { pattern: "src" } } }]
+        results: [{ tool: glob, contains: "index.ts" }]
+    - id: review-write
+      input: Read src/config.ts, write the default reviewerTimeoutMs into scratch/answer.txt…
+      expect:
+        output: { contains: "60000" }
+      review:
+        statement: The agent read the default reviewerTimeoutMs and wrote it to the file.
+```
+
+运行方式（环境中必须提供 DeepSeek API key）：
+
+```sh
+dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+```
+
+CI 门槛：仅当每个 suite 的每个用例都通过时进程才以 0 退出——把它放进一个 GitHub Action 步骤，评估失败即构建失败。每个用例都会在 `report.md`/`report.json` 旁留下一个可重放的会话 JSONL 与一个 trace JSON；断言结果、token 用量与审查裁决全部写入报告文件。引擎从不替换硬编码的模型或超时默认值，在 SIGINT/SIGTERM 时干净中止，并把 worker 池限制在配置的并发数以内。
+
+与 [codex-research](https://github.com/openai/codex/tree/main/codex-rs/research)（浏览器自动化 agent 研究）不同，`dsh-eval` 面向 harness 层面的 agent 评估：针对会话事件日志的工具调用轨迹断言、作为补充断言层的第二模型审查，以及每个用例隔离的 headless 会话——不依赖浏览器或 Selenium 技术栈。
+
 ## 🔒 安全边界
 
 - 审查代理运行在**只读工具面**（`toolFilter` 白名单）内：不能写、改、执行 shell、访问网络、再委派（`maxDepth` = 自身深度）。其会话日志同样落盘可审计。
@@ -215,13 +252,13 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 ```sh
 pnpm install                # node ^22.19 || >=24
 pnpm run typecheck          # tsc，src + 测试
-pnpm test                   # vitest：135 个测试、8 个套件
+pnpm test                   # vitest：190 个测试、14 个文件
 pnpm run build              # tsc 声明 + tsdown 打包（lib/）
 pnpm run verify:self-contained
 pnpm pack                   # 发布产物
 ```
 
-仓库结构（plugin-template 结构）：`src/index.ts`（插件契约）· `src/config.ts`（Schemastery schema + 解析）· `src/runtime.ts`（answerer、命令、拒绝理由注入）· `src/review.ts`（审查代理编排、prompt、脱敏）· `src/events.ts`（会话事件词汇 + fold）· `src/projection.ts` + `src/projection-types.ts`（`autoReview` 会话投影）· `src/invariant.ts`（invariant 伴生）· `src/client/`（浏览器半：审查面板、locales、样式）· `test/` · `fixtures/`。
+仓库结构（plugin-template 结构）：`src/index.ts`（插件契约）· `src/config.ts`（Schemastery schema + 解析）· `src/runtime.ts`（answerer、命令、拒绝理由注入）· `src/review.ts`（审查代理编排、prompt、脱敏）· `src/events.ts`（会话事件词汇 + fold）· `src/projection.ts` + `src/projection-types.ts`（`autoReview` 会话投影）· `src/invariant.ts`（invariant 伴生）· `src/eval/`（dsh-eval 引擎：DSL、runner、assertions、trace、review、reports、CLI）· `eval/`（随附评估组合 + demo 套件）· `bin/dsh-eval.mjs`（CLI 启动器）· `src/client/`（浏览器半：审查面板、locales、样式）· `test/` · `fixtures/`。
 
 ## 👥 贡献者
 

@@ -179,6 +179,43 @@ How it is wired:
 
 The panel reads only whole projection values — it never receives the raw session event stream.
 
+## 🧪 dsh-eval — agent evaluation engine
+
+Beyond the approval reviewer, `dsh-auto-review` ships `dsh-eval`: a YAML-driven agent evaluation platform that runs real headless DSH sessions (one isolated agent + scratch workspace per case, the official Minimal persona as the baseline system prompt), collects the tool-call trace from the session event log, and evaluates structured assertions plus an optional second-model review — the same reviewer seam as the approval answerer.
+
+```yaml
+# eval/cases/demo.yaml (abridged)
+suite:
+  name: my-suite
+  cases:
+    - id: math-output
+      input: Solve 17 × 24 and reply with only the final number, nothing else.
+      expect:
+        output: { contains: "408" }
+    - id: glob-trace
+      seedFrom: '.'
+      input: Use the glob tool with pattern "src/**" to list the source files…
+      expect:
+        toolCalls: [{ tool: glob, arguments: { contains: { pattern: "src" } } }]
+        results: [{ tool: glob, contains: "index.ts" }]
+    - id: review-write
+      input: Read src/config.ts, write the default reviewerTimeoutMs into scratch/answer.txt…
+      expect:
+        output: { contains: "60000" }
+      review:
+        statement: The agent read the default reviewerTimeoutMs and wrote it to the file.
+```
+
+Run it (a DeepSeek API key must be in the environment):
+
+```sh
+dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+```
+
+CI gate: the process exits 0 only when every case of every suite passed — drop it into a GitHub Action step and failing evaluations fail the build. Each case leaves a replayable session JSONL and a trace JSON beside `report.md`/`report.json`; assertion results, token usage, and the review verdict are all written into the report files. The engine never substitutes hardcoded model or timeout defaults, aborts cleanly on SIGINT/SIGTERM, and caps the worker pool at the configured concurrency.
+
+Unlike [codex-research](https://github.com/openai/codex/tree/main/codex-rs/research) (browser-automation agent research), `dsh-eval` targets harness-level agent evaluation: tool-call-trace assertions against the session event log, second-model review as a supplementary assertion layer, and per-case isolated headless sessions — no browser or Selenium stack.
+
 ## 🔒 Security
 
 - The reviewer runs in a **read-only tool face** (`toolFilter` allow-list). It cannot write, edit, run bash, fetch the network, or delegate (`maxDepth` = its own depth). Its session log is persisted and auditable.
@@ -215,13 +252,13 @@ Recommended when you publish: `dsh` · `dsh-plugin` · `deepseek-harness` · `de
 ```sh
 pnpm install                # node ^22.19 || >=24
 pnpm run typecheck          # tsc, src + tests
-pnpm test                   # vitest: 135 tests, 8 suites
+pnpm test                   # vitest: 190 tests, 14 files
 pnpm run build              # tsc declarations + tsdown bundles (lib/, incl. the client bundle)
 pnpm run verify:self-contained
 pnpm pack                   # publish artifact
 ```
 
-Repository layout (plugin-template structure): `src/index.ts` (plugin contract) · `src/config.ts` (Schemastery schema + resolution) · `src/runtime.ts` (answerer, command, deny-reason injection) · `src/review.ts` (reviewer orchestration, prompt, sanitization) · `src/events.ts` (session-event vocabulary + folds) · `src/projection.ts` + `src/projection-types.ts` (the `autoReview` session projection) · `src/invariant.ts` (invariant companion) · `src/client/` (browser half: review panel, locales, styles) · `test/` · `fixtures/`.
+Repository layout (plugin-template structure): `src/index.ts` (plugin contract) · `src/config.ts` (Schemastery schema + resolution) · `src/runtime.ts` (answerer, command, deny-reason injection) · `src/review.ts` (reviewer orchestration, prompt, sanitization) · `src/events.ts` (session-event vocabulary + folds) · `src/projection.ts` + `src/projection-types.ts` (the `autoReview` session projection) · `src/invariant.ts` (invariant companion) · `src/eval/` (the dsh-eval engine: DSL, runner, assertions, trace, review, reports, CLI) · `eval/` (shipped evaluation composition + demo suite) · `bin/dsh-eval.mjs` (CLI launcher) · `src/client/` (browser half: review panel, locales, styles) · `test/` · `fixtures/`.
 
 ## 👥 Contributors
 

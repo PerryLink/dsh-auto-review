@@ -1,0 +1,78 @@
+# dsh-eval demo suite — three cases that exercise this repository itself.
+#
+# Run from the repo root:
+#   dsh-eval eval/cases --model deepseek-v4-flash --out .eval-reports
+#
+# The cases need no hardcoded model/timeout here: the CLI (or a suite
+# override) supplies them; a case that resolves neither fails loudly.
+
+suite:
+  name: dsh-auto-review-self
+  description: "The engine's own regression suite: output assertion, tool-trace assertion, and second-model review."
+  models:
+    tiers:
+      fast: deepseek-v4-flash
+      pro: deepseek-v4-pro
+  concurrency: 1
+  cases:
+    - id: math-output
+      description: Pure reasoning with a final-output assertion (no tools needed).
+      tier: fast
+      input: >-
+        Solve 17 × 24 and reply with only the final number, nothing else.
+      expect:
+        output:
+          contains: "408"
+
+    - id: glob-trace
+      description: "Tool-call trace: the agent must glob the seeded repository's src directory."
+      tier: fast
+      seedFrom: '../..'
+      input: >-
+        Use the glob tool with pattern "src/**" to list the source files of this
+        repository. Then tell me how many TypeScript files there are, and name the
+        file src/index.ts in your final answer.
+      expect:
+        toolCalls:
+          - tool: glob
+            arguments:
+              contains:
+                pattern: "src"
+        results:
+          - tool: glob
+            contains: "index.ts"
+        output:
+          contains: "index.ts"
+
+    - id: review-write
+      description: >-
+        Read src/config.ts for the default reviewerTimeoutMs, write the value into
+        scratch/answer.txt, and let a second model verify the whole run.
+      tier: fast
+      seedFrom: '../..'
+      input: >-
+        Read src/config.ts and find the default reviewerTimeoutMs (the default the
+        resolveConfig function applies). Write that numeric value in milliseconds
+        into the file scratch/answer.txt. Then report the value and confirm which
+        file you wrote it to.
+      expect:
+        toolCalls:
+          - tool: read
+            arguments:
+              contains:
+                file_path: "config.ts"
+          - tool: write
+            arguments:
+              contains:
+                file_path: "answer.txt"
+        results:
+          - tool: read
+            contains: "60_000"
+        output:
+          contains: "60000"
+      review:
+        statement: The agent read src/config.ts and wrote scratch/answer.txt containing 60000.
+        criteria:
+          - The read call targeted src/config.ts.
+          - The write call created scratch/answer.txt with content 60000.
+          - The final output mentions 60000.

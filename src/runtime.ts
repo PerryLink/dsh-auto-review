@@ -548,6 +548,10 @@ export class AutoReviewRuntime {
 export function apply(ctx: Context, config: Config): void {
   const resolved = resolveConfig(config)
   const runtime = new AutoReviewRuntime(ctx, resolved)
+  // The resolved runtime is also published as a service so in-process
+  // consumers (the dsh-eval engine) read the exact mounted configuration
+  // instead of re-resolving a second, driftable copy.
+  ctx.provide('autoReviewRuntime', runtime)
   ctx.on('approval/request', (request, next) => runtime.answer(request, next))
   ctx.on('tools/post-execute', (exec, result, next) => runtime.injectDenyReason(exec, result, next))
   ctx.commands.register({

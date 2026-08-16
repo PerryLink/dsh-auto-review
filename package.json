@@ -1,6 +1,6 @@
 {
   "name": "dsh-auto-review",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Second-model AI auto-review for DeepSeek Harness approval requests: a read-only reviewer subagent decides allow/deny on the approval answerer chain, with fail-closed fallback and full session-log audit.",
   "private": false,
   "author": {
@@ -20,6 +20,9 @@
   "type": "module",
   "main": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
+  "bin": {
+    "dsh-eval": "./bin/dsh-eval.mjs"
+  },
   "exports": {
     ".": {
       "types": "./lib/types/index.d.ts",
@@ -33,11 +36,21 @@
       "types": "./lib/types/client/index.d.ts",
       "default": "./lib/client.js"
     },
+    "./eval": {
+      "types": "./lib/types/eval/index.d.ts",
+      "default": "./lib/eval.js"
+    },
+    "./eval-cli": {
+      "types": "./lib/types/eval/cli.d.ts",
+      "default": "./lib/eval-cli.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "lib",
     "src",
+    "bin",
+    "eval",
     "cordis.patch.yml",
     "CHANGELOG.md",
     "README.md",
@@ -121,7 +134,6 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/schemastery": "^3.18.0",
     "@deepseek-ai/dsh-agent": "0.1.0-rc.6",
     "@deepseek-ai/dsh-brand": "0.1.0-rc.6",
     "@deepseek-ai/dsh-commands": "0.1.0-rc.6",
@@ -131,16 +143,33 @@
     "@deepseek-ai/dsh-session-projection": "0.1.0-rc.6",
     "@deepseek-ai/dsh-subagent": "0.1.0-rc.6",
     "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-user-approval": "0.1.0-rc.6"
+    "@deepseek-ai/dsh-user-approval": "0.1.0-rc.6",
+    "@deepseek-ai/schemastery": "^3.18.0"
   },
   "dependencies": {
+    "@deepseek-ai/dsh-agent-spine-demo": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-app-boot": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-credentials-local": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-fs-observation-policy": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-fs-sandbox": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-home-paths": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-llm-deepseek": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-sandbox-local": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-sandbox-policy": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-session-persistence-jsonl": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-settings-file": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-subagent-fork-in-process": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-subagent-spawn-in-process": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-subprocess-local": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-tool-fs": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-tool-fs-search": "0.1.0-rc.6",
     "tsdown": "^0.22.14",
     "typescript": "^7.0.2",
+    "yaml": "^2.8.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/schemastery": "^3.18.0",
     "@deepseek-ai/dsh-agent": "0.1.0-rc.6",
     "@deepseek-ai/dsh-api-remotes": "0.1.0-rc.6",
     "@deepseek-ai/dsh-brand": "0.1.0-rc.6",
@@ -157,6 +186,7 @@
     "@deepseek-ai/dsh-subagent": "0.1.0-rc.6",
     "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
     "@deepseek-ai/dsh-user-approval": "0.1.0-rc.6",
+    "@deepseek-ai/schemastery": "^3.18.0",
     "@types/node": "^26.2.0",
     "@types/react": "18.3.31",
     "jsdom": "^30.0.1",

@@ -179,6 +179,43 @@ Cómo está cableado:
 
 El panel solo lee valores de proyección completos — nunca recibe el flujo crudo de eventos de sesión.
 
+## 🧪 dsh-eval — motor de evaluación de agentes
+
+Más allá del revisor de aprobación, `dsh-auto-review` incluye `dsh-eval`: una plataforma de evaluación de agentes dirigida por YAML que ejecuta sesiones DSH headless reales (un agente aislado + un workspace de scratch por caso, la persona oficial Minimal como prompt de sistema base), recoge la traza de llamadas a herramientas del registro de eventos de la sesión y evalúa aserciones estructuradas más una revisión opcional de segundo modelo — el mismo seam de revisor que el answerer de aprobación.
+
+```yaml
+# eval/cases/demo.yaml (resumido)
+suite:
+  name: my-suite
+  cases:
+    - id: math-output
+      input: Solve 17 × 24 and reply with only the final number, nothing else.
+      expect:
+        output: { contains: "408" }
+    - id: glob-trace
+      seedFrom: '.'
+      input: Use the glob tool with pattern "src/**" to list the source files…
+      expect:
+        toolCalls: [{ tool: glob, arguments: { contains: { pattern: "src" } } }]
+        results: [{ tool: glob, contains: "index.ts" }]
+    - id: review-write
+      input: Read src/config.ts, write the default reviewerTimeoutMs into scratch/answer.txt…
+      expect:
+        output: { contains: "60000" }
+      review:
+        statement: The agent read the default reviewerTimeoutMs and wrote it to the file.
+```
+
+Ejecútalo (una clave de API de DeepSeek debe estar en el entorno):
+
+```sh
+dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+```
+
+Puerta de CI: el proceso sale con 0 solo cuando todos los casos de todas las suites han pasado — intégralo en un paso de GitHub Action y las evaluaciones fallidas harán fallar el build. Cada caso deja un JSONL de sesión reproducible y un JSON de traza junto a `report.md`/`report.json`; los resultados de las aserciones, el uso de tokens y el veredicto de la revisión se escriben todos en los archivos de reporte. El motor nunca sustituye valores por defecto de modelo o timeout hardcodeados, aborta limpiamente con SIGINT/SIGTERM y limita el pool de workers a la concurrencia configurada.
+
+A diferencia de [codex-research](https://github.com/openai/codex/tree/main/codex-rs/research) (investigación de agentes de automatización de navegador), `dsh-eval` apunta a la evaluación de agentes a nivel de harness: aserciones sobre la traza de llamadas a herramientas contra el registro de eventos de la sesión, revisión de segundo modelo como capa de aserción suplementaria y sesiones headless aisladas por caso — sin pila de navegador ni Selenium.
+
 ## 🔒 Seguridad
 
 - El revisor corre con una **cara de herramientas de solo lectura** (lista blanca `toolFilter`). No puede escribir, editar, ejecutar shell, acceder a la red ni delegar (`maxDepth` = su propia profundidad). Su registro de sesión persiste y es auditable.
@@ -215,13 +252,13 @@ Recomendados al publicar: `dsh` · `dsh-plugin` · `deepseek-harness` · `deepse
 ```sh
 pnpm install                # node ^22.19 || >=24
 pnpm run typecheck          # tsc, src + tests
-pnpm test                   # vitest: 135 tests, 8 suites
+pnpm test                   # vitest: 190 tests, 14 files
 pnpm run build              # declaraciones tsc + bundles tsdown (lib/)
 pnpm run verify:self-contained
 pnpm pack                   # artefacto de publicación
 ```
 
-Estructura del repositorio (estructura plugin-template): `src/index.ts` (contrato del plugin) · `src/config.ts` (esquema Schemastery + resolución) · `src/runtime.ts` (answerer, comando, inyección del motivo de denegación) · `src/review.ts` (orquestación del revisor, prompt, redacción) · `src/events.ts` (vocabulario de eventos de sesión + folds) · `src/projection.ts` + `src/projection-types.ts` (la proyección de sesión `autoReview`) · `src/invariant.ts` (companion de invariantes) · `src/client/` (mitad navegador: panel de revisión, locales, estilos) · `test/` · `fixtures/`.
+Estructura del repositorio (estructura plugin-template): `src/index.ts` (contrato del plugin) · `src/config.ts` (esquema Schemastery + resolución) · `src/runtime.ts` (answerer, comando, inyección del motivo de denegación) · `src/review.ts` (orquestación del revisor, prompt, redacción) · `src/events.ts` (vocabulario de eventos de sesión + folds) · `src/projection.ts` + `src/projection-types.ts` (la proyección de sesión `autoReview`) · `src/invariant.ts` (companion de invariantes) · `src/eval/` (el motor dsh-eval: DSL, runner, assertions, trace, review, reports, CLI) · `eval/` (composición de evaluación incluida + demo suite) · `bin/dsh-eval.mjs` (lanzador CLI) · `src/client/` (mitad navegador: panel de revisión, locales, estilos) · `test/` · `fixtures/`.
 
 ## 👥 Contribuidores
 

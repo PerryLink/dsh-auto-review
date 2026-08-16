@@ -15,9 +15,17 @@
  */
 
 import { apply } from './runtime.ts'
+import type { AutoReviewRuntime } from './runtime.ts'
 
 export const name = 'auto-review'
 export const inject = ['approval', 'subagents', 'commands', 'tools']
+
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** The mounted auto-review runtime (resolved config + answerer), provided by `apply`. */
+    autoReviewRuntime: AutoReviewRuntime
+  }
+}
 
 export { apply }
 export { AutoReviewRuntime } from './runtime.ts'

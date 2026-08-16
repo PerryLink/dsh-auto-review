@@ -9,3 +9,4 @@ out/
 .DS_Store
 .playwright-mcp/
 demo/boot.log
+.eval-reports/
