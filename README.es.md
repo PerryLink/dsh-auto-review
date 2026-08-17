@@ -34,13 +34,19 @@
 `dsh-auto-review` pone un segundo modelo en la cadena de answerers de `approval/request`:
 
 1. **Costura oficial** — un answerer que solo reclama las solicitudes que le pertenecen (política `ai`) y delega todo lo demás con `next()`; el flujo de aprobación humana nunca se cortocircuita.
-2. **Subagente revisor de solo lectura** — un fork de un solo uso con lista blanca de herramientas `read`/`glob`/`grep` devuelve un veredicto estructurado `{ decision, reason, riskLevel }`.
+2. **Subagente revisor de solo lectura** — un fork de un solo uso con una lista blanca de herramientas `read`/`glob`/`grep` devuelve un veredicto estructurado `{ decision, reason, riskLevel }`. Las solicitudes del revisor se reconocen por identidad y se delegan; `maxDepth` + la lista blanca mantienen al revisor sin delegar.
 3. **Cierre en fallo** — un fallo, un timeout o un desajuste de esquema del revisor se resuelve con `fallbackPolicy` (por defecto `rejected`); un veredicto de denegación devuelve su razón al modelo que llama.
 4. **Enrutamiento por configuración** — políticas por herramienta (`ai`/`human`/`never`) más reglas de riesgo con regex, todo modificable desde cordis.yml.
-5. **Rastro de auditoría completo** — eventos de sesión solo-registro `autoReview/verdict` + `autoReview/rejection` (sobre `ignorable: true`) más un compañero invariant opcional.
-6. **Controles de seguridad** — disyuntor de rechazos, política por nivel de riesgo, anulación de un solo uso `/auto-review approve`, y una desactivación dura `never` que se explica a sí misma al modelo.
+5. **Las razones de denegación llegan al modelo** — la razón del revisor se inyecta en el resultado de la herramienta denegada (vinculada por callId); los rechazos por fallback y por política `never` también inyectan marcadores auditables (`[auto-review]` / `[auto-review-fallback]` / `[auto-review-never]`).
+6. **Rastro de auditoría completo** — eventos de sesión solo-registro `autoReview/verdict` + `autoReview/rejection` (sobre `ignorable: true`) más un compañero invariant opcional que impone marcador ⟺ evento.
+7. **Controles de seguridad** — un disyuntor de rechazos (3 denegaciones consecutivas, o 6 de los últimos 10 veredictos, por turno), una política por nivel de riesgo, una anulación de un solo uso `/auto-review approve`, y una desactivación dura de política `never` que se explica a sí misma al modelo.
+8. **Contexto opcional del revisor** — una transcripción compacta acotada (`contextBudget`) más una política de decisión en Markdown estilo Codex (`reviewerPolicyText`).
 
 Cada decisión se reconstruye desde el registro de sesión: `approval/asked` → `autoReview/verdict` (o `autoReview/rejection`) → `approval/decided`.
+
+## ¿Por qué un segundo modelo en lugar de reglas?
+
+Los auto-aprobadores basados en patrones deciden antes del despacho, sin evidencia. `dsh-auto-review` entrega la decisión a un **subagente revisor** que lee el espacio de trabajo real (a través de su interfaz de herramientas de solo lectura), los argumentos de la llamada a herramienta ya transmitidos (valores sensibles redactados), la razón de la solicitud y tus reglas de riesgo — y devuelve un veredicto estructurado. Un veredicto de denegación devuelve su **razón al modelo que llama**, de modo que el agente aprende por qué en lugar de reintentar a ciegas.
 
 ## Inicio rápido
 
@@ -55,7 +61,7 @@ dsh plugin --profile web add dsh-auto-review
 dsh --profile web --dump-config | grep -A4 'id: auto-review'
 ```
 
-De fábrica, el parche revisa con IA `bash` y `write`; todas las demás herramientas delegan a la cadena humana.
+De fábrica, el parche incluido revisa con IA `bash` y `write`; todas las demás herramientas (incluido `edit` — modificación in situ) delegan a la cadena humana. Añade `edit: ai` explícitamente si aceptas ediciones in situ sin un humano en el bucle.
 
 ## Instalación y desinstalación
 
@@ -79,11 +85,11 @@ Todas las opciones son campos Schemastery `Config` (modificables desde cordis.ym
 | `reviewerTimeoutMs` | `60000` | Plazo del veredicto; al vencer se aplica la política de fallback |
 | `reviewerTools` | `[read, glob, grep]` | Lista blanca de herramientas del hijo revisor (debe ser no vacía) |
 | `fallbackPolicy` | `rejected` | Ante fallo del revisor: `rejected` (cierre en fallo) / `delegate` / `allow-once` |
-| `maxReviewsPerTurn` | `10` | Presupuesto de veredictos de IA reales por turno abierto; superado, se delega |
+| `maxReviewsPerTurn` | `10` | Presupuesto de veredictos de IA reales por turno abierto; superado, las solicitudes delegan |
 | `maxFailuresPerTurn` | `10` | Presupuesto de fallos del revisor por turno abierto |
 | `reasonMaxChars` | `2000` | Límite para las razones del revisor y la vista previa de argumentos redactados |
 | `reviewerGuidance` | *(ninguna)* | Orientación opcional añadida al prompt del revisor |
-| `reviewerPolicyText` | *(ninguna)* | Política Markdown inyectada en el prompt del revisor (estilo Codex) |
+| `reviewerPolicyText` | *(ninguna)* | Política de decisión en Markdown inyectada en el prompt del revisor (estilo Codex) |
 | `denyGuidance` | *(texto anti-elusión)* | Orientación añadida a cada razón de denegación inyectada |
 | `contextBudget` | `{turns: 0, maxChars: 4000}` | Presupuesto de transcripción compacta para el prompt del revisor; `turns: 0` lo desactiva |
 | `riskPolicy` | `{maxAutoAllow: high, onHighRisk: delegate}` | Los veredictos `allow` por encima de `maxAutoAllow` delegan o deniegan |
@@ -91,50 +97,152 @@ Todas las opciones son campos Schemastery `Config` (modificables desde cordis.ym
 | `overrideTtlMs` | `300000` | Cuánto dura una anulación de `/auto-review approve` |
 | `language` | `en` | Idioma de la UI de la salida del comando `/auto-review` (`en` \| `zh`) |
 
+Ejemplo (forma completa anotada: `fixtures/config/config-full.yaml`):
+
+```yaml
+- insert:
+    - id: auto-review
+      name: dsh-auto-review
+      config:
+        toolsPolicy:
+          overrides: { bash: ai, write: ai }
+        riskRules:
+          - pattern: '(?i)(rm\s+(-[a-z]+\s+)*/|git\s+push\s+--force)'
+            policy: never
+          - pattern: 'write'
+            policy: never
+            field: toolName
+        reviewerTimeoutMs: 30000
+        fallbackPolicy: delegate
+        riskPolicy: { maxAutoAllow: medium, onHighRisk: delegate }
+        circuitBreaker: { consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate }
+```
+
 ## Herramientas y superficies
 
 | Superficie | Tipo | Notas |
 |---|---|---|
 | `auto-review` | answerer | Answerer de la cascada `approval/request` — reclama solicitudes de política `ai`, delega el resto con `next()` |
-| `/auto-review` | comando | `on\|off\|status\|approve [n]` — anulación durable, presupuestos y estadísticas acumuladas |
-| Inyección de razón de denegación | listener | `tools/post-execute` — razones de veredicto / fallback / `never` devueltas al resultado denegado |
+| `/auto-review` | comando | `on\|off\|status\|approve [n]` — anulación durable por sesión, presupuestos y estadísticas acumuladas |
+| Inyección de razón de denegación | listener | `tools/post-execute` — razones de veredicto / fallback / `never` devueltas al resultado de la herramienta denegada |
 | `autoReview` | proyección de sesión | Plegada desde los eventos solo-registro `autoReview/*` |
 | Panel web de revisión | cliente | Acción en la cabecera de sesión: interruptor, presupuestos, estadísticas, veredictos recientes, aprobación de un solo uso |
 | `dsh-eval` | CLI | Motor de evaluación de agentes basado en YAML (`bin/dsh-eval.mjs`) |
 | Compañero invariant | invariant | `dsh-auto-review/invariant` (opcional; necesita el servicio `invariants`) |
 
+## Comando de sesión
+
+```
+/auto-review on|off|status|approve [n]
+```
+
+`on`/`off` añaden la anulación durable `autoReview/state` (el plegado sobrevive al reinicio/reanudación — la repetición ES el estado) e inyectan un aviso de cambio que el modelo ve (registrado como un evento `user/message`). `status` informa del estado efectivo, de ambos presupuestos por turno (veredictos de IA y fallos del revisor), de un disyuntor disparado cuando hay uno activo, y de las estadísticas acumuladas de la sesión (permisiones/denegaciones/fallbacks/rechazos `never`, duración media, veredictos recientes). `approve [n]` registra una anulación `autoReview/override` de un solo uso para la n-ésima denegación más reciente (1 = la más reciente): la siguiente revisión de la misma herramienta dentro de `overrideTtlMs` lleva la autorización como contexto del revisor — el revisor sigue decidiendo, y la anulación se consume con esa revisión independientemente de su resultado.
+
+## Panel web de revisión
+
+En la GUI web (perfil web), el paquete contribuye una acción en la cabecera de sesión (**AI Review**) que abre un panel con el estado de auto-review de la sesión: el interruptor con botones on/off (que ejecutan `/auto-review on|off`), ambos presupuestos por turno, estadísticas acumuladas (incluidos los rechazos por desactivación dura), el disparo del disyuntor, los veredictos recientes y botones **approve** de un solo uso para las denegaciones recientes (que ejecutan `/auto-review approve [n]`).
+
+Cómo está conectado:
+
+- El host registra una **proyección de sesión** `autoReview` (plegada desde los eventos solo-registro `autoReview/*`) y la sirve a través del canal de proyección de sesión.
+- La mitad del navegador es un **módulo cliente** (auto-descubierto desde la declaración `dsh.client`) registrado en el asiento `conversation.session.header.actions`.
+- No se necesitan filas de parche adicionales: el panel se carga siempre que el plugin esté instalado en un perfil cuya compilación web proporcione la capacidad de proyección de sesión (el perfil web lo hace). Sin esa capacidad, el panel se declara no disponible; el answerer no se ve afectado.
+
+El panel lee solo valores completos de proyección — nunca recibe el flujo crudo de eventos de sesión.
+
+## Cómo funciona
+
+```text
+                       approval/request waterfall (answerer chain)
+                        │
+┌───────────────────────┴──────────────────────┐
+│ dsh-auto-review answerer                     │
+│  · session enabled?  · policy = ai?         │   no ── next() ──▶ human answerer (UI)
+│  · risk rules → toolsPolicy → default       │
+└───────────────────────┬──────────────────────┘
+                        │ yes
+                        ▼
+        ┌───────────────────────────────────┐
+        │ reviewer subagent (fork, one-shot)│
+        │  · toolFilter: read/glob/grep     │
+        │  · outputSchema: {decision,       │
+        │    reason, riskLevel}             │
+        │  · timeout + req.signal abort     │
+        └───────────────┬───────────────────┘
+                        │ verdict / failure (fail-closed fallback)
+                        ▼
+ allow → allowed-once        deny → rejected + reason injected into the
+                                       denied tool result (callId-linked)
+                        │   never → rejected + [auto-review-never] feedback
+                        │            (hard disable, no reviewer runs)
+                        ▼
+ audit: approval/asked → autoReview/verdict | autoReview/rejection
+        → approval/decided (session events, log-only, invariant-checked)
+```
+
+**Orden de composición.** El answerer se ejecuta en su posición de registro en la cascada: si un answerer de UI humana se compone ANTES de la fila `auto-review`, los humanos responden primero y el revisor solo ve lo que se delega aguas abajo. Verifícalo con `dsh --profile <name> --dump-config` y coloca la fila `auto-review` antes de tus filas de answerer humano cuando quieras que las herramientas de política ai se enruten primero al revisor.
+
 ## dsh-eval — motor de evaluación de agentes
 
-Además del revisor de aprobación, `dsh-auto-review` incluye `dsh-eval`: una plataforma de evaluación de agentes basada en YAML que ejecuta sesiones DSH headless reales (un agente aislado + espacio de trabajo temporal por caso), recoge el rastro de llamadas a herramientas del registro de eventos y evalúa aserciones estructuradas más una revisión opcional de segundo modelo — la misma costura del revisor de aprobación.
+Más allá del revisor de aprobación, `dsh-auto-review` incluye `dsh-eval`: una plataforma de evaluación de agentes basada en YAML que ejecuta sesiones DSH headless reales (un agente aislado + espacio de trabajo temporal por caso, la persona oficial Minimal como prompt de sistema de base), recoge el rastro de llamadas a herramientas del registro de eventos de sesión y evalúa aserciones estructuradas más una revisión opcional de segundo modelo — la misma costura de revisor que el answerer de aprobación.
+
+```yaml
+# eval/cases/demo.yaml (abreviado)
+suite:
+  name: my-suite
+  cases:
+    - id: math-output
+      input: Solve 17 × 24 and reply with only the final number, nothing else.
+      expect:
+        output: { contains: "408" }
+    - id: glob-trace
+      seedFrom: '.'
+      input: Use the glob tool with pattern "src/**" to list the source files…
+      expect:
+        toolCalls: [{ tool: glob, arguments: { contains: { pattern: "src" } } }]
+        results: [{ tool: glob, contains: "index.ts" }]
+```
+
+Ejecútalo (una clave de API de DeepSeek debe estar en el entorno):
 
 ```sh
 dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
 ```
 
-Puerta de CI: el proceso sale con 0 solo cuando todos los casos de todas las suites pasan. Cada caso deja un JSONL de sesión reproducible y un JSON de rastro junto a `report.md`/`report.json`.
+Puerta de CI: el proceso sale con 0 solo cuando todos los casos de todas las suites han pasado — colócalo en un paso de GitHub Action y las evaluaciones que fallen harán fallar la compilación. Cada caso deja un JSONL de sesión reproducible y un JSON de rastro junto a `report.md`/`report.json`; los resultados de las aserciones, el uso de tokens y el veredicto de revisión se escriben todos en los archivos de informe.
 
 ## Permisos y datos
 
 - **Permisos**: el manifiesto del workshop declara `session:append`, `approval:answer`, `subagent:spawn`, `command:register` y `tools:observe`.
 - **Datos**: nada se guarda en disco; el búfer circular de informes está en memoria y acotado. Sin peticiones de red propias.
-- **Registro de sesión**: los eventos `autoReview/*` llevan identidad del revisor, veredicto, razón, riesgo y duración — añadidos con el marcador de sobre `ignorable: true`.
+- **Registro de sesión**: los eventos `autoReview/*` llevan identidad del revisor, veredicto, razón, riesgo y duración — añadidos con el marcador de sobre `ignorable: true` para que cualquier compilación cargue el registro.
 
 ## Límites de seguridad
 
 - **El revisor es un modelo.** Sus veredictos son política consultiva, no un núcleo de seguridad; prefiere reglas `human`/`never` para operaciones irreversibles.
-- **Cierre en fallo.** Cada camino anómalo se resuelve con `fallbackPolicy`, por defecto `rejected` — y el rechazo devuelve una razón auditable al modelo.
-- **Revisor de solo lectura.** La lista blanca `toolFilter` del revisor (`read`/`glob`/`grep`) no puede escribir, editar, ejecutar bash, acceder a la red ni delegar.
-- **Los argumentos sensibles se redactan** (por nombre de clave) antes de entrar al prompt del revisor; el plugin nunca ejecuta los argumentos revisados.
-- **`never` es unidireccional.** Una herramienta o regla de riesgo `never` rechaza antes de que la cadena humana vea la solicitud.
+- **Cierre en fallo.** Cada camino anómalo (proveedor ausente, carencias de capacidad, rechazo al iniciar, timeout, razón de parada no `completed`, veredicto ausente/malformado, fallo de correlación de auditoría) se resuelve con `fallbackPolicy`, por defecto `rejected` — y el rechazo devuelve una razón auditable al modelo. `allow-once` concede incondicionalmente; existe solo para despliegues desatendidos cuyo administrador acepta ese riesgo.
+- **Revisor de solo lectura.** La lista blanca `toolFilter` del revisor (`read`/`glob`/`grep`) no puede escribir, editar, ejecutar bash, acceder a la red ni delegar (`maxDepth` = su propia profundidad). Su registro de sesión se persiste y es auditable.
+- **Los argumentos sensibles se redactan** (coincidencia por nombre de clave: `token`, `password`, `api_key`, `Authorization`, credenciales, claves privadas …) antes de entrar en el prompt del revisor; el plugin nunca ejecuta los argumentos revisados. La redacción se basa en claves, no en contenido — no revises con IA herramientas cuyos valores de argumento no te puedas permitir mostrar a un modelo.
+- **Las desactivaciones duras se explican a sí mismas.** Una herramienta o regla de riesgo `never` rechaza de forma determinista Y registra un evento solo-registro `autoReview/rejection`, y luego inyecta un marcador `[auto-review-never]` en el resultado de la herramienta denegada — el modelo aprende que la acción está duramente desactivada en lugar de reintentarla (verificado por invariant: marcador ⟺ evento).
+- **Disyuntor de rechazos.** Una racha de denegaciones en un turno dispara el disyuntor (`consecutiveDenies` / `windowDenies` dentro de `windowSize`), registrada como un evento solo-registro `autoReview/circuit`; las solicitudes posteriores siguen su `action` (`delegate` / `reject` / `abort-turn`).
+- **El contexto del revisor es transcripción ya presentada.** `contextBudget` alimenta al revisor con contenido de sesión ya presentado. Con el modelo revisor de la misma ruta por defecto, ese contenido permanece dentro de un proveedor; configura `reviewerModel` a un proveedor diferente solo si aceptas presentarle esa transcripción.
+- **`never` es unidireccional en esta capa.** Una herramienta o regla de riesgo `never` rechaza antes de que la cadena humana vea la solicitud — un control de bloqueo, no un valor por defecto.
 
 ## Limitaciones conocidas
 
 - El revisor necesita una ruta LLM funcional (heredada por defecto); sin ella, cada revisión cae según `fallbackPolicy` — nunca una concesión silenciosa.
-- Los nombres de `reviewerTools` deben existir como herramientas globales en el perfil; un nombre desconocido hace fallar al hijo revisor en voz alta.
-- Las reglas de riesgo emparejan el `reason`, el `toolName` o los `arguments` redactados según su `field`; otras condiciones van en `toolsPolicy.overrides`.
-- La anulación `/auto-review approve` autoriza la siguiente revisión de la misma herramienta, no la llamada histórica exacta.
-- Los eventos de veredicto son solo-registro; el panel web lee la proyección `autoReview` plegada (el flujo de eventos crudo nunca llega a los plugins del navegador).
-- El compañero invariant opcional necesita el servicio `invariants` (composiciones agent-spine); el perfil web plano no lo proporciona.
+- Los nombres de `reviewerTools` deben existir como herramientas globales en el perfil; un nombre desconocido hace fallar al hijo revisor en voz alta en el punto más temprano y cae en fallback.
+- Las reglas de riesgo emparejan el `reason` de la solicitud, el `toolName` o los `arguments` redactados de la llamada según su `field`; otras condiciones van en `toolsPolicy.overrides`.
+- La anulación `/auto-review approve` autoriza la siguiente revisión de la misma herramienta, no la llamada histórica exacta; una acción diferente sobre la misma herramienta la consume.
+- Los eventos de veredicto son solo-registro; el panel web de revisión lee la proyección `autoReview` plegada (el flujo crudo de eventos nunca llega a los plugins del navegador).
+- `autoReview/state` y `autoReview/verdict` se añaden con el marcador de sobre `ignorable: true`, de modo que cualquier compilación del harness carga el registro — los lectores que no conocen los tipos fuera del repo simplemente omiten esos registros. (Los hosts rc.6 aceptan e ignoran el marcador; las sesiones escritas por versiones anteriores a 0.1.1 pueden repararse con `scripts/repair-session-logs.mjs` de `dsh-permission-rules`.)
+- El canal git necesita la única clave `allowBuilds` que el CLI de `dsh` imprime para el propio `dsh-auto-review`. El repo incluye su propio `pnpm-workspace.yaml` con `allowBuilds: { esbuild: true }`; `typescript` + `tsdown` son `dependencies` regulares.
+- El compañero invariant opcional necesita el servicio `invariants` (composiciones agent-spine como headless/ACP); el perfil web plano no lo proporciona, por lo que la fila se incluye comentada en el parche del bundle.
+
+## Trabajo relacionado
+
+- [Andy8647/dsh-auto-approval](https://github.com/Andy8647/dsh-auto-approval) — clasificador allow/deny de dos estados en la cascada `tools/pre-execute` con auditoría en archivo de registro. `dsh-auto-review` difiere deliberadamente: cadena de **answerer** oficial, siempre delega lo que no le pertenece, segundo modelo de solo lectura con un veredicto estructurado, razones de denegación devueltas al modelo, auditoría en el registro de sesión.
+- [ACP automation bridge](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/acp/acp) — decisiones de máquina de un solo uso para sus propios agentes de ACP. `dsh-auto-review` está limitado a sesión y política de herramientas para el harness interactivo; nunca infiere concesiones durables.
 
 ## Desarrollo
 
@@ -147,6 +255,8 @@ pnpm run verify:self-contained
 pnpm pack                   # el tarball publicado
 ```
 
+Estructura del repositorio: `src/index.ts` (contrato del plugin) · `src/config.ts` (esquema Schemastery + resolución) · `src/runtime.ts` (answerer, comando, inyección de razón de denegación) · `src/review.ts` (orquestación del revisor, prompt, saneamiento) · `src/events.ts` (vocabulario de eventos de sesión + pliegues) · `src/projection.ts` + `src/projection-types.ts` (la proyección de sesión `autoReview`) · `src/invariant.ts` (compañero invariant) · `src/eval/` (el motor dsh-eval) · `eval/` (composición de evaluación incluida) · `bin/dsh-eval.mjs` (lanzador CLI) · `src/client/` (mitad del navegador) · `test/` · `fixtures/`.
+
 ## Temas
 
 `deepseek-harness`, `dsh`, `dsh-plugin`, `cordis`, `approval`, `auto-review`, `second-model`, `ai-safety`, `sandbox`, `subagent`
@@ -154,6 +264,28 @@ pnpm pack                   # el tarball publicado
 ## Contribuidores
 
 - [@PerryLink](https://github.com/PerryLink) — creador y mantenedor: el answerer de aprobación, el subagente revisor, la política de riesgo y el disyuntor, el panel de revisión por proyección de sesión, el compañero invariant, dsh-eval y la documentación en cinco idiomas.
+
+## Familia de plugins DSH de PerryLink
+
+Este proyecto es uno de los plugins de DeepSeek Harness mantenidos por [PerryLink](https://github.com/PerryLink). Si este te ayuda, probablemente los demás también lo harán:
+
+| Plugin | En una línea |
+|---|---|
+| [dsh-mcp-panel](https://github.com/PerryLink/dsh-mcp-panel) | Panel de tiempo de ejecución MCP de solo lectura: comando /mcp + pestaña Settings con estado, herramientas y errores |
+| [dsh-doublecheck](https://github.com/PerryLink/dsh-doublecheck) | Guardián de disciplina de ingeniería: interrogatorio de requisitos, puertas de pruebas, revisión adversaria |
+| [dsh-background-agents](https://github.com/PerryLink/dsh-background-agents) | Agentes hijos en segundo plano durables con barra lateral de UI web, mensajería e interrupción |
+| [dsh-lsp-actions](https://github.com/PerryLink/dsh-lsp-actions) | Diagnósticos, formato, autocompletado, acciones de código y renombrado LSP sobre servidores de lenguaje |
+| [dsh-output-styles](https://github.com/PerryLink/dsh-output-styles) | Cambio de estilo en tiempo de ejecución equivalente a outputStyles de Claude Code |
+| [dsh-checkpoint-rewind](https://github.com/PerryLink/dsh-checkpoint-rewind) | Equivalente a /rewind de Claude Code: instantáneas, bifurcaciones de sesión, restauración de un solo uso |
+| [dsh-permission-rules](https://github.com/PerryLink/dsh-permission-rules) | Reglas de permisos declarativas allow/deny/ask estilo Claude Code con auditoría |
+| **[dsh-auto-review](https://github.com/PerryLink/dsh-auto-review)** | Auto-revisión de segundo modelo en la cadena de aprobación, con cierre en fallo por defecto |
+| [dsh-memento](https://github.com/PerryLink/dsh-memento) | Memoria entre sesiones controlada por aprobación: costura ctx.memory + SQLite + herramienta de memoria |
+| [dsh-skill-pack-security](https://github.com/PerryLink/dsh-skill-pack-security) | Paquete de habilidades de auditoría de seguridad: escaneo de secretos, revisión de dependencias y cadena de suministro |
+| [dsh-session-pin](https://github.com/PerryLink/dsh-session-pin) | Fija sesiones en la barra lateral web con orden durable |
+| [dsh-composer-history](https://github.com/PerryLink/dsh-composer-history) | Historial de entrada estilo terminal para el compositor web: flechas, búsqueda Ctrl+R |
+| [dsh-github](https://github.com/PerryLink/dsh-github) | Integración de PR/issues de GitHub para DSH, cada escritura controlada por aprobación |
+| [dsh-plugin-guide](https://github.com/PerryLink/dsh-plugin-guide) | Base de conocimiento de desarrollo de plugins como habilidad de agente bajo demanda |
+| [dsh-claude-move](https://github.com/PerryLink/dsh-claude-move) | Migra sesiones, memoria, habilidades y CLAUDE.md de Claude Code a DSH |
 
 ## Licencia
 
