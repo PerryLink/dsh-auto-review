@@ -1,295 +1,160 @@
-<!-- 语言链接 -->
-[English](README.md) · [中文](README.zh.md) · [Español](README.es.md) · [Português](README.pt.md) · [हिन्दी](README.hi.md)
-
 <div align="center">
 
 # 🤖 dsh-auto-review
 
-**DeepSeek Harness 的第二模型 AI 自动审批** —— 以纯 Cordis 插件实现 Codex `approvals_reviewer=auto_review` / Claude Code *auto mode* 模式。
+**DeepSeek Harness 的第二模型 AI 审批 —— 一个只读审查子代理在审批链上做出允许/拒绝决策，默认失败关闭。**
 
-当 agent 的动作越过沙箱边界时，一个**只读审查子代理**给出 allow/deny 裁决与理由：人类无需操作，而不安全的操作也绝不会静默放行。
+*当某个动作越过沙箱边界时，第二模型读取证据并给出带有理由的裁决 —— 人类无需批准任何事，同时也没有任何不安全的东西蒙混过关。*
 
-[![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![dsh](https://img.shields.io/badge/dsh-0.1.0--rc.6-4c51bf.svg)](https://www.npmjs.com/package/@deepseek-ai/dsh)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![DSH plugin](https://img.shields.io/badge/dsh-plugin-✅-green)](https://github.com/topics/dsh-plugin)
+[![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-brightgreen.svg)](#)
+[![CI](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-auto-review/ci.yml?branch=main&label=CI)](https://github.com/PerryLink/dsh-auto-review/actions)
+[![Version](https://img.shields.io/github/v/tag/PerryLink/dsh-auto-review?label=version)](https://github.com/PerryLink/dsh-auto-review/releases)
 [![npm version](https://img.shields.io/npm/v/dsh-auto-review)](https://www.npmjs.com/package/dsh-auto-review)
 [![npm downloads](https://img.shields.io/npm/dm/dsh-auto-review)](https://www.npmjs.com/package/dsh-auto-review)
-[![tests](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-auto-review/ci.yml?label=tests&logo=githubactions)](.github/workflows/ci.yml)
-[![typescript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](src)
-[![type](https://img.shields.io/badge/type-cordis%20bundle-8a5cf6.svg)](cordis.patch.yml)
-[![repo](https://img.shields.io/badge/repo-PerryLink%2Fdsh--auto--review-181717.svg)](https://github.com/PerryLink/dsh-auto-review)
 
-**人类零操作。** 请求交给 AI 审查代理，裁决 = allow/deny + 理由 + 风险等级，且每个决策都能从会话日志完整重建：`approval/asked` → `autoReview/verdict`（硬禁用为 `autoReview/rejection`）→ `approval/decided`。
-
-<img src="docs/demo-auto-review.gif" alt="dsh-auto-review 演示" width="720"/>
-
-*一次真实证据链（真实服务器、真实 API key、两轮真实模型）：AI 审查代理**放行**工作区内的升级写入（risk low，5.2s），随后**拒绝**工作区外的递归删除（risk high，8.9s）——拒绝理由回喂模型，直接显示在转录中。*
+[English](README.md) · [简体中文](README.zh.md) · [Español](README.es.md) · [Português](README.pt.md) · [हिन्दी](README.hi.md)
 
 </div>
 
-## 为什么用第二个模型而不是规则？
+---
 
-基于规则的自动审批在派发前就做出二态判定，没有证据。`dsh-auto-review` 把决策交给**审查子代理**：它通过只读工具面读取真实工作区、已流式呈现的工具调用参数（敏感值已脱敏）、请求方 reason 与你的风险规则，再返回结构化裁决。deny 裁决把**理由回喂调用模型**，agent 能学到原因而不是盲目重试。
+## 兼容性
 
-## ✨ 特性
-
-| | |
+| 方面 | 状态 |
 |---|---|
-| 🔌 **官方接缝** | `approval/request` waterfall 上的 answerer；不接管的请求一律 `next()` 委托——人类审批流程绝不被短路。 |
-| 🧠 **第二模型裁决** | 一次性 fork 子代理，只读工具白名单（`read`/`glob`/`grep`）+ 结构化裁决 schema `{ decision, reason, riskLevel }`。 |
-| 🛡️ **fail closed** | 审查代理崩溃、超时、schema 不符都绝不放行：按 `fallbackPolicy` 回退，默认 `rejected`。 |
-| 🧩 **配置驱动路由** | 每工具策略（`ai`/`human`/`never`）+ 正则风险规则，全部可在 cordis.yml 中修改。 |
-| 💬 **拒绝理由到达模型** | 审查理由经 callId 注入被拒工具结果，agent 据此调整。fail-closed 回退拒绝与 `never` 策略硬禁用同样注入可审计文本（`[auto-review]` / `[auto-review-fallback]` / `[auto-review-never]` 标记）。 |
-| 📜 **完整审计链** | `autoReview/verdict` + `autoReview/rejection` 会话事件（审查代理身份/裁决/理由/风险/耗时）+ invariant 伴生强制「模型可见 ⟺ 已记录」。 |
-| 🔁 **防递归** | 审查代理自身的审批请求按身份识别并委托；`maxDepth` + 工具白名单保证其无法再委派。 |
-| 🧯 **拒绝熔断器** | 单个回合内连续 3 次拒绝（或最近 10 次裁决中 6 次）即触发熔断器：后续请求委托、拒绝或中止回合——不再有无尽拒绝循环。 |
-| 🎚️ **风险等级策略** | 风险超过 `riskPolicy.maxAutoAllow` 的 `allow` 裁决绝不定案：改为委托人类或拒绝。 |
-| ✋ **一次性人工覆盖** | `/auto-review approve [n]` 授权对最近一次拒绝的**一次**重试；下一次同工具审查把该授权作为审查上下文携带（最终仍由审查代理决定）。 |
-| 📜 **审查上下文** | 可选的紧凑转录（近期消息与工具结果，有界）+ Codex 风格 Markdown `reviewerPolicyText` 裁决策略。 |
-| ⌨️ **会话级命令** | `/auto-review on|off|status|approve [n]`，带跨恢复生效的 durable 会话级覆盖与会话累计统计。 |
-| 🖥️ **Web 审查面板** | 会话头部面板（Web GUI）展示开关（带开启/关闭按钮）、两项每回合预算、累计统计、熔断器触发、最近裁决与一次性批准按钮——由 `autoReview` 会话投影驱动。 |
+| Harness | DeepSeek Harness `0.1.0-rc.6`（peer 依赖锁定在 `0.1.0-rc.6`） |
+| Node | `^22.19.0 \|\| >=24.0.0` |
+| 平台 | 全部（宿主 answerer；可选 Web 审查面板，依赖会话投影能力） |
+| 模型 | 任意（审查器默认继承会话代理的路由；`reviewerModel` 可覆盖） |
 
-## 工作原理
+## 你能获得什么
 
-```text
-                       approval/request waterfall（answerer 链）
-                        │
-┌───────────────────────┴──────────────────────┐
-│ dsh-auto-review answerer                     │
-│  · 会话已启用？  · 策略 = ai？               │  否 ── next() ──▶ 人类 answerer（UI）
-│  · 风险规则 → toolsPolicy → 默认值          │
-└───────────────────────┬──────────────────────┘
-                        │ 是
-                        ▼
-        ┌───────────────────────────────────┐
-        │ 审查子代理（fork，一次性）          │
-        │  · toolFilter：read/glob/grep     │
-        │  · outputSchema：{decision,       │
-        │    reason, riskLevel}             │
-        │  · 超时 + req.signal 中止          │
-        └───────────────┬───────────────────┘
-                        │ 裁决 / 失败（fail-closed 回退）
-                        ▼
- allow → allowed-once        deny → rejected，理由注入被拒工具结果
-                                        （经 callId 关联）
-                        │   never → rejected + [auto-review-never] 反馈
-                        │            （硬禁用，不启动审查代理）
-                        ▼
- 审计：approval/asked → autoReview/verdict | autoReview/rejection
-       → approval/decided（会话事件，log-only，invariant 校验）
-```
+`dsh-auto-review` 在 `approval/request` answerer 链上加入第二模型：
 
-**组合顺序。** answerer 在其注册位置参与 waterfall：若人类 UI answerer 组合在 `auto-review` 行之前，则人类先行应答，审查代理只处理下游委托过来的请求。请用 `dsh --profile <name> --dump-config` 核验；若希望 ai 策略工具优先路由到审查代理，把 `auto-review` 行放在人类 answerer 行之前。
+1. **官方接缝** —— 一个只认领自己负责的请求（`ai` 策略）的 answerer，其余请求通过 `next()` 委派；人类审批流程永远不会被短路。
+2. **只读审查子代理** —— 一次性 fork，工具白名单为 `read`/`glob`/`grep`，返回结构化裁决 `{ decision, reason, riskLevel }`。
+3. **失败关闭** —— 审查器崩溃、超时或 schema 不匹配都会经由 `fallbackPolicy`（默认 `rejected`）处理；拒绝裁决会把理由反馈给调用模型。
+4. **配置驱动路由** —— 按工具策略（`ai`/`human`/`never`）加正则风险规则，全部可在 cordis.yml 中修改。
+5. **完整审计追踪** —— 仅日志的 `autoReview/verdict` + `autoReview/rejection` 会话事件（信封 `ignorable: true`），外加一个可选的 invariant 配套插件来强制「标记 ⟺ 事件」。
+6. **安全旋钮** —— 拒绝熔断器、风险等级策略、一次性 `/auto-review approve` 覆盖，以及会向模型自我解释的 `never` 策略硬禁用。
 
-## 🚀 快速开始
+每一次决策都能从会话日志重建：`approval/asked` → `autoReview/verdict`（或 `autoReview/rejection`）→ `approval/decided`。
 
-四种安装通道；本插件是 **bundle** 形态（`"dsh": { "bundle": { "patch": "./cordis.patch.yml" } }`）。
+## 快速开始
 
 ```sh
-# 1. npm（已发布产物，无需构建）
+# 1. 将 bundle 安装到你的 profile
+dsh plugin --profile web add "github:PerryLink/dsh-auto-review#main"
+
+# 或从 npm 安装（已发布版本）
 dsh plugin --profile web add dsh-auto-review
-dsh --profile web               # 重启生效
 
-# 2. npm tarball（构建产物，离线安装）
-pnpm pack                       # → dsh-auto-review-<version>.tgz
-dsh plugin --profile web add ./dsh-auto-review-<version>.tgz
-dsh --profile web               # 重启生效
-
-# 3. git 源（钉住 commit；自包含 prepare 负责构建）
-#    pnpm ≥ 10 默认阻止生命周期构建：先把提示的 allowBuilds 键
-#    加入 profile 的 pnpm-workspace.yaml。
-dsh plugin --profile web add "github:PerryLink/dsh-auto-review#<commit>"
-
-# 4. 本地 link（开发调试）
-dsh plugin --profile web add link:/path/to/dsh-auto-review
-```
-
-验证：
-
-```sh
+# 2. 重启并验证该行
 dsh --profile web --dump-config | grep -A4 'id: auto-review'
 ```
 
-开箱配置对 `bash`、`write` 走 AI 裁决；其余工具（包括 `edit` —— 就地修改）委托人类链。若接受无人工介入的就地编辑，请显式添加 `edit: ai`。
+开箱即用的补丁会 AI 审查 `bash` 与 `write`；其他所有工具都委派给人类审批链。
 
-## ⚙️ 配置
+## 安装与卸载
 
-所有可调参数都是 Schemastery `Config` 字段（cordis.yml 可改）。按 `id` 定向覆盖时**整行 config 被替换**——需要保留的键必须全部重述。
+- **git 渠道**（最新 `main`）：`dsh plugin --profile web add "github:PerryLink/dsh-auto-review#main"` —— 隔离的 `prepare` 构建需要 `dsh` CLI 为 `dsh-auto-review` 打印出的那个 `allowBuilds: { esbuild: true }` 键。
+- **npm 渠道**（已发布版本）：`dsh plugin --profile web add dsh-auto-review`。
+- **tarball 渠道**：在本仓库执行 `pnpm pack`，然后 `dsh plugin --profile web add ./dsh-auto-review-<version>.tgz`。
+- **卸载**：`dsh plugin --profile web remove dsh-auto-review`（或从 profile 补丁中删除该行）。
 
-| 键 | 默认 | 含义 |
+## 配置
+
+所有可调项都是 Schemastery `Config` 字段（可在 cordis.yml 中修改）。按 id 定向的覆盖会替换整行 —— 请重述你需要的每一个键。
+
+| 键 | 默认值 | 含义 |
 |---|---|---|
-| `enableByDefault` | `true` | 会话初始是否启用；`/auto-review on\|off` 写入的 durable 覆盖优先于它 |
-| `toolsPolicy.default` | `human` | 未列出工具的策略（委托人类 answerer） |
-| `toolsPolicy.overrides` | `{}` | 每工具策略：`ai`（AI 裁决）、`human`（强制人类）、`never`（确定性拒绝） |
-| `riskRules` | `[]` | `{pattern, policy, field?}` 在工具表**之前**按顺序匹配（首个命中生效）；`field` 选择 `reason`（默认）、`toolName` 或 `arguments`（脱敏后的呈现调用参数） |
-| `reviewerProvider` | `fork` | 审查代理的 subagent provider（进程内 fork 后端） |
-| `reviewerModel` | *(继承)* | 审查模型 id；不设则继承会话 agent 的模型路由 |
-| `reviewerTimeoutMs` | `60000` | 裁决截止时间；超时走回退策略 |
-| `reviewerTools` | `[read, glob, grep]` | 审查子代理的工具白名单（必须非空）——其余工具在其中不可见 |
-| `fallbackPolicy` | `rejected` | 审查失败处理：`rejected`（fail closed）、`delegate`（继续沿链）、`allow-once`（放行——见安全边界）。0.2.0 由 `allow-readonly` 更名而来；旧拼写会响亮失败 |
-| `maxReviewsPerTurn` | `10` | 每个开放回合的真实 AI 裁决预算；耗尽后请求委托人类 |
-| `maxFailuresPerTurn` | `10` | 每个开放回合的审查失败预算（超时/不可用/schema 不符，不含取消）；耗尽后请求改为委托，而不再等待另一次完整超时。默认取 `maxReviewsPerTurn` |
-| `reasonMaxChars` | `2000` | 审查理由、请求 reason 与脱敏参数预览的长度上限 |
-| `reviewerGuidance` | *(无)* | 追加进审查 prompt 的可选指导语（建议性，非硬规则） |
-| `reviewerPolicyText` | *(无)* | 注入审查 prompt 的 Markdown 裁决策略（Codex 风格；模板见 `fixtures/config/policy-template.md`） |
-| `denyGuidance` | *(防规避文本)* | 追加到每一段注入拒绝理由之后的指导语 |
-| `contextBudget` | `{turns: 0, maxChars: 4000}` | 审查 prompt 的紧凑转录预算；`turns: 0` 禁用 |
-| `riskPolicy` | `{maxAutoAllow: high, onHighRisk: delegate}` | 高于 `maxAutoAllow` 的 `allow` 裁决委托（`delegate`）或拒绝（`deny`） |
-| `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate}` | 拒绝熔断器；连续 3 次拒绝或最近 10 次裁决中 6 次即触发；`action`：`delegate` / `reject` / `abort-turn` |
-| `overrideTtlMs` | `300000` | `/auto-review approve` 覆盖保持可用的时长 |
+| `enableByDefault` | `true` | 会话默认开启 auto-review；`/auto-review on\|off` 写入的持久覆盖优先于此 |
+| `toolsPolicy.default` | `human` | 未列出工具的默认策略（委派给人类 answerer） |
+| `toolsPolicy.overrides` | `{}` | 按工具策略：`ai` / `human` / `never` |
+| `riskRules` | `[]` | 在工具表之前匹配的 `{pattern, policy, field?}`；`field` 选择 `reason`（默认）、`toolName` 或 `arguments` |
+| `reviewerProvider` | `fork` | 审查器的子代理 provider（进程内 fork 后端） |
+| `reviewerModel` | *(继承)* | 审查器模型 id；不设置则继承会话代理的路由 |
+| `reviewerTimeoutMs` | `60000` | 裁决截止时间；超时后应用 fallback 策略 |
+| `reviewerTools` | `[read, glob, grep]` | 审查器子代理的工具白名单（必须非空） |
+| `fallbackPolicy` | `rejected` | 审查器失败时的策略：`rejected`（失败关闭）/ `delegate` / `allow-once` |
+| `maxReviewsPerTurn` | `10` | 每个开放轮次真实 AI 裁决的预算；超出后请求委派给人类 |
+| `maxFailuresPerTurn` | `10` | 每个开放轮次审查器失败的预算 |
+| `reasonMaxChars` | `2000` | 审查理由与脱敏参数预览的上限 |
+| `reviewerGuidance` | *(无)* | 追加到审查器提示词的可选指导性说明 |
+| `reviewerPolicyText` | *(无)* | 注入审查器提示词的 Markdown 裁决策略（Codex 风格） |
+| `denyGuidance` | *(反规避文本)* | 追加到每一条注入的拒绝理由之后的指导 |
+| `contextBudget` | `{turns: 0, maxChars: 4000}` | 审查器提示词的紧凑记录预算；`turns: 0` 表示禁用 |
+| `riskPolicy` | `{maxAutoAllow: high, onHighRisk: delegate}` | 超过 `maxAutoAllow` 的 `allow` 裁决委派或拒绝 |
+| `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate}` | 拒绝熔断器 |
+| `overrideTtlMs` | `300000` | `/auto-review approve` 覆盖的有效时长 |
 | `language` | `en` | `/auto-review` 命令输出的界面语言（`en` \| `zh`） |
 
-示例（完整注释版见 `fixtures/config/config-full.yaml`）：
+## 工具与界面
 
-```yaml
-- insert:
-    - id: auto-review
-      name: dsh-auto-review
-      config:
-        toolsPolicy:
-          overrides: { bash: ai, write: ai }
-        riskRules:
-          - pattern: '(?i)(rm\s+(-[a-z]+\s+)*/|git\s+push\s+--force)'
-            policy: never
-          - pattern: 'write'
-            policy: never
-            field: toolName
-        reviewerTimeoutMs: 30000
-        fallbackPolicy: delegate
-        riskPolicy: { maxAutoAllow: medium, onHighRisk: delegate }
-        circuitBreaker: { consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate }
-```
+| 界面 | 类型 | 说明 |
+|---|---|---|
+| `auto-review` | answerer | `approval/request` 瀑布 answerer —— 认领 `ai` 策略请求，其余经 `next()` 委派 |
+| `/auto-review` | 命令 | `on\|off\|status\|approve [n]` —— 持久会话覆盖、预算与累计统计 |
+| 拒绝理由注入 | 监听器 | `tools/post-execute` —— 将裁决 / fallback / `never` 理由反馈到被拒绝的工具结果 |
+| `autoReview` | 会话投影 | 由仅日志的 `autoReview/*` 事件折叠而成 |
+| Web 审查面板 | 客户端 | 会话头部操作：开关、预算、统计、最近裁决、一次性批准 |
+| `dsh-eval` | CLI | YAML 驱动的代理评估引擎（`bin/dsh-eval.mjs`） |
+| invariant 配套插件 | invariant | `dsh-auto-review/invariant`（可选；需要 `invariants` 服务） |
 
-## ⌨️ 会话级命令
+## dsh-eval —— 代理评估引擎
 
-```
-/auto-review on|off|status|approve [n]
-```
-
-`on`/`off` 追加 durable 的 `autoReview/state` 覆盖事件（fold 跨重启/恢复生效——重放即状态），并注入模型可见的切换通知（记录为 `user/message` 事件）。`status` 显示当前生效状态、两项回合预算（AI 裁决与审查失败）、当前回合已触发的熔断器（如有）以及会话的累计统计（放行/拒绝/失败/硬禁用拒绝、平均耗时、最近裁决）。`approve [n]` 针对第 n 近的拒绝（1 = 最近一次）记录一次性 `autoReview/override`：在 `overrideTtlMs` 内的下一次同工具审查携带该授权作为审查上下文——最终仍由审查代理决定，且无论该审查结果如何，此覆盖都会被消耗。
-
-## 🖥️ Web 审查面板
-
-在 Web GUI（web profile）中，本包贡献一个会话头部按钮（**AI 审查**），打开面板显示本会话的自动审查状态：开关（带开启/关闭按钮，执行 `/auto-review on|off`）、两项每回合预算、累计统计（含硬禁用拒绝）、熔断器触发、最近裁决，以及针对近期拒绝的一次性**批准**按钮（执行 `/auto-review approve [n]`）。
-
-接线方式：
-
-- 宿主注册一个 `autoReview` **会话投影**（由 log-only 的 `autoReview/*` 事件折叠而来），经会话投影通道送达浏览器。
-- 浏览器半是一个 **client module**（由 `dsh.client` 声明自动发现），注册在 `conversation.session.header.actions` 席位。
-- 无需额外 patch 行：只要插件安装在 web 构建提供会话投影能力的 profile（web profile 即如此）中，面板即自动加载；缺少该能力时面板显示不可用，answerer 不受影响。
-
-面板只读取投影整值——浏览器插件永远不会收到原始会话事件流。
-
-## 🧪 dsh-eval — agent 评估引擎
-
-除审批审查代理之外，`dsh-auto-review` 还附带 `dsh-eval`：一个由 YAML 驱动的 agent 评估平台，运行真实的 headless DSH 会话（每个用例一个隔离 agent + scratch 工作区，以官方 Minimal persona 作为基线系统提示词），从会话事件日志中收集工具调用轨迹，并评估结构化断言以及可选的第二模型审查——与审批 answerer 使用同一个审查接缝。
-
-```yaml
-# eval/cases/demo.yaml（节选）
-suite:
-  name: my-suite
-  cases:
-    - id: math-output
-      input: Solve 17 × 24 and reply with only the final number, nothing else.
-      expect:
-        output: { contains: "408" }
-    - id: glob-trace
-      seedFrom: '.'
-      input: Use the glob tool with pattern "src/**" to list the source files…
-      expect:
-        toolCalls: [{ tool: glob, arguments: { contains: { pattern: "src" } } }]
-        results: [{ tool: glob, contains: "index.ts" }]
-    - id: review-write
-      input: Read src/config.ts, write the default reviewerTimeoutMs into scratch/answer.txt…
-      expect:
-        output: { contains: "60000" }
-      review:
-        statement: The agent read the default reviewerTimeoutMs and wrote it to the file.
-```
-
-运行方式（环境中必须提供 DeepSeek API key）：
+除了审批审查器，`dsh-auto-review` 还附带 `dsh-eval`：一个 YAML 驱动的代理评估平台，运行真实的 headless DSH 会话（每个用例一个隔离代理 + 临时工作区），从会话事件日志中收集工具调用轨迹，并评估结构化断言以及可选的第二模型审查 —— 与审批 answerer 使用同一条审查接缝。
 
 ```sh
 dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
 ```
 
-CI 门槛：仅当每个 suite 的每个用例都通过时进程才以 0 退出——把它放进一个 GitHub Action 步骤，评估失败即构建失败。每个用例都会在 `report.md`/`report.json` 旁留下一个可重放的会话 JSONL 与一个 trace JSON；断言结果、token 用量与审查裁决全部写入报告文件。引擎从不替换硬编码的模型或超时默认值，在 SIGINT/SIGTERM 时干净中止，并把 worker 池限制在配置的并发数以内。
+CI 门禁：仅当每个套件的每个用例都通过时，进程才以 0 退出。每个用例都会在 `report.md`/`report.json` 旁边留下可重放的会话 JSONL 与轨迹 JSON。
 
-与 [codex-research](https://github.com/openai/codex/tree/main/codex-rs/research)（浏览器自动化 agent 研究）不同，`dsh-eval` 面向 harness 层面的 agent 评估：针对会话事件日志的工具调用轨迹断言、作为补充断言层的第二模型审查，以及每个用例隔离的 headless 会话——不依赖浏览器或 Selenium 技术栈。
+## 权限与数据
 
-## 🔒 安全边界
+- **权限**：workshop 清单声明 `session:append`、`approval:answer`、`subagent:spawn`、`command:register` 与 `tools:observe`。
+- **数据**：不向磁盘写入任何内容；报告环形缓冲在内存中且有界。自身不发起网络请求。
+- **会话日志**：`autoReview/*` 事件携带审查器身份、裁决、理由、风险与耗时 —— 以信封 `ignorable: true` 标记追加，任何构建都能加载日志。
 
-- 审查代理运行在**只读工具面**（`toolFilter` 白名单）内：不能写、改、执行 shell、访问网络、再委派（`maxDepth` = 自身深度）。其会话日志同样落盘可审计。
-- **敏感参数先脱敏**（按键名匹配：`token`、`password`、`api_key`、`Authorization`、凭据、私钥等）再进入审查 prompt；插件绝不执行被审参数。脱敏是键名级而非内容级——参数值不能接受展示给模型的工具，不要纳入 AI 审查。
-- **默认 fail closed。** 所有异常路径（provider 缺失、能力缺口、启动被拒、超时、非 `completed` 停止原因、裁决缺失/不合规、审计关联失败）都走 `fallbackPolicy`，默认 `rejected`——且该拒绝把一段可审计的理由回喂模型，而不是通用的 “user rejected” 文本。`allow-once` 是无条件放行——仅供接受该风险的无人值守部署使用。
-- **硬禁用会自我解释。** `never` 工具或风险规则确定性拒绝，并记录 log-only 的 `autoReview/rejection` 事件（含命中的规则/表项），再向被拒工具结果注入 `[auto-review-never]` 标记文本——模型明白该动作已被硬禁用，而不是反复重试（invariant 校验：标记 ⟺ 事件）。
-- **拒绝熔断器。** 单个回合内的一连串拒绝（`consecutiveDenies` / `windowSize` 内的 `windowDenies`）触发熔断器，记录为 log-only 的 `autoReview/circuit` 事件；后续请求遵循其 `action`（`delegate` / `reject` / `abort-turn`）。`abort-turn` 注入模型可见的警告并取消 agent。
-- **审查上下文是已呈现的转录。** `contextBudget` 把已呈现的会话内容（消息、工具结果）喂给审查代理。默认同路由审查模型下该内容始终留在同一 provider 内；只有当你接受将这份转录呈现给另一个 provider 时，才把 `reviewerModel` 配置为不同 provider。
-- **`never` 在本层是单向的。** `never` 工具或风险规则在人类链看到请求之前即拒绝——是锁定旋钮，不是默认值。
-- **审查代理也是模型。** 其裁决是建议性策略，不是安全内核。不可逆操作请配 `human`/`never` 规则。
+## 安全边界
 
-## ⚠️ 已知局限
+- **审查器是模型。** 其裁决是建议性策略，不是安全内核；对不可逆操作优先使用 `human`/`never` 规则。
+- **失败关闭。** 每条异常路径都经由 `fallbackPolicy` 处理，默认 `rejected` —— 且拒绝会向模型反馈一条可审计的理由。
+- **只读审查器。** 审查器的 `toolFilter` 白名单（`read`/`glob`/`grep`）无法写入、编辑、运行 bash、访问网络或委派。
+- **敏感参数会被脱敏**（按键名匹配）后才进入审查器提示词；该插件绝不会执行被审查的参数。
+- **`never` 是单向的。** `never` 工具或风险规则会在人类审批链看到请求之前就拒绝它。
 
-- 审查代理需要可用的 LLM 路由（默认继承会话 agent 的 provider/model）；没有路由时每次审查按 `fallbackPolicy` 回退——绝不静默放行。
-- `reviewerTools` 中的名字必须是 profile 中真实存在的全局工具；未知名字会在最早点响亮失败并回退。
-- 风险规则按各自的 `field` 匹配请求 `reason`、`toolName` 或脱敏后的调用 `arguments`；其他条件请用 `toolsPolicy.overrides`。
-- `/auto-review approve` 覆盖授权的是下一次同工具审查，而非那次精确的历史调用；同一工具上的另一动作也会消耗它。
-- 裁决事件是 log-only；专属 Web 审查面板读取折叠后的 `autoReview` 投影（原始事件流不会到达浏览器插件）。
-- `autoReview/state` 与 `autoReview/verdict` 均以信封 `ignorable: true` 标记写入，任何 harness 构建都能加载日志——不认识这些仓库外类型的读取器只会跳过相应记录而不是拒绝整个会话。（rc.6 宿主会接受并忽略该标记，行为与打标前完全一致；0.1.1 之前版本写入的会话可用 `dsh-permission-rules` 的 `scripts/repair-session-logs.mjs` 一次性修复。）
-- git 通道只需要 `dsh` CLI 打印的那一条 `allowBuilds` 键（针对 `dsh-auto-review` 本体）。仓库自带 `pnpm-workspace.yaml` 并声明 `allowBuilds: { esbuild: true }`，使隔离的 prepare 环境不会因 esbuild 的（无害的平台二进制校验）postinstall 而失败；`typescript` + `tsdown` 是常规 `dependencies`，保证该环境始终有构建工具。
-- 可选 invariant 伴生（`dsh-auto-review/invariant`）需要 `invariants` 服务（agent-spine 组合，如 headless/ACP）；普通 web profile 不提供该服务，因此该行在 bundle patch 中以注释形式发布。
+## 已知限制
 
-## 🏷️ GitHub 话题
+- 审查器需要可用的 LLM 路由（默认继承）；没有路由时，每次审查都会按 `fallbackPolicy` 回退 —— 绝不会静默放行。
+- `reviewerTools` 中的名称必须是 profile 中已存在的全局工具；未知名称会使审查器子代理大声失败。
+- 风险规则按各自的 `field` 匹配请求的 `reason`、`toolName` 或脱敏后的调用 `arguments`；其他条件应放入 `toolsPolicy.overrides`。
+- `/auto-review approve` 覆盖授权的是下一次对同一工具的审查，而不是那次确切的历史调用。
+- 裁决事件是仅日志的；Web 审查面板读取折叠后的 `autoReview` 投影（原始事件流绝不会到达浏览器插件）。
+- 可选的 invariant 配套插件需要 `invariants` 服务（agent-spine 组合）；普通 web profile 不提供该服务。
 
-发布仓库时建议添加：`dsh` · `dsh-plugin` · `deepseek-harness` · `deepseek` · `cordis` · `ai-safety` · `approval` · `sandbox` · `subagent` · `llm`
-
-## 🔗 相关项目
-
-- [Andy8647/dsh-auto-approval](https://github.com/Andy8647/dsh-auto-approval) —— `tools/pre-execute` waterfall 上的二态 allow/deny 分类器，审计走文件日志。`dsh-auto-review` 刻意差异化：官方 **answerer** 链、不拥有的请求一律委托、只读第二模型结构化裁决、拒绝理由回喂模型、会话日志级审计。
-- [ACP automation bridge](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/acp/acp) —— 为其自有 ACP agent 提供一次性机器决策。`dsh-auto-review` 面向交互式 harness 的会话与工具策略作用域，绝不推断持久授权。
-
-## 🧑‍💻 开发
+## 开发
 
 ```sh
 pnpm install                # node ^22.19 || >=24
-pnpm run typecheck          # tsc，src + 测试
-pnpm test                   # vitest：190 个测试、14 个文件
-pnpm run build              # tsc 声明 + tsdown 打包（lib/）
+pnpm run typecheck          # tsc：src + tests，针对本地 harness 检出
+pnpm test                   # vitest：190 个测试，14 个文件
+pnpm run build              # tsc 声明 + tsdown 打包（lib/，含客户端包）
 pnpm run verify:self-contained
 pnpm pack                   # 发布产物
 ```
 
-仓库结构（plugin-template 结构）：`src/index.ts`（插件契约）· `src/config.ts`（Schemastery schema + 解析）· `src/runtime.ts`（answerer、命令、拒绝理由注入）· `src/review.ts`（审查代理编排、prompt、脱敏）· `src/events.ts`（会话事件词汇 + fold）· `src/projection.ts` + `src/projection-types.ts`（`autoReview` 会话投影）· `src/invariant.ts`（invariant 伴生）· `src/eval/`（dsh-eval 引擎：DSL、runner、assertions、trace、review、reports、CLI）· `eval/`（随附评估组合 + demo 套件）· `bin/dsh-eval.mjs`（CLI 启动器）· `src/client/`（浏览器半：审查面板、locales、样式）· `test/` · `fixtures/`。
+## 主题
 
-## 👥 贡献者
+`deepseek-harness`、`dsh`、`dsh-plugin`、`cordis`、`approval`、`auto-review`、`second-model`、`ai-safety`、`sandbox`、`subagent`
 
-感谢所有为 `dsh-auto-review` 做出贡献的人：
+## 贡献者
 
-- [PerryLink](https://github.com/PerryLink) — 作者与维护者：审批 answerer、审查子代理、风险策略与熔断器、会话投影审查面板、invariant 伴生、文档、CI/CD 与发布。
+- [@PerryLink](https://github.com/PerryLink) —— 创建者与维护者：审批 answerer、审查子代理、风险策略与熔断器、会话投影审查面板、invariant 配套插件、dsh-eval，以及五语文档。
 
-想参与？请先看 [issue 模板](.github/ISSUE_TEMPLATE/)、[安全策略](SECURITY.md) 与 [AGENTS.md](AGENTS.md) 的仓库约定——欢迎中英文 PR。
+## 许可证
 
-## PerryLink DSH 插件家族
-
-本项目是 [PerryLink](https://github.com/PerryLink) 维护的 [15 个 DeepSeek Harness 插件](https://github.com/PerryLink)之一。如果你觉得这个插件有用，其余的很可能同样有用：
-
-| 插件 | 一句话说明 |
-|---|---|
-| [dsh-mcp-panel](https://github.com/PerryLink/dsh-mcp-panel) | 只读 MCP 运行时面板：/mcp 命令 + 设置页，状态/工具/错误一览 |
-| [dsh-doublecheck](https://github.com/PerryLink/dsh-doublecheck) | 工程纪律守门：需求审讯、测试证据门、对抗评审 |
-| [dsh-background-agents](https://github.com/PerryLink/dsh-background-agents) | 持久化后台子代理：Web 侧边栏进度、随时留言与打断 |
-| [dsh-lsp-actions](https://github.com/PerryLink/dsh-lsp-actions) | 基于语言服务器的诊断/格式化/补全/代码动作/重命名 |
-| [dsh-output-styles](https://github.com/PerryLink/dsh-output-styles) | 对标 Claude Code outputStyles 的运行时风格切换 |
-| [dsh-checkpoint-rewind](https://github.com/PerryLink/dsh-checkpoint-rewind) | 对标 Claude Code /rewind：快照、会话 fork、一键回退 |
-| [dsh-permission-rules](https://github.com/PerryLink/dsh-permission-rules) | Claude Code 风格声明式 allow/deny/ask 权限规则，带审计 |
-| **[dsh-auto-review](https://github.com/PerryLink/dsh-auto-review)** | 审批链上的第二模型自动审查，默认 fail-closed |
-| [dsh-memento](https://github.com/PerryLink/dsh-memento) | 带审批门的跨会话记忆：ctx.memory + SQLite + memory 工具 |
-| [dsh-skill-pack-security](https://github.com/PerryLink/dsh-skill-pack-security) | 安全审计技能包：密钥扫描、依赖与供应链审查 |
-| [dsh-session-pin](https://github.com/PerryLink/dsh-session-pin) | 在 Web 侧边栏置顶会话，持久排序 |
-| [dsh-composer-history](https://github.com/PerryLink/dsh-composer-history) | Web 作曲器终端式输入历史：方向键、Ctrl+R 搜索 |
-| [dsh-github](https://github.com/PerryLink/dsh-github) | DSH 的 GitHub PR/issue 集成，所有写操作经审批门 |
-| [dsh-plugin-guide](https://github.com/PerryLink/dsh-plugin-guide) | 插件开发知识库，随 bundle 安装的按需 agent 技能 |
-| [dsh-claude-move](https://github.com/PerryLink/dsh-claude-move) | 把 Claude Code 会话、记忆、技能和 CLAUDE.md 迁入 DSH |
-
-## 📄 License
-
-[Apache License 2.0](LICENSE)
+[Apache License 2.0](LICENSE) © 2026 dsh-auto-review contributors

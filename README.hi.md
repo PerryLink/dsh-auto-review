@@ -1,273 +1,160 @@
-<!-- भाषा लिंक -->
-[English](README.md) · [中文](README.zh.md) · [Español](README.es.md) · [Português](README.pt.md) · [हिन्दी](README.hi.md)
-
 <div align="center">
 
 # 🤖 dsh-auto-review
 
-**DeepSeek Harness के लिए द्वितीय-मॉडल AI स्वतः-समीक्षा** — Codex का `approvals_reviewer=auto_review` / Claude Code का *auto mode* पैटर्न, एक शुद्ध Cordis प्लगइन के रूप में।
+**DeepSeek Harness के लिए द्वितीय-मॉडल AI अनुमोदन — एक केवल-पढ़ने वाला समीक्षक उप-एजेंट अनुमोदन श्रृंखला पर अनुमति/अस्वीकार का निर्णय करता है, डिफ़ॉल्ट रूप से विफल-बंद।**
 
-जब एजेंट की कोई क्रिया sandbox की सीमा पार करती है, तो एक **केवल-पढ़ने वाला समीक्षक सबएजेंट** allow/deny का फ़ैसला करता है — कारण सहित — ताकि इंसान को कुछ भी स्वीकृत न करना पड़े और कुछ भी असुरक्षित चुपचाप न निकल जाए।
+*जब कोई क्रिया सैंडबॉक्स सीमा पार करती है, तो दूसरा मॉडल साक्ष्य पढ़ता है और कारण सहित निर्णय लौटाता है — ताकि मनुष्य कुछ भी स्वीकृत न करें और कुछ भी असुरक्षित छूट न जाए।*
 
-[![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![dsh](https://img.shields.io/badge/dsh-0.1.0--rc.6-4c51bf.svg)](https://www.npmjs.com/package/@deepseek-ai/dsh)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![DSH plugin](https://img.shields.io/badge/dsh-plugin-✅-green)](https://github.com/topics/dsh-plugin)
+[![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-brightgreen.svg)](#)
+[![CI](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-auto-review/ci.yml?branch=main&label=CI)](https://github.com/PerryLink/dsh-auto-review/actions)
+[![Version](https://img.shields.io/github/v/tag/PerryLink/dsh-auto-review?label=version)](https://github.com/PerryLink/dsh-auto-review/releases)
 [![npm version](https://img.shields.io/npm/v/dsh-auto-review)](https://www.npmjs.com/package/dsh-auto-review)
 [![npm downloads](https://img.shields.io/npm/dm/dsh-auto-review)](https://www.npmjs.com/package/dsh-auto-review)
-[![tests](https://img.shields.io/github/actions/workflow/status/PerryLink/dsh-auto-review/ci.yml?label=tests&logo=githubactions)](.github/workflows/ci.yml)
-[![typescript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](src)
-[![type](https://img.shields.io/badge/type-cordis%20bundle-8a5cf6.svg)](cordis.patch.yml)
-[![repo](https://img.shields.io/badge/repo-PerryLink%2Fdsh--auto--review-181717.svg)](https://github.com/PerryLink/dsh-auto-review)
 
-**शून्य मानव हस्तक्षेप।** अनुरोध AI समीक्षक के पास जाता है, फ़ैसला allow/deny + कारण + जोखिम स्तर होता है, और हर निर्णय सत्र लॉग से पूरी तरह पुनर्निर्मित किया जा सकता है: `approval/asked` → `autoReview/verdict` (या हार्ड-डिसेबल के लिए `autoReview/rejection`) → `approval/decided`।
-
-<img src="docs/demo-auto-review.gif" alt="dsh-auto-review डेमो" width="720"/>
-
-*एक वास्तविक साक्ष्य-रन (वास्तविक सर्वर, वास्तविक API कुंजी, दो वास्तविक मॉडल राउंड): AI समीक्षक workspace के अंदर escalated लेखन को **अनुमति** देता है (कम जोखिम, 5.2 s), फिर workspace के बाहर recursive विलोपन को **अस्वीकार** करता है (उच्च जोखिम, 8.9 s) — अस्वीकृति का कारण मॉडल को वापस दिया जाता है और ट्रांसक्रिप्ट में दिखाई देता है।*
+[English](README.md) · [简体中文](README.zh.md) · [Español](README.es.md) · [Português](README.pt.md) · [हिन्दी](README.hi.md)
 
 </div>
 
-## नियमों के बजाय दूसरा मॉडल क्यों?
+---
 
-पैटर्न-आधारित स्वतः-स्वीकर्ता dispatch से पहले, बिना साक्ष्य के फ़ैसला करते हैं। `dsh-auto-review` निर्णय एक **समीक्षक सबएजेंट** को सौंपता है जो वास्तविक workspace (अपने केवल-पढ़ने वाले टूल-सेट से), पहले से प्रस्तुत टूल-कॉल आर्गुमेंट (संवेदनशील मान हटाकर), अनुरोध का कारण और आपके जोखिम नियम पढ़ता है — फिर एक संरचित फ़ैसला लौटाता है। अस्वीकृति का **कारण कॉल करने वाले मॉडल को वापस** दिया जाता है, ताकि एजेंट अंधाधुंध दोबारा कोशिश करने के बजाय कारण सीखे।
+## अनुकूलता
 
-## ✨ विशेषताएँ
-
-| | |
+| सतह | स्थिति |
 |---|---|
-| 🔌 **आधिकारिक seam** | `approval/request` waterfall पर एक answerer। जो अनुरोध उसके नहीं हैं वे `next()` से आगे भेजे जाते हैं — मानव स्वीकृति प्रवाह कभी नहीं रोका जाता। |
-| 🧠 **द्वितीय-मॉडल फ़ैसला** | एक बार का fork सबएजेंट, केवल-पढ़ने वाली टूल अनुमति-सूची (`read`/`glob`/`grep`) और संरचित फ़ैसला schema `{ decision, reason, riskLevel }`। |
-| 🛡️ **Fail closed** | समीक्षक का क्रैश, टाइमआउट या गलत schema कभी द्वार नहीं खोलता: `fallbackPolicy` लागू होती है, डिफ़ॉल्ट `rejected`। |
-| 🧩 **कॉन्फ़िग-चालित रूटिंग** | प्रति-टूल नीतियाँ (`ai`/`human`/`never`) + regex जोखिम नियम, सब cordis.yml से बदले जा सकते हैं। |
-| 💬 **अस्वीकृति के कारण मॉडल तक पहुँचते हैं** | समीक्षक का कारण अस्वीकृत टूल के परिणाम में (callId से जुड़ा) डाला जाता है, ताकि एजेंट खुद को ढाल सके। Fail-closed fallback अस्वीकृतियाँ और `never` नीति की हार्ड-डिसेबल अस्वीकृतियाँ भी ऑडिट-योग्य पाठ डालती हैं (`[auto-review]` / `[auto-review-fallback]` / `[auto-review-never]` मार्कर)। |
-| 📜 **पूर्ण ऑडिट शृंखला** | `autoReview/verdict` + `autoReview/rejection` सत्र-ईवेंट (समीक्षक की पहचान, फ़ैसला, कारण, जोखिम, अवधि) + एक invariant companion जो *model-visible ⟺ logged* लागू करता है। |
-| 🔁 **कोई पुनरावृत्ति नहीं** | समीक्षक के अपने अनुरोध पहचान से पहचाने जाते हैं और आगे भेजे जाते हैं; `maxDepth` + अनुमति-सूची समीक्षक को आगे delegation से रोकते हैं। |
-| 🧯 **अस्वीकृति circuit breaker** | एक टर्न में 3 लगातार अस्वीकृतियाँ (या पिछले 10 फ़ैसलों में 6) breaker को ट्रिप कर देती हैं: बाद के अनुरोध सौंपे जाते हैं, अस्वीकार होते हैं या टर्न निरस्त होता है — अस्वीकृति का कोई अंतहीन चक्र नहीं। |
-| 🎚️ **जोखिम-स्तर नीति** | एक `allow` फ़ैसला जिसका जोखिम `riskPolicy.maxAutoAllow` से ऊपर है, अनुरोध को कभी निपटाता नहीं: वह मानव को सौंपता है या अस्वीकार करता है। |
-| ✋ **एक-बार मानव ओवरराइड** | `/auto-review approve [n]` हाल की एक अस्वीकृति के लिए एक बार पुनः-प्रयास अधिकृत करता है; अगली उसी-टूल समीक्षा उस अधिकार को समीक्षक संदर्भ के रूप में ले जाती है (समीक्षक फिर भी फ़ैसला करता है)। |
-| 📜 **समीक्षक संदर्भ** | वैकल्पिक संक्षिप्त ट्रांसक्रिप्ट (हाल के संदेश और टूल परिणाम, सीमित) + एक Codex-शैली Markdown `reviewerPolicyText` निर्णय-नीति। |
-| ⌨️ **सत्र कमांड** | `/auto-review on|off|status|approve [n]` — टिकाऊ प्रति-सत्र ओवरराइड जो restore के बाद भी बना रहता है और संचयी सत्र आँकड़े। |
-| 🖥️ **वेब समीक्षा पैनल** | सत्र-शीर्षक पैनल (वेब GUI) स्विच (ऑन/ऑफ बटन के साथ), दोनों प्रति-टर्न बजट, संचयी आँकड़े, circuit ट्रिप, हाल के फ़ैसले और एक-बार अनुमोदन बटन दिखाता है — `autoReview` सत्र प्रोजेक्शन द्वारा संचालित। |
+| Harness | DeepSeek Harness `0.1.0-rc.6` (peers `0.1.0-rc.6` पर पिन किए गए) |
+| Node | `^22.19.0 \|\| >=24.0.0` |
+| प्लेटफ़ॉर्म | सभी (होस्ट answerer; सत्र-प्रोजेक्शन क्षमता के ज़रिए वैकल्पिक वेब समीक्षा पैनल) |
+| मॉडल | कोई भी (समीक्षक डिफ़ॉल्ट रूप से सत्र एजेंट का मार्ग लेता है; `reviewerModel` उसे बदल देता है) |
 
-## कैसे काम करता है
+## आपको क्या मिलता है
 
-```text
-                       approval/request waterfall (answerer शृंखला)
-                        │
-┌───────────────────────┴──────────────────────┐
-│ dsh-auto-review answerer                     │
-│  · सत्र सक्रिय?  · नीति = ai?               │   नहीं ── next() ──▶ मानव answerer (UI)
-│  · जोखिम नियम → toolsPolicy → डिफ़ॉल्ट      │
-└───────────────────────┬──────────────────────┘
-                        │ हाँ
-                        ▼
-        ┌───────────────────────────────────┐
-        │ समीक्षक सबएजेंट (fork, एक बार)     │
-        │  · toolFilter: read/glob/grep     │
-        │  · outputSchema: {decision,       │
-        │    reason, riskLevel}             │
-        │  · टाइमआउट + req.signal abort     │
-        └───────────────┬───────────────────┘
-                        │ फ़ैसला / विफलता (fail-closed fallback)
-                        ▼
- allow → allowed-once        deny → rejected + कारण अस्वीकृत टूल के
-                                       परिणाम में डाला जाता है
-                        │   never → rejected + [auto-review-never] फ़ीडबैक
-                        │            (हार्ड-डिसेबल, समीक्षक नहीं चलता)
-                        ▼
- ऑडिट: approval/asked → autoReview/verdict | autoReview/rejection
-        → approval/decided (सत्र-ईवेंट, log-only, invariant-जाँचित)
-```
+`dsh-auto-review` `approval/request` answerer श्रृंखला पर दूसरा मॉडल रखता है:
 
-**संरचना क्रम।** उत्तरदाता waterfall में अपनी पंजीकरण-स्थिति पर चलता है: यदि कोई मानव UI उत्तरदाता `auto-review` पंक्ति से पहले संयोजित है, तो मानव पहले उत्तर देते हैं और समीक्षक केवल वही देखता है जो आगे सौंपा जाता है। `dsh --profile <name> --dump-config` से सत्यापित करें; यदि ai-नीति उपकरण पहले समीक्षक के पास जाने चाहिए, तो `auto-review` पंक्ति को मानव उत्तरदाता पंक्तियों से पहले रखें।
+1. **आधिकारिक सीम** — एक answerer जो केवल अपनी सीमा के अनुरोधों (`ai` नीति) को अपनाता है और बाकी सब `next()` से सौंप देता है; मानव अनुमोदन प्रवाह कभी शॉर्ट-सर्किट नहीं होता।
+2. **केवल-पढ़ने वाला समीक्षक उप-एजेंट** — `read`/`glob`/`grep` टूल अनुमति-सूची वाला एक-बार का fork संरचित निर्णय `{ decision, reason, riskLevel }` लौटाता है।
+3. **विफल-बंद** — समीक्षक क्रैश, टाइमआउट या स्कीमा बेमेल `fallbackPolicy` (डिफ़ॉल्ट `rejected`) से हल होता है; अस्वीकृति निर्णय अपना कारण कॉल करने वाले मॉडल को लौटा देता है।
+4. **कॉन्फ़िग-चालित रूटिंग** — प्रति-टूल नीतियाँ (`ai`/`human`/`never`) और regex जोखिम नियम, सब cordis.yml से बदले जा सकते हैं।
+5. **पूर्ण ऑडिट ट्रेल** — केवल-लॉग `autoReview/verdict` + `autoReview/rejection` सत्र घटनाएँ (लिफ़ाफ़ा `ignorable: true`) और एक वैकल्पिक invariant साथी।
+6. **सुरक्षा नियंत्रण** — अस्वीकृति सर्किट ब्रेकर, जोखिम-स्तर नीति, एक-बार का `/auto-review approve` ओवरराइड, और एक `never`-नीति कठोर अक्षमता जो मॉडल को स्वयं समझाती है।
 
-## 🚀 त्वरित शुरुआत
+हर निर्णय सत्र लॉग से पुनर्निर्मित होता है: `approval/asked` → `autoReview/verdict` (या `autoReview/rejection`) → `approval/decided`।
 
-चार इंस्टॉल चैनल; प्लगइन एक **bundle** है (`"dsh": { "bundle": { "patch": "./cordis.patch.yml" } }`)।
+## त्वरित शुरुआत
 
 ```sh
-# 1. npm (प्रकाशित आर्टिफ़ैक्ट, कोई बिल्ड चरण नहीं)
+# 1. अपने प्रोफ़ाइल में बंडल इंस्टॉल करें
+dsh plugin --profile web add "github:PerryLink/dsh-auto-review#main"
+
+# या npm से (प्रकाशित रिलीज़)
 dsh plugin --profile web add dsh-auto-review
-dsh --profile web               # पुनः आरंभ करें
 
-# 2. npm tarball (पहले से बने आर्टिफ़ैक्ट, ऑफ़लाइन इंस्टॉल)
-pnpm pack                       # → dsh-auto-review-<version>.tgz
-dsh plugin --profile web add ./dsh-auto-review-<version>.tgz
-dsh --profile web               # पुनः आरंभ करें
-
-# 3. git स्रोत (commit पिन करें; self-contained `prepare` बिल्ड करता है)
-#    pnpm ≥ 10 lifecycle बिल्ड रोकता है: पहले प्रिंट हुई allowBuilds कुंजी को
-#    प्रोफ़ाइल के pnpm-workspace.yaml में जोड़ें।
-dsh plugin --profile web add "github:PerryLink/dsh-auto-review#<commit>"
-
-# 4. स्थानीय link (विकास)
-dsh plugin --profile web add link:/path/to/dsh-auto-review
-```
-
-जाँचें:
-
-```sh
+# 2. पुनः प्रारंभ करें और पंक्ति सत्यापित करें
 dsh --profile web --dump-config | grep -A4 'id: auto-review'
 ```
 
-डिफ़ॉल्ट पैच में `bash` और `write` AI समीक्षा से गुज़रते हैं; बाकी हर टूल (`edit` — स्थान-स्थान संशोधन — सहित) मानव शृंखला को सौंपा जाता है। यदि आप मानव के बिना स्थान-स्थान संपादन स्वीकार करते हैं तो `edit: ai` स्पष्ट रूप से जोड़ें।
+डिफ़ॉल्ट पैच `bash` और `write` की AI समीक्षा करता है; बाकी सभी टूल मानव श्रृंखला को सौंपे जाते हैं।
 
-## ⚙️ कॉन्फ़िगरेशन
+## इंस्टॉल और अनइंस्टॉल
 
-सभी समायोज्य Schemastery `Config` फ़ील्ड हैं (cordis.yml से बदले जा सकते हैं)। `id`-आधारित ओवरराइड **पूरी config पंक्ति बदल देता है** — ज़रूरी हर कुंजी दोबारा लिखें।
+- **git चैनल** (नवीनतम `main`): `dsh plugin --profile web add "github:PerryLink/dsh-auto-review#main"` — पृथक `prepare` बिल्ड को वह एकल `allowBuilds: { esbuild: true }` कुंजी चाहिए जो `dsh` CLI `dsh-auto-review` के लिए छापता है।
+- **npm चैनल** (प्रकाशित रिलीज़): `dsh plugin --profile web add dsh-auto-review`।
+- **tarball चैनल**: इस रेपो में `pnpm pack`, फिर `dsh plugin --profile web add ./dsh-auto-review-<version>.tgz`।
+- **अनइंस्टॉल**: `dsh plugin --profile web remove dsh-auto-review` (या प्रोफ़ाइल पैच से पंक्ति हटाएँ)।
+
+## कॉन्फ़िगरेशन
+
+सभी ट्यूनेबल Schemastery `Config` फ़ील्ड हैं (cordis.yml से बदले जा सकते हैं)। id-लक्षित ओवरराइड पूरी पंक्ति बदल देता है — हर ज़रूरी कुंजी दोबारा लिखें।
 
 | कुंजी | डिफ़ॉल्ट | अर्थ |
 |---|---|---|
-| `enableByDefault` | `true` | सत्र auto-review सक्रिय होकर शुरू होते हैं; `/auto-review on\|off` एक टिकाऊ ओवरराइड लिखता है जो इससे ऊपर होता है |
-| `toolsPolicy.default` | `human` | सूची से बाहर के टूल की नीति (मानव answerer को सौंपना) |
-| `toolsPolicy.overrides` | `{}` | प्रति-टूल नीति: `ai` (समीक्षक तय करे), `human` (मानव अनिवार्य), `never` (निश्चित अस्वीकृति) |
-| `riskRules` | `[]` | `{pattern, policy, field?}` — टूल-तालिका से **पहले** मिलान (पहला मिलान जीतता है); `field` `reason` (डिफ़ॉल्ट), `toolName`, या `arguments` (प्रस्तुत redacted कॉल आर्गुमेंट) चुनता है |
-| `reviewerProvider` | `fork` | समीक्षक के लिए सबएजेंट provider (इन-प्रोसेस fork बैकएंड) |
-| `reviewerModel` | *(विरासत)* | समीक्षक मॉडल id; खाली रहने पर सत्र एजेंट की रूट विरासत में मिलती है |
-| `reviewerTimeoutMs` | `60000` | फ़ैसले की समय-सीमा; समाप्त होने पर fallback नीति लागू |
-| `reviewerTools` | `[read, glob, grep]` | समीक्षक बच्चे की टूल अनुमति-सूची (गैर-खाली होनी चाहिए) — बाकी सब वहाँ अदृश्य |
-| `fallbackPolicy` | `rejected` | समीक्षक विफलता: `rejected` (fail closed), `delegate` (शृंखला जारी), `allow-once` (अनुमति — सुरक्षा देखें)। 0.2.0 में `allow-readonly` से नाम बदला; पुरानी वर्तनी ज़ोर से विफल होती है |
-| `maxReviewsPerTurn` | `10` | प्रति खुले टर्न वास्तविक AI-फ़ैसला बजट; खत्म होने पर अनुरोध मानवों को सौंपे जाते हैं |
-| `maxFailuresPerTurn` | `10` | प्रति खुले टर्न समीक्षक-विफलता बजट (टाइमआउट/अनुपलब्ध/schema, रद्दीकरण नहीं); खत्म होने पर अनुरोध दूसरा पूरा टाइमआउट चुकाने के बजाय मानवों को सौंपे जाते हैं। डिफ़ॉल्ट `maxReviewsPerTurn` के बराबर |
-| `reasonMaxChars` | `2000` | समीक्षक के कारणों, अनुरोध के कारण और redacted आर्गुमेंट पूर्वावलोकन की सीमा |
-| `reviewerGuidance` | *(कोई नहीं)* | समीक्षक prompt में जोड़ा जाने वाला वैकल्पिक मार्गदर्शन (सलाह, कठोर नियम नहीं) |
-| `reviewerPolicyText` | *(कोई नहीं)* | समीक्षक prompt में डाली जाने वाली Markdown निर्णय-नीति (Codex-शैली; टेम्पलेट `fixtures/config/policy-template.md` पर) |
-| `denyGuidance` | *(circumvention-विरोधी पाठ)* | हर डाले गए अस्वीकृति कारण के अंत में जोड़ा जाने वाला मार्गदर्शन |
-| `contextBudget` | `{turns: 0, maxChars: 4000}` | समीक्षक prompt के लिए संक्षिप्त ट्रांसक्रिप्ट बजट; `turns: 0` निष्क्रिय करता है |
-| `riskPolicy` | `{maxAutoAllow: high, onHighRisk: delegate}` | `maxAutoAllow` से ऊपर के `allow` फ़ैसले सौंपते हैं (`delegate`) या अस्वीकार करते हैं (`deny`) |
-| `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate}` | अस्वीकृति circuit breaker; 3 लगातार अस्वीकृतियों या टर्न के पिछले 10 फ़ैसलों में से 6 पर ट्रिप होता है; `action`: `delegate` / `reject` / `abort-turn` |
-| `overrideTtlMs` | `300000` | `/auto-review approve` ओवरराइड कितनी देर उपयोग-योग्य रहता है |
+| `enableByDefault` | `true` | सत्र auto-review सक्षम होकर शुरू होते हैं; `/auto-review on\|off` एक टिकाऊ ओवरराइड लिखता है जो इस पर भारी पड़ता है |
+| `toolsPolicy.default` | `human` | असूचीबद्ध टूल की नीति (मानव answerer को सौंपना) |
+| `toolsPolicy.overrides` | `{}` | प्रति-टूल नीति: `ai` / `human` / `never` |
+| `riskRules` | `[]` | टूल तालिका से पहले मिलाया गया `{pattern, policy, field?}`; `field` चुनता है `reason` (डिफ़ॉल्ट), `toolName` या `arguments` |
+| `reviewerProvider` | `fork` | समीक्षक का उप-एजेंट प्रदाता (इन-प्रोसेस fork बैकएंड) |
+| `reviewerModel` | *(विरासत)* | समीक्षक मॉडल id; खाली होने पर सत्र एजेंट का मार्ग लेता है |
+| `reviewerTimeoutMs` | `60000` | निर्णय की समय-सीमा; समाप्ति पर fallback नीति लागू होती है |
+| `reviewerTools` | `[read, glob, grep]` | समीक्षक चाइल्ड की टूल अनुमति-सूची (गैर-रिक्त होनी चाहिए) |
+| `fallbackPolicy` | `rejected` | समीक्षक विफलता: `rejected` (विफल-बंद) / `delegate` / `allow-once` |
+| `maxReviewsPerTurn` | `10` | प्रति खुले टर्न वास्तविक AI-निर्णय बजट; इससे अधिक पर अनुरोध सौंप दिए जाते हैं |
+| `maxFailuresPerTurn` | `10` | प्रति खुले टर्न समीक्षक-विफलता बजट |
+| `reasonMaxChars` | `2000` | समीक्षक कारणों और संशोधित तर्क पूर्वावलोकन की सीमा |
+| `reviewerGuidance` | *(कोई नहीं)* | समीक्षक प्रॉम्प्ट में जोड़ा गया वैकल्पिक मार्गदर्शन |
+| `reviewerPolicyText` | *(कोई नहीं)* | समीक्षक प्रॉम्प्ट में इंजेक्ट की गई Markdown निर्णय-नीति (Codex शैली) |
+| `denyGuidance` | *(परिहार-विरोधी पाठ)* | हर इंजेक्ट किए गए अस्वीकृति कारण में जोड़ा गया मार्गदर्शन |
+| `contextBudget` | `{turns: 0, maxChars: 4000}` | समीक्षक प्रॉम्प्ट का संक्षिप्त ट्रांसक्रिप्ट बजट; `turns: 0` अक्षम करता है |
+| `riskPolicy` | `{maxAutoAllow: high, onHighRisk: delegate}` | `maxAutoAllow` से ऊपर के `allow` निर्णय सौंपते या अस्वीकार करते हैं |
+| `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate}` | अस्वीकृति सर्किट ब्रेकर |
+| `overrideTtlMs` | `300000` | `/auto-review approve` ओवरराइड कितनी देर उपयोगी रहता है |
 | `language` | `en` | `/auto-review` कमांड आउटपुट की UI भाषा (`en` \| `zh`) |
 
-उदाहरण (टिप्पणी-सहित पूर्ण रूप: `fixtures/config/config-full.yaml`):
+## उपकरण और सतहें
 
-```yaml
-- insert:
-    - id: auto-review
-      name: dsh-auto-review
-      config:
-        toolsPolicy:
-          overrides: { bash: ai, write: ai }
-        riskRules:
-          - pattern: '(?i)(rm\s+(-[a-z]+\s+)*/|git\s+push\s+--force)'
-            policy: never
-          - pattern: 'write'
-            policy: never
-            field: toolName
-        reviewerTimeoutMs: 30000
-        fallbackPolicy: delegate
-        riskPolicy: { maxAutoAllow: medium, onHighRisk: delegate }
-        circuitBreaker: { consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate }
-```
+| सतह | प्रकार | नोट्स |
+|---|---|---|
+| `auto-review` | answerer | `approval/request` कैस्केड answerer — `ai`-नीति अनुरोध अपनाता है, बाकी `next()` से सौंपता है |
+| `/auto-review` | कमांड | `on\|off\|status\|approve [n]` — टिकाऊ सत्र ओवरराइड, बजट और संचयी आँकड़े |
+| अस्वीकृति-कारण इंजेक्शन | श्रोता | `tools/post-execute` — निर्णय / fallback / `never` कारण अस्वीकृत टूल परिणाम को लौटाए जाते हैं |
+| `autoReview` | सत्र प्रोजेक्शन | केवल-लॉग `autoReview/*` घटनाओं से मोड़ा गया |
+| वेब समीक्षा पैनल | क्लाइंट | सत्र-शीर्षक क्रिया: स्विच, बजट, आँकड़े, हाल के निर्णय, एक-बार स्वीकृति |
+| `dsh-eval` | CLI | YAML-चालित एजेंट मूल्यांकन इंजन (`bin/dsh-eval.mjs`) |
+| invariant साथी | invariant | `dsh-auto-review/invariant` (वैकल्पिक; `invariants` सेवा चाहिए) |
 
-## ⌨️ सत्र कमांड
+## dsh-eval — एजेंट मूल्यांकन इंजन
 
-```
-/auto-review on|off|status|approve [n]
-```
-
-`on`/`off` टिकाऊ `autoReview/state` ओवरराइड जोड़ते हैं (fold पुनः आरंभ/restore के बाद भी बना रहता है — रीप्ले ही स्थिति है) और मॉडल को दिखने वाला स्विच-नोटिस डालते हैं (`user/message` ईवेंट के रूप में दर्ज)। `status` प्रभावी स्थिति, दोनों प्रति-टर्न बजट (AI फ़ैसले और समीक्षक विफलताएँ), टर्न में सक्रिय होने पर ट्रिप हुआ circuit breaker, और सत्र के संचयी आँकड़े (अनुमति/अस्वीकृति/fallback/हार्ड-डिसेबल अस्वीकृति, औसत अवधि, हाल के फ़ैसले) दिखाता है। `approve [n]` n-वीं सबसे हाल की अस्वीकृति (1 = सबसे हाल) के लिए एक बार उपयोग होने वाला `autoReview/override` दर्ज करता है: `overrideTtlMs` के भीतर अगली उसी-टूल समीक्षा उस अधिकार को समीक्षक संदर्भ के रूप में ले जाती है — समीक्षक फिर भी फ़ैसला करता है, और ओवरराइड उस समीक्षा द्वारा उपभोग हो जाता है चाहे उसका परिणाम कुछ भी हो।
-
-## 🖥️ वेब समीक्षा पैनल
-
-वेब GUI (वेब प्रोफ़ाइल) में, पैकेज एक सत्र-शीर्षक क्रिया (**AI Review**) देता है जो सत्र की ऑटो-समीक्षा स्थिति वाला पैनल खोलती है: ऑन/ऑफ बटन वाला स्विच (ये `/auto-review on|off` चलाते हैं), दोनों प्रति-टर्न बजट, संचयी आँकड़े (हार्ड-डिसेबल अस्वीकृतियों सहित), circuit ट्रिप, हाल के फ़ैसले, और हाल की अस्वीकृतियों के लिए एक-बार **अनुमोदन** बटन (ये `/auto-review approve [n]` चलाते हैं)।
-
-वायरिंग:
-
-- होस्ट एक `autoReview` **सत्र प्रोजेक्शन** पंजीकृत करता है (log-only `autoReview/*` ईवेंट से मुड़ा हुआ) और उसे सत्र-प्रोजेक्शन चैनल से परोसता है।
-- ब्राउज़र आधा एक **client module** है (`dsh.client` घोषणा से स्वतः खोजा गया) जो `conversation.session.header.actions` सीट पर पंजीकृत होता है।
-- कोई अतिरिक्त patch पंक्ति नहीं चाहिए: पैनल तब लोड होता है जब प्लगइन ऐसे प्रोफ़ाइल में स्थापित हो जिसकी वेब बिल्ड सत्र-प्रोजेक्शन क्षमता देती है (वेब प्रोफ़ाइल देती है)। उस क्षमता के बिना पैनल स्वयं को अनुपलब्ध बताता है; उत्तरदाता अप्रभावित रहता है।
-
-पैनल केवल संपूर्ण प्रोजेक्शन मान पढ़ता है — ब्राउज़र प्लगइन को कच्ची सत्र-ईवेंट धारा कभी नहीं मिलती।
-
-## 🧪 dsh-eval — एजेंट मूल्यांकन इंजन
-
-अनुमोदन समीक्षक के अलावा, `dsh-auto-review` `dsh-eval` भी देता है: एक YAML-चालित एजेंट मूल्यांकन प्लेटफ़ॉर्म जो वास्तविक headless DSH सत्र चलाता है (प्रति केस एक अलग-थलग एजेंट + scratch workspace, आधारभूत सिस्टम prompt के रूप में आधिकारिक Minimal persona), सत्र ईवेंट लॉग से टूल-कॉल ट्रेस एकत्र करता है, और संरचित assertions तथा एक वैकल्पिक द्वितीय-मॉडल समीक्षा का मूल्यांकन करता है — वही समीक्षक seam जो अनुमोदन answerer का है।
-
-```yaml
-# eval/cases/demo.yaml (संक्षिप्त)
-suite:
-  name: my-suite
-  cases:
-    - id: math-output
-      input: Solve 17 × 24 and reply with only the final number, nothing else.
-      expect:
-        output: { contains: "408" }
-    - id: glob-trace
-      seedFrom: '.'
-      input: Use the glob tool with pattern "src/**" to list the source files…
-      expect:
-        toolCalls: [{ tool: glob, arguments: { contains: { pattern: "src" } } }]
-        results: [{ tool: glob, contains: "index.ts" }]
-    - id: review-write
-      input: Read src/config.ts, write the default reviewerTimeoutMs into scratch/answer.txt…
-      expect:
-        output: { contains: "60000" }
-      review:
-        statement: The agent read the default reviewerTimeoutMs and wrote it to the file.
-```
-
-इसे चलाएँ (वातावरण में एक DeepSeek API कुंजी मौजूद होनी चाहिए):
+अनुमोदन समीक्षक से परे, `dsh-auto-review` `dsh-eval` भेजता है: एक YAML-चालित एजेंट मूल्यांकन मंच जो वास्तविक हेडलेस DSH सत्र चलाता है (प्रति केस एक पृथक एजेंट + अस्थायी वर्कस्पेस), सत्र घटना लॉग से टूल-कॉल ट्रेस एकत्र करता है, और संरचित दावों तथा एक वैकल्पिक द्वितीय-मॉडल समीक्षा का मूल्यांकन करता है — वही समीक्षक सीम जो अनुमोदन answerer उपयोग करता है।
 
 ```sh
 dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
 ```
 
-CI द्वार: प्रक्रिया 0 से तभी बाहर निकलती है जब हर suite के हर केस पास हुए हों — इसे एक GitHub Action चरण में डालें और विफल मूल्यांकन build को विफल कर देंगे। हर केस `report.md`/`report.json` के पास एक रीप्ले-योग्य सत्र JSONL और एक ट्रेस JSON छोड़ता है; assertion परिणाम, token उपयोग और समीक्षा फ़ैसला सभी रिपोर्ट फ़ाइलों में लिखे जाते हैं। इंजन कभी भी hardcoded मॉडल या टाइमआउट डिफ़ॉल्ट नहीं डालता, SIGINT/SIGTERM पर साफ़-सुथरे ढंग से रुकता है, और worker pool को कॉन्फ़िगर की गई concurrency तक सीमित रखता है।
+CI द्वार: प्रक्रिया केवल तभी 0 से निकलती है जब हर सुइट का हर केस पास हो। हर केस `report.md`/`report.json` के पास एक पुनः-चलाने योग्य सत्र JSONL और एक ट्रेस JSON छोड़ता है।
 
-[codex-research](https://github.com/openai/codex/tree/main/codex-rs/research) (ब्राउज़र-ऑटोमेशन एजेंट अनुसंधान) के विपरीत, `dsh-eval` harness-स्तर एजेंट मूल्यांकन को लक्ष्य करता है: सत्र ईवेंट लॉग के विरुद्ध टूल-कॉल-ट्रेस assertions, पूरक assertion परत के रूप में द्वितीय-मॉडल समीक्षा, और प्रति-केस अलग-थलग headless सत्र — कोई ब्राउज़र या Selenium स्टैक नहीं।
+## अनुमतियाँ और डेटा
 
-## 🔒 सुरक्षा
+- **अनुमतियाँ**: workshop मेनिफ़ेस्ट `session:append`, `approval:answer`, `subagent:spawn`, `command:register` और `tools:observe` घोषित करता है।
+- **डेटा**: डिस्क पर कुछ नहीं लिखा जाता; रिपोर्ट रिंग बफ़र मेमोरी में और सीमित है। अपनी ओर से कोई नेटवर्क अनुरोध नहीं।
+- **सत्र लॉग**: `autoReview/*` घटनाएँ समीक्षक पहचान, निर्णय, कारण, जोखिम और अवधि रखती हैं — लिफ़ाफ़े के `ignorable: true` मार्कर के साथ जोड़ी जाती हैं।
 
-- समीक्षक **केवल-पढ़ने वाले टूल-सेट** (`toolFilter` अनुमति-सूची) में चलता है। वह लिख, बदल, shell चला, नेटवर्क छू या आगे delegation नहीं कर सकता (`maxDepth` = उसकी अपनी गहराई)। उसका सत्र लॉग स्थायी और ऑडिट-योग्य है।
-- **संवेदनशील आर्गुमेंट पहले हटाए जाते हैं** (कुंजी-नाम मिलान: `token`, `password`, `api_key`, `Authorization`, क्रेडेंशियल, निजी कुंजियाँ …) फिर समीक्षक prompt में जाते हैं; प्लगइन समीक्षित आर्गुमेंट कभी निष्पादित नहीं करता। यह कुंजी-आधारित redaction है, सामग्री-आधारित नहीं — जिन टूल के मान मॉडल को दिखाना जोखिम भरा हो, उन्हें AI समीक्षा में न डालें।
-- **डिफ़ॉल्ट रूप से fail closed।** हर असामान्य रास्ता (provider गायब, क्षमता-अंतराल, start अस्वीकृत, टाइमआउट, गैर-`completed` stopReason, फ़ैसला गायब/विकृत, ऑडिट-सहसंबंध विफलता) `fallbackPolicy` से हल होता है, डिफ़ॉल्ट `rejected` — और अस्वीकृति सामान्य "user rejected" पाठ के बजाय एक ऑडिट-योग्य कारण मॉडल को वापस देती है। `allow-once` बिना शर्त अनुमति देता है — केवल उन अप्रबंधित परिनियोजनों के लिए जिनका व्यवस्थापक यह जोखिम स्वीकार करता है।
-- **हार्ड-डिसेबल खुद को समझाते हैं।** `never` टूल या जोखिम नियम निश्चित रूप से अस्वीकार करता है और मिली हुई नियम/तालिका-प्रविष्टि के साथ एक log-only `autoReview/rejection` ईवेंट दर्ज करता है, फिर अस्वीकृत टूल के परिणाम में `[auto-review-never]` मार्कर पाठ डालता है — मॉडल दोबारा कोशिश करने के बजाय सीख लेता है कि क्रिया हार्ड-डिसेबल है (invariant-जाँचित: मार्कर ⟺ ईवेंट)।
-- **अस्वीकृति circuit breaker।** एक टर्न में अस्वीकृतियों का सिलसिला breaker को ट्रिप कर देता है (`windowSize` के भीतर `consecutiveDenies` / `windowDenies`), log-only `autoReview/circuit` ईवेंट के रूप में दर्ज; बाद के अनुरोध उसके `action` (`delegate` / `reject` / `abort-turn`) का पालन करते हैं। `abort-turn` मॉडल को दिखने वाली चेतावनी डालता है और एजेंट रद्द करता है।
-- **समीक्षक संदर्भ प्रस्तुत ट्रांसक्रिप्ट है।** `contextBudget` पहले से प्रस्तुत सत्र सामग्री (संदेश, टूल परिणाम) समीक्षक को देता है। डिफ़ॉल्ट समान-रूट समीक्षक मॉडल के साथ वह सामग्री एक ही provider के भीतर रहती है; `reviewerModel` को किसी भिन्न provider पर तभी सेट करें जब आप उस ट्रांसक्रिप्ट को उसके सामने प्रस्तुत करना स्वीकार करते हों।
-- **`never` इस परत पर एकतरफ़ा है।** `never` टूल या जोखिम नियम मानव शृंखला के अनुरोध देखने से पहले ही अस्वीकार कर देता है — यह ताला है, डिफ़ॉल्ट नहीं।
-- **समीक्षक भी एक मॉडल है।** उसके फ़ैसले सलाहकार नीति हैं, सुरक्षा कर्नेल नहीं। अपरिवर्तनीय कार्यों के लिए `human`/`never` नियम रखें।
+## सुरक्षा सीमाएँ
 
-## ⚠️ ज्ञात सीमाएँ
+- **समीक्षक एक मॉडल है।** उसके निर्णय सलाहकार नीति हैं, सुरक्षा कर्नेल नहीं; अपरिवर्तनीय क्रियाओं के लिए `human`/`never` नियम चुनें।
+- **विफल-बंद।** हर असामान्य मार्ग `fallbackPolicy` से हल होता है, डिफ़ॉल्ट `rejected` — और अस्वीकृति मॉडल को एक ऑडिट-योग्य कारण लौटाती है।
+- **केवल-पढ़ने वाला समीक्षक।** समीक्षक की `toolFilter` अनुमति-सूची (`read`/`glob`/`grep`) लिख, संपादित, bash चला, नेटवर्क उपयोग या प्रत्यायोजन नहीं कर सकती।
+- **संवेदनशील तर्क संशोधित किए जाते हैं** (कुंजी-नाम मिलान से) उसके बाद समीक्षक प्रॉम्प्ट में जाते हैं; प्लगइन समीक्षित तर्कों को कभी निष्पादित नहीं करता।
+- **`never` एक-तरफ़ा है।** `never` टूल या जोखिम नियम मानव श्रृंखला के अनुरोध देखने से पहले ही अस्वीकार कर देता है।
 
-- समीक्षक को एक कार्यशील LLM रूट चाहिए (डिफ़ॉल्ट में सत्र एजेंट से विरासत); उसके बिना हर समीक्षा `fallbackPolicy` पर गिरती है — कभी भी मौन अनुमति नहीं।
-- `reviewerTools` के नाम प्रोफ़ाइल में वास्तविक वैश्विक टूल होने चाहिए; अज्ञात नाम समीक्षक बच्चे को सबसे पहले बिंदु पर ज़ोर से विफल करता है और fallback पर गिरता है।
-- जोखिम नियम अपने `field` के अनुसार अनुरोध के `reason`, `toolName` या redacted कॉल `arguments` से मिलते हैं; बाकी शर्तें `toolsPolicy.overrides` में रखें।
-- `/auto-review approve` ओवरराइड अगली उसी-टूल समीक्षा को अधिकृत करता है, सटीक ऐतिहासिक कॉल को नहीं; उसी टूल पर कोई भिन्न क्रिया उसे उपभोग कर लेती है।
-- फ़ैसला ईवेंट log-only हैं; समर्पित वेब समीक्षा पैनल मुड़ा हुआ `autoReview` प्रोजेक्शन पढ़ता है (कच्ची ईवेंट धारा ब्राउज़र प्लगइन तक कभी नहीं पहुँचती)।
-- `autoReview/state` और `autoReview/verdict` एन्वेलप के `ignorable: true` मार्कर के साथ लिखे जाते हैं, इसलिए कोई भी harness बिल्ड लॉग लोड कर लेता है — जो पाठक इन आउट-ऑफ-रेपो प्रकारों को नहीं जानते वे सत्र अस्वीकार करने के बजाय केवल उन रिकॉर्ड्स को छोड़ देते हैं। (rc.6 होस्ट मार्कर को स्वीकार कर अनदेखा करते हैं, पहले जैसा ही व्यवहार बना रहता है; 0.1.1 से पहले के संस्करणों द्वारा लिखे सत्र `dsh-permission-rules` के `scripts/repair-session-logs.mjs` से एक बार मरम्मत किए जा सकते हैं।)
-- git चैनल को केवल वही एक `allowBuilds` कुंजी चाहिए जो `dsh` CLI स्वयं `dsh-auto-review` के लिए प्रिंट करता है। रेपो अपना `pnpm-workspace.yaml` लेकर आता है जिसमें `allowBuilds: { esbuild: true }` है, ताकि अलग-थलग prepare वातावरण esbuild के (हानिरहित प्लेटफ़ॉर्म-बाइनरी सत्यापन) postinstall पर विफल न हो; `typescript` + `tsdown` नियमित `dependencies` हैं ताकि उस वातावरण में बिल्ड टूल हमेशा मौजूद रहें।
-- वैकल्पिक invariant companion (`dsh-auto-review/invariant`) को `invariants` सेवा चाहिए (agent-spine संयोजन जैसे headless/ACP); सामान्य web प्रोफ़ाइल उसे नहीं देती, इसलिए वह पंक्ति bundle पैच में टिप्पणी रूप में जाती है।
+## ज्ञात सीमाएँ
 
-## 🏷️ GitHub टॉपिक
+- समीक्षक को एक कार्यशील LLM मार्ग चाहिए (डिफ़ॉल्ट रूप से विरासत); इसके बिना हर समीक्षा `fallbackPolicy` के अनुसार गिरती है — कभी मौन अनुमति नहीं।
+- `reviewerTools` के नाम प्रोफ़ाइल में वैश्विक टूल के रूप में मौजूद होने चाहिए; अज्ञात नाम समीक्षक चाइल्ड को ज़ोर से विफल करता है।
+- जोखिम नियम अपने `field` के अनुसार `reason`, `toolName` या संशोधित `arguments` से मिलते हैं; बाकी शर्तें `toolsPolicy.overrides` में रखें।
+- `/auto-review approve` ओवरराइड उसी टूल की अगली समीक्षा को अधिकृत करता है, उस ऐतिहासिक कॉल को नहीं।
+- निर्णय घटनाएँ केवल-लॉग हैं; वेब समीक्षा पैनल मुड़ा हुआ `autoReview` प्रोजेक्शन पढ़ता है (कच्ची घटना धारा ब्राउज़र प्लगइन तक कभी नहीं पहुँचती)।
+- वैकल्पिक invariant साथी को `invariants` सेवा चाहिए (agent-spine रचनाएँ); सादा web प्रोफ़ाइल वह नहीं देता।
 
-प्रकाशन पर सुझावित: `dsh` · `dsh-plugin` · `deepseek-harness` · `deepseek` · `cordis` · `ai-safety` · `approval` · `sandbox` · `subagent` · `llm`
-
-## 🔗 संबंधित कार्य
-
-- [Andy8647/dsh-auto-approval](https://github.com/Andy8647/dsh-auto-approval) — `tools/pre-execute` waterfall पर दो-अवस्था allow/deny क्लासिफ़ायर, फ़ाइल-लॉग ऑडिट के साथ। `dsh-auto-review` जानबूझकर अलग है: आधिकारिक **answerer** शृंखला, जो उसका नहीं उसे हमेशा आगे भेजता है, संरचित फ़ैसले वाला केवल-पढ़ने वाला दूसरा मॉडल, अस्वीकृति के कारण मॉडल को वापस, सत्र-लॉग ऑडिट।
-- [ACP automation bridge](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/acp/acp) — अपने ACP एजेंटों के लिए एक बार के मशीन निर्णय। `dsh-auto-review` इंटरैक्टिव harness की सत्र और टूल-नीति परिधि के लिए है; यह कभी स्थायी अनुमतियाँ नहीं मानता।
-
-## 🧑‍💻 विकास
+## विकास
 
 ```sh
 pnpm install                # node ^22.19 || >=24
-pnpm run typecheck          # tsc, src + टेस्ट
-pnpm test                   # vitest: 190 टेस्ट, 14 फ़ाइलें
-pnpm run build              # tsc डिक्लेरेशन + tsdown बंडल (lib/)
+pnpm run typecheck          # tsc: src + tests, स्थानीय harness checkout के विरुद्ध
+pnpm test                   # vitest: 190 परीक्षण, 14 फ़ाइलें
+pnpm run build              # tsc घोषणाएँ + tsdown बंडल (lib/, क्लाइंट बंडल सहित)
 pnpm run verify:self-contained
-pnpm pack                   # प्रकाशन आर्टिफ़ैक्ट
+pnpm pack                   # प्रकाशित tarball
 ```
 
-रेपो संरचना (plugin-template संरचना): `src/index.ts` (प्लगइन अनुबंध) · `src/config.ts` (Schemastery schema + रिज़ॉल्यूशन) · `src/runtime.ts` (answerer, कमांड, अस्वीकृति-कारण इंजेक्शन) · `src/review.ts` (समीक्षक ऑर्केस्ट्रेशन, prompt, redaction) · `src/events.ts` (सत्र-ईवेंट शब्दावली + folds) · `src/projection.ts` + `src/projection-types.ts` (`autoReview` सत्र प्रोजेक्शन) · `src/invariant.ts` (invariant companion) · `src/eval/` (dsh-eval इंजन: DSL, runner, assertions, trace, review, reports, CLI) · `eval/` (शामिल मूल्यांकन संयोजन + demo suite) · `bin/dsh-eval.mjs` (CLI लॉन्चर) · `src/client/` (ब्राउज़र आधा: समीक्षा पैनल, locales, स्टाइल) · `test/` · `fixtures/`।
+## विषय
 
-## 👥 योगदानकर्ता
+`deepseek-harness`, `dsh`, `dsh-plugin`, `cordis`, `approval`, `auto-review`, `second-model`, `ai-safety`, `sandbox`, `subagent`
 
-`dsh-auto-review` में योगदान देने वाले सभी लोगों का धन्यवाद:
+## योगदानकर्ता
 
-- [PerryLink](https://github.com/PerryLink) — लेखक और अनुरक्षक: approval answerer, समीक्षक सबएजेंट, जोखिम नीति व circuit breaker, सत्र-प्रोजेक्शन समीक्षा पैनल, invariant companion, दस्तावेज़, CI/CD और रिलीज़।
+- [@PerryLink](https://github.com/PerryLink) — निर्माता और अनुरक्षक: अनुमोदन answerer, समीक्षक उप-एजेंट, जोखिम नीति और सर्किट ब्रेकर, सत्र-प्रोजेक्शन समीक्षा पैनल, invariant साथी, dsh-eval, और पाँच-भाषा दस्तावेज़।
 
-मदद करना चाहते हैं? [issue टेम्पलेट](.github/ISSUE_TEMPLATE/), [सुरक्षा नीति](SECURITY.md) और [AGENTS.md](AGENTS.md) की रेपो परंपराएँ देखें — अंग्रेज़ी या चीनी में PR का स्वागत है।
+## लाइसेंस
 
-## 📄 लाइसेंस
-
-[Apache License 2.0](LICENSE)
+[Apache License 2.0](LICENSE) © 2026 dsh-auto-review contributors
