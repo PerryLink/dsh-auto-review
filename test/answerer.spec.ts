@@ -18,6 +18,24 @@ import {
 
 const next: () => Promise<ApprovalOutcome> = () => Promise.resolve('allowed-once')
 
+/**
+ * Mount with the unmarked-audit opt-in. The test peers are the rc.6
+ * `@deepseek-ai/dsh-session` line, whose `Session.append` drops the
+ * `ignorable` marker, so audit events only reach the log when the runtime
+ * opts back in via `allowUnmarkedAudit: true` — the documented escape
+ * hatch for hosts that cannot stamp the marker. Tests that assert the
+ * audit chain (events, markers, budgets) mount through this helper; the
+ * default-off degraded path has its own spec (`audit-degradation.spec.ts`).
+ */
+function auditHarness(
+  pluginConfig: Record<string, unknown> = {},
+  script?: Parameters<typeof mountHarness>[1],
+  approvalConfig: Record<string, unknown> = {},
+  providerCapabilities?: object,
+): ReturnType<typeof mountHarness> {
+  return mountHarness({ allowUnmarkedAudit: true, ...pluginConfig }, script, approvalConfig, providerCapabilities)
+}
+
 function lastEvent<T extends { type: string; data: unknown }>(events: readonly T[], type: string): T | undefined {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index] as T
@@ -33,7 +51,7 @@ function dataOf(event: { data: unknown } | undefined): Record<string, unknown> {
 
 describe('auto-review answerer', () => {
   it('claims an ai-listed tool and grants on an allow verdict', async () => {
-    const harness = await mountHarness({ toolsPolicy: { overrides: { bash: 'ai' } } })
+    const harness = await auditHarness({ toolsPolicy: { overrides: { bash: 'ai' } } })
     const { outcome, askedId } = await dispatchAskedApproval(harness.ctx, harness.session, {
       agent: harness.agent,
       toolName: 'bash',
@@ -55,7 +73,7 @@ describe('auto-review answerer', () => {
   })
 
   it('requests the ignorable envelope marker so any harness build can load the log', async () => {
-    const harness = await mountHarness({ toolsPolicy: { overrides: { bash: 'ai' } } })
+    const harness = await auditHarness({ toolsPolicy: { overrides: { bash: 'ai' } } })
     const append = vi.spyOn(harness.session, 'append')
     await dispatchAskedApproval(harness.ctx, harness.session, {
       agent: harness.agent,
@@ -116,7 +134,7 @@ describe('auto-review answerer', () => {
   })
 
   it('rejects deterministically for a never-listed tool without asking anyone', async () => {
-    const harness = await mountHarness({ toolsPolicy: { overrides: { bash: 'never' } } })
+    const harness = await auditHarness({ toolsPolicy: { overrides: { bash: 'never' } } })
     const callId = CallId('call-never')
     let downstreamCalled = false
     const { outcome, askedId } = await dispatchAskedApproval(harness.ctx, harness.session, {
@@ -156,7 +174,7 @@ describe('auto-review answerer', () => {
   })
 
   it('names the matched risk rule in the never-rejection audit', async () => {
-    const harness = await mountHarness({
+    const harness = await auditHarness({
       riskRules: [{ pattern: 'killall', policy: 'never' }],
     })
     await dispatchAskedApproval(harness.ctx, harness.session, {
@@ -235,7 +253,7 @@ describe('auto-review answerer', () => {
   })
 
   it('fails closed by default when the reviewer cannot deliver a verdict', async () => {
-    const harness = await mountHarness(
+    const harness = await auditHarness(
       { toolsPolicy: { overrides: { bash: 'ai' } } },
       () => ({ stopReason: 'error' }),
     )
@@ -255,7 +273,7 @@ describe('auto-review answerer', () => {
   })
 
   it('delegates on reviewer failure with fallbackPolicy delegate', async () => {
-    const harness = await mountHarness(
+    const harness = await auditHarness(
       { toolsPolicy: { overrides: { bash: 'ai' } }, fallbackPolicy: 'delegate' },
       () => ({ stopReason: 'error' }),
     )
@@ -275,7 +293,7 @@ describe('auto-review answerer', () => {
   })
 
   it('grants on reviewer failure only with fallbackPolicy allow-once', async () => {
-    const harness = await mountHarness(
+    const harness = await auditHarness(
       { toolsPolicy: { overrides: { bash: 'ai' } }, fallbackPolicy: 'allow-once' },
       () => ({ stopReason: 'error' }),
     )
@@ -291,7 +309,7 @@ describe('auto-review answerer', () => {
   })
 
   it('fails closed on timeout', async () => {
-    const harness = await mountHarness(
+    const harness = await auditHarness(
       { toolsPolicy: { overrides: { bash: 'ai' } }, reviewerTimeoutMs: 20 },
       () => ({ verdict: { decision: 'allow', reason: 'late' }, delayMs: 200 }),
     )
@@ -307,7 +325,7 @@ describe('auto-review answerer', () => {
   })
 
   it('settles cancelled when the request signal aborts mid-review', async () => {
-    const harness = await mountHarness(
+    const harness = await auditHarness(
       { toolsPolicy: { overrides: { bash: 'ai' } } },
       () => ({ verdict: { decision: 'allow', reason: 'late' }, delayMs: 60 }),
     )
@@ -326,7 +344,7 @@ describe('auto-review answerer', () => {
   })
 
   it('fails closed on a schema mismatch (no structured verdict)', async () => {
-    const harness = await mountHarness(
+    const harness = await auditHarness(
       { toolsPolicy: { overrides: { bash: 'ai' } } },
       () => ({}),
     )
@@ -341,7 +359,7 @@ describe('auto-review answerer', () => {
   })
 
   it('fails closed when the reviewer provider is not registered', async () => {
-    const harness = await mountHarness({ toolsPolicy: { overrides: { bash: 'ai' } }, reviewerProvider: 'ghost' })
+    const harness = await auditHarness({ toolsPolicy: { overrides: { bash: 'ai' } }, reviewerProvider: 'ghost' })
     const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
       agent: harness.agent,
       toolName: 'bash',
@@ -375,7 +393,7 @@ describe('auto-review answerer', () => {
   })
 
   it('records the complete asked → verdict → decided audit chain through the real service', async () => {
-    const harness = await mountHarness({ toolsPolicy: { overrides: { bash: 'ai' } } })
+    const harness = await auditHarness({ toolsPolicy: { overrides: { bash: 'ai' } } })
     const outcome = await harness.ctx.approval.request({
       agent: harness.agent,
       toolName: 'bash',
@@ -410,7 +428,7 @@ describe('auto-review answerer', () => {
   })
 
   it('denies with the reviewer reason when the verdict says deny', async () => {
-    const harness = await mountHarness(
+    const harness = await auditHarness(
       { toolsPolicy: { overrides: { bash: 'ai' } } },
       () => ({ verdict: { decision: 'deny', reason: 'destructive and irreversible', riskLevel: 'high' } }),
     )
@@ -429,7 +447,7 @@ describe('auto-review answerer', () => {
   })
 
   it('classifies an abort-rejected run as timeout when the timer already fired', async () => {
-    const harness = await mountHarness(
+    const harness = await auditHarness(
       { toolsPolicy: { overrides: { bash: 'ai' } }, reviewerTimeoutMs: 20 },
       () => ({ rejectOnAbort: true }),
     )
@@ -445,7 +463,7 @@ describe('auto-review answerer', () => {
   })
 
   it('classifies a cancelled start as cancelled, not unavailable', async () => {
-    const harness = await mountHarness(
+    const harness = await auditHarness(
       { toolsPolicy: { overrides: { bash: 'ai' } }, reviewerTimeoutMs: 1000 },
       () => ({ startDelayMs: 30, failStartOnAbort: true }),
     )
@@ -505,7 +523,7 @@ describe('auto-review answerer', () => {
   })
 
   it('injects an auditable failure text when the fallback rejects', async () => {
-    const harness = await mountHarness(
+    const harness = await auditHarness(
       { toolsPolicy: { overrides: { bash: 'ai' } } },
       () => ({ stopReason: 'error' }),
     )
@@ -592,7 +610,7 @@ describe('auto-review answerer', () => {
   })
 
   it('delegates an allow verdict whose risk exceeds maxAutoAllow', async () => {
-    const harness = await mountHarness(
+    const harness = await auditHarness(
       {
         toolsPolicy: { overrides: { bash: 'ai' } },
         riskPolicy: { maxAutoAllow: 'medium', onHighRisk: 'delegate' },
@@ -615,7 +633,7 @@ describe('auto-review answerer', () => {
   })
 
   it('denies an allow verdict whose risk exceeds maxAutoAllow with onHighRisk deny', async () => {
-    const harness = await mountHarness(
+    const harness = await auditHarness(
       {
         toolsPolicy: { overrides: { bash: 'ai' } },
         riskPolicy: { maxAutoAllow: 'medium', onHighRisk: 'deny' },
@@ -659,7 +677,7 @@ describe('auto-review answerer', () => {
   })
 
   it('trips the circuit breaker on consecutive denials and delegates afterwards', async () => {
-    const harness = await mountHarness(
+    const harness = await auditHarness(
       {
         toolsPolicy: { overrides: { bash: 'ai' } },
         circuitBreaker: { consecutiveDenies: 2, windowDenies: 10, windowSize: 50, action: 'delegate' },
@@ -692,7 +710,7 @@ describe('auto-review answerer', () => {
   })
 
   it('rejects later requests with an auditable marker when the circuit action is reject', async () => {
-    const harness = await mountHarness(
+    const harness = await auditHarness(
       {
         toolsPolicy: { overrides: { bash: 'ai' } },
         circuitBreaker: { consecutiveDenies: 1, windowDenies: 10, windowSize: 50, action: 'reject' },
@@ -720,7 +738,7 @@ describe('auto-review answerer', () => {
   })
 
   it('aborts the turn when the circuit action is abort-turn', async () => {
-    const harness = await mountHarness(
+    const harness = await auditHarness(
       {
         toolsPolicy: { overrides: { bash: 'ai' } },
         circuitBreaker: { consecutiveDenies: 1, windowDenies: 10, windowSize: 50, action: 'abort-turn' },
@@ -744,7 +762,7 @@ describe('auto-review answerer', () => {
 
   it('runs the next same-tool review with a pending human override, then consumes it', async () => {
     let decision: 'allow' | 'deny' = 'deny'
-    const harness = await mountHarness(
+    const harness = await auditHarness(
       { toolsPolicy: { overrides: { bash: 'ai' } } },
       () => ({ verdict: { decision, reason: 'x' } }),
     )

@@ -12,11 +12,12 @@ import type { Context } from '@deepseek-ai/cordis'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { CallId } from '@deepseek-ai/dsh-llm'
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
-import type { SessionEventMap, SessionId } from '@deepseek-ai/dsh-session'
+import type { Session, SessionEventMap, SessionId } from '@deepseek-ai/dsh-session'
 import type { ApprovalOutcome, ApprovalRequest, ApprovalRequestId } from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-subagent'
 import type { PostToolDecision, ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+import { isMarkedAuditEvent, isUnmarkedHostVersion, peerSessionVersion, type AuditSupport } from './audit.ts'
 import { resolveConfig, riskExceeds } from './config.ts'
 import type { Config, ResolvedConfig, ToolReviewPolicy } from './config.ts'
 import { messages } from './messages.ts'
@@ -35,6 +36,10 @@ import {
   fallbackResultText,
   lastDeniedVerdicts,
   neverResultText,
+  plainCircuitResultText,
+  plainDenyResultText,
+  plainFallbackResultText,
+  plainNeverResultText,
   reviewStats,
   type AutoReviewFallback,
   type AutoReviewVerdictId,
@@ -57,6 +62,71 @@ const FEEDBACK_TTL_MS = 5 * 60_000
 interface FeedbackEntry {
   readonly text: string
   readonly at: number
+}
+
+/** One in-memory verdict record (newest first), used when the host cannot stamp audit events. */
+interface MemoryVerdict {
+  readonly id: string
+  readonly toolName: string
+  /** Whether the verdict rejected (a deny, a risk-policy override, or a hard-disable). */
+  readonly denial: boolean
+}
+
+/** One in-memory denial record for `/auto-review approve` (newest first). */
+interface MemoryDenial {
+  readonly id: string
+  readonly toolName: string
+}
+
+/** One in-memory single-use human override (consumed by the next same-tool review). */
+interface MemoryOverride {
+  readonly reviewId: string
+  readonly toolName: string
+  readonly at: number
+}
+
+/**
+ * The in-memory audit mirror for one session, used when the host's
+ * `Session.append` cannot stamp the `ignorable` envelope marker (the
+ * rc.6 line): nothing is written to the session log, and every audit
+ * feature the reviewer needs keeps working for the session lifetime —
+ * budgets, the rejection circuit breaker, the on/off override, and
+ * `/auto-review approve`. Turn-scoped entries reset when the open turn
+ * advances (detected from first-party `turn/start`/`turn/end` events).
+ */
+interface SessionMemory {
+  /** Seq of the open turn/start these counters belong to; undefined between turns. */
+  turnSeq: number | undefined
+  /** All verdicts of the open turn, newest first, bounded to the breaker window. */
+  verdicts: MemoryVerdict[]
+  /** Reviewer failures in the open turn. */
+  failures: number
+  /** Hard-disable (never) rejections in the open turn. */
+  rejections: number
+  /** Denials of the open turn, newest first (bounded) — the `approve` feed. */
+  denies: MemoryDenial[]
+  /** The in-memory circuit trip of the open turn, when tripped. */
+  circuit: SessionEventMap['autoReview/circuit'] | undefined
+  /** The in-memory `/auto-review on|off` override for the session. */
+  enabledOverride: boolean | undefined
+  /** Pending single-use human overrides (bounded). */
+  overrides: MemoryOverride[]
+}
+
+/** Cap on the in-memory denial feed (approve indexes are bounded by this). */
+const MEMORY_DENIES_CAP = 200
+
+/** Cap on the in-memory override list (a session cannot meaningfully accumulate more). */
+const MEMORY_OVERRIDES_CAP = 50
+
+/** Turn-scoped statistics folded from the in-memory mirror (the `/auto-review status` feed on audit-disabled hosts). */
+interface MemoryStats {
+  readonly allows: number
+  readonly denies: number
+  readonly fallbacks: number
+  readonly rejections: number
+  readonly avgDurationMs: number
+  readonly recent: readonly { readonly toolName: string; readonly decision?: 'allow' | 'deny' }[]
 }
 
 /** Closed-union backstop for the fallback-policy switch. */
@@ -106,10 +176,158 @@ export class AutoReviewRuntime {
   /** Feedback texts keyed by call id, consumed (and deleted) by the post-execute listener. */
   private readonly feedback = new Map<CallId, FeedbackEntry>()
 
+  /** Whether the host honors the audit envelope's `ignorable` marker: unknown until the first append (or the peer-version pre-check). */
+  private auditSupport: AuditSupport = 'unknown'
+
+  /** In-memory audit mirrors per session, used when the host cannot stamp audit events. */
+  private readonly memory = new WeakMap<Session, SessionMemory>()
+
+  /** The one-time warning that session-log audit was disabled was already logged. */
+  private warnedUnmarked = false
+
   constructor(
     private readonly ctx: Context,
     readonly config: ResolvedConfig,
   ) {}
+
+  // --- Audit-host capability (ignorable envelope marker) --------------------
+
+  /**
+   * Whether the session-log audit may append now: enabled when the host
+   * stamps the `ignorable` marker (peer-version pre-check, then the append
+   * probe) or when `allowUnmarkedAudit` opts back in. Degrades to the
+   * in-memory mirror otherwise, with a one-time warning.
+   * @returns true when audit appends are safe on this host.
+   */
+  private auditMayAppend(): boolean {
+    if (this.config.allowUnmarkedAudit) return true
+    if (this.auditSupport === 'unsupported') return false
+    if (this.auditSupport === 'unknown') {
+      const version = peerSessionVersion()
+      if (version !== null && isUnmarkedHostVersion(version)) {
+        this.auditSupport = 'unsupported'
+        this.warnUnmarkedAuditHost()
+        return false
+      }
+    }
+    return true // unknown with no resolvable version: append once and probe the envelope
+  }
+
+  /** After the first append on an unversioned host, probe the returned envelope for the ignorable marker. */
+  private probeAuditResult(result: unknown): void {
+    if (this.auditSupport !== 'unknown' || this.config.allowUnmarkedAudit) return
+    if (isMarkedAuditEvent(result)) {
+      this.auditSupport = 'supported'
+    } else {
+      this.auditSupport = 'unsupported'
+      this.warnUnmarkedAuditHost()
+    }
+  }
+
+  /** One-time warning that session-log audit was disabled to keep session logs loadable. */
+  private warnUnmarkedAuditHost(): void {
+    if (this.warnedUnmarked) return
+    this.warnedUnmarked = true
+    this.ctx.logger.warn(
+      'auto-review: this host drops the ignorable marker on audit events (Session.append predates it), which would make sessions unresumable on stricter harness builds — session-log audit is disabled and an in-memory mirror takes over; set allowUnmarkedAudit: true to opt back in, and repair already-polluted logs with scripts/repair-session-logs.mjs from dsh-permission-rules',
+    )
+  }
+
+  // --- In-memory audit mirror (hosts without the ignorable marker) ----------
+
+  /** The seq of the open turn/start, or undefined between turns (first-party events exist on every host). */
+  private openTurnSeq(session: Session): number | undefined {
+    let start: number | undefined
+    for (const event of session.events) {
+      if (event.type === 'turn/start') start = event.seq
+      else if (event.type === 'turn/end') start = undefined
+    }
+    return start
+  }
+
+  /** The in-memory audit mirror for a session, reset when the open turn advances. */
+  private memoryFor(session: Session): SessionMemory {
+    const turnSeq = this.openTurnSeq(session)
+    let entry = this.memory.get(session)
+    if (entry === undefined || entry.turnSeq !== turnSeq) {
+      entry = {
+        turnSeq,
+        verdicts: [],
+        failures: 0,
+        rejections: 0,
+        denies: [],
+        circuit: undefined,
+        enabledOverride: undefined,
+        overrides: [],
+      }
+      this.memory.set(session, entry)
+    }
+    return entry
+  }
+
+  /** Record one settled review outcome in the in-memory mirror (audit-disabled hosts). */
+  private recordVerdictMemory(memory: SessionMemory, verdict: MemoryVerdict): void {
+    memory.verdicts.unshift(verdict)
+    if (memory.verdicts.length > this.config.circuitBreaker.windowSize) memory.verdicts.length = this.config.circuitBreaker.windowSize
+    if (verdict.denial) {
+      memory.denies.unshift({ id: verdict.id, toolName: verdict.toolName })
+      if (memory.denies.length > MEMORY_DENIES_CAP) memory.denies.length = MEMORY_DENIES_CAP
+    }
+  }
+
+  /** The number of leading consecutive denials in a newest-first verdict list. */
+  private static leadingDenials(verdicts: readonly MemoryVerdict[]): number {
+    let count = 0
+    for (const verdict of verdicts) {
+      if (!verdict.denial) break
+      count += 1
+    }
+    return count
+  }
+
+  /** The per-turn metrics the caller should read: event folds on marker-aware hosts, the memory mirror otherwise. */
+  private verdictsInOpenTurn(session: Session, memory: SessionMemory): number {
+    return this.auditMayAppend() ? autoReviewsInOpenTurn(session.events) : memory.verdicts.length
+  }
+
+  private failuresInOpenTurn(session: Session, memory: SessionMemory): number {
+    return this.auditMayAppend() ? autoReviewFailuresInOpenTurn(session.events) : memory.failures
+  }
+
+  private circuitFor(session: Session, memory: SessionMemory): SessionEventMap['autoReview/circuit'] | undefined {
+    return this.auditMayAppend() ? circuitInOpenTurn(session.events) : memory.circuit
+  }
+
+  /** The pending one-shot override for a tool: the event fold on marker-aware hosts, the memory mirror otherwise. */
+  private activeOverrideFor(session: Session, memory: SessionMemory, toolName: string, now: number): AutoReviewVerdictId | undefined {
+    if (this.auditMayAppend()) return activeOverride(session.events, toolName, this.config.overrideTtlMs, now)
+    const index = memory.overrides.findIndex(override =>
+      override.toolName === toolName && now - override.at <= this.config.overrideTtlMs)
+    if (index < 0) return undefined
+    const [override] = memory.overrides.splice(index, 1)
+    return override === undefined ? undefined : override.reviewId as unknown as AutoReviewVerdictId
+  }
+
+  /** Turn-scoped statistics from the in-memory mirror (audit-disabled hosts), in the {@link reviewStats} shape. */
+  private memoryStats(memory: SessionMemory): MemoryStats {
+    let allows = 0
+    let denies = 0
+    for (const verdict of memory.verdicts) {
+      if (verdict.denial) denies += 1
+      else allows += 1
+    }
+    return {
+      allows,
+      denies,
+      fallbacks: memory.failures,
+      rejections: memory.rejections,
+      avgDurationMs: 0,
+      recent: memory.verdicts.slice(0, 10).map(verdict => ({
+        toolName: verdict.toolName,
+        decision: verdict.denial ? 'deny' as const : 'allow' as const,
+      })),
+    }
+  }
 
   /**
    * The `approval/request` answerer. Claims a request ONLY when auto-review
@@ -126,7 +344,8 @@ export class AutoReviewRuntime {
     // Anti-recursion: a reviewer child's own approval asks go to the human chain.
     if (this.reviewerSessions.has(request.agent.id)) return next()
     const session = request.agent.session
-    const enabled = effectiveAutoReviewState(session.events) ?? this.config.enableByDefault
+    const memory = this.memoryFor(session)
+    const enabled = effectiveAutoReviewState(session.events) ?? memory.enabledOverride ?? this.config.enableByDefault
     if (!enabled) return next()
     const needsArguments = this.config.riskRules.some(rule => rule.field === 'arguments')
     const argumentsText = needsArguments && request.callId !== undefined
@@ -138,9 +357,9 @@ export class AutoReviewRuntime {
     // Separate budgets: real AI verdicts vs reviewer failures. A broken
     // reviewer burns the failure budget (then delegates) without eating the
     // AI-decision budget, and vice versa.
-    if (autoReviewsInOpenTurn(session.events) >= this.config.maxReviewsPerTurn) return next()
-    if (autoReviewFailuresInOpenTurn(session.events) >= this.config.maxFailuresPerTurn) return next()
-    const circuit = circuitInOpenTurn(session.events)
+    if (this.verdictsInOpenTurn(session, memory) >= this.config.maxReviewsPerTurn) return next()
+    if (this.failuresInOpenTurn(session, memory) >= this.config.maxFailuresPerTurn) return next()
+    const circuit = this.circuitFor(session, memory)
     if (circuit !== undefined) return this.circuitSettle(request, circuit, next)
     const approvalId = correlateApprovalId(session.events, request.toolName, request.callId)
     if (approvalId === undefined) {
@@ -151,7 +370,7 @@ export class AutoReviewRuntime {
         error: 'cannot correlate the pending approval/asked audit event',
       }, next)
     }
-    const overrideId = activeOverride(session.events, request.toolName, this.config.overrideTtlMs, Date.now())
+    const overrideId = this.activeOverrideFor(session, memory, request.toolName, Date.now())
     const override: OverrideContext | undefined = overrideId === undefined
       ? undefined
       : { reviewId: overrideId, toolName: request.toolName }
@@ -173,15 +392,28 @@ export class AutoReviewRuntime {
     const rejectionId = newRejectionId()
     const reason = truncate(source, this.config.reasonMaxChars)
     const approvalId = correlateApprovalId(request.agent.session.events, request.toolName, request.callId)
-    ;(request.agent.session.append as unknown as RejectionAppend)('autoReview/rejection', {
-      rejectionId,
-      ...approvalId !== undefined ? { approvalId } : {},
-      toolName: request.toolName,
-      ...request.callId !== undefined ? { callId: request.callId } : {},
-      reason,
-      outcome: 'rejected',
-    }, { ignorable: true })
-    this.recordFeedback(request.callId, `${neverResultText(rejectionId, request.toolName, reason)}\n${this.config.denyGuidance}`)
+    const session = request.agent.session
+    const memory = this.memoryFor(session)
+    const auditOk = this.auditMayAppend()
+    if (auditOk) {
+      const result = (session.append as unknown as RejectionAppend)('autoReview/rejection', {
+        rejectionId,
+        ...approvalId !== undefined ? { approvalId } : {},
+        toolName: request.toolName,
+        ...request.callId !== undefined ? { callId: request.callId } : {},
+        reason,
+        outcome: 'rejected',
+      }, { ignorable: true })
+      this.probeAuditResult(result)
+    } else {
+      // Mirror of the event-mode semantics: a hard-disable rejection counts
+      // toward the rejections stat but never toward the verdict breaker.
+      memory.rejections += 1
+    }
+    const text = auditOk
+      ? neverResultText(rejectionId, request.toolName, reason)
+      : plainNeverResultText(request.toolName, reason)
+    this.recordFeedback(request.callId, `${text}\n${this.config.denyGuidance}`)
     return Promise.resolve<ApprovalOutcome>('rejected')
   }
 
@@ -214,21 +446,31 @@ export class AutoReviewRuntime {
     const outcome: ApprovalOutcome | undefined = overridden
       ? this.config.riskPolicy.onHighRisk === 'deny' ? 'rejected' : undefined
       : resolution.decision === 'allow' ? 'allowed-once' : 'rejected'
-    ;(request.agent.session.append as unknown as VerdictAppend)('autoReview/verdict', {
-      reviewId,
-      approvalId,
-      toolName: request.toolName,
-      ...request.callId !== undefined ? { callId: request.callId } : {},
-      provider: this.config.reviewerProvider,
-      ...resolution.model !== undefined ? { model: resolution.model } : {},
-      ...resolution.reviewerSessionId !== undefined ? { reviewerSessionId: resolution.reviewerSessionId } : {},
-      durationMs,
-      decision: resolution.decision,
-      reason: resolution.reason,
-      ...resolution.riskLevel !== undefined ? { riskLevel: resolution.riskLevel } : {},
-      ...overridden ? { escalation: 'risk-policy' } : {},
-      ...outcome !== undefined ? { outcome } : {},
-    }, { ignorable: true })
+    const auditOk = this.auditMayAppend()
+    if (auditOk) {
+      const result = (request.agent.session.append as unknown as VerdictAppend)('autoReview/verdict', {
+        reviewId,
+        approvalId,
+        toolName: request.toolName,
+        ...request.callId !== undefined ? { callId: request.callId } : {},
+        provider: this.config.reviewerProvider,
+        ...resolution.model !== undefined ? { model: resolution.model } : {},
+        ...resolution.reviewerSessionId !== undefined ? { reviewerSessionId: resolution.reviewerSessionId } : {},
+        durationMs,
+        decision: resolution.decision,
+        reason: resolution.reason,
+        ...resolution.riskLevel !== undefined ? { riskLevel: resolution.riskLevel } : {},
+        ...overridden ? { escalation: 'risk-policy' } : {},
+        ...outcome !== undefined ? { outcome } : {},
+      }, { ignorable: true })
+      this.probeAuditResult(result)
+    } else {
+      this.recordVerdictMemory(this.memoryFor(request.agent.session), {
+        id: String(reviewId),
+        toolName: request.toolName,
+        denial: resolution.decision === 'deny' || (overridden && outcome === 'rejected'),
+      })
+    }
     if (outcome === undefined) return next()
     if (resolution.decision === 'deny') {
       this.recordDenyReason(request.callId, request.toolName, reviewId, resolution.reason)
@@ -264,21 +506,28 @@ export class AutoReviewRuntime {
     durationMs = 0,
   ): Promise<ApprovalOutcome> {
     const outcome = this.fallbackOutcome(failure)
+    const session = request.agent.session
+    const auditOk = this.auditMayAppend()
     if (approvalId !== undefined) {
       const reviewId = newVerdictId()
-      ;(request.agent.session.append as unknown as VerdictAppend)('autoReview/verdict', {
-        reviewId,
-        approvalId,
-        toolName: request.toolName,
-        ...request.callId !== undefined ? { callId: request.callId } : {},
-        provider: this.config.reviewerProvider,
-        ...failure.model !== undefined ? { model: failure.model } : {},
-        ...failure.reviewerSessionId !== undefined ? { reviewerSessionId: failure.reviewerSessionId } : {},
-        durationMs,
-        fallback: failure.fallback,
-        error: failure.error,
-        ...outcome !== undefined ? { outcome } : {},
-      }, { ignorable: true })
+      if (auditOk) {
+        const result = (session.append as unknown as VerdictAppend)('autoReview/verdict', {
+          reviewId,
+          approvalId,
+          toolName: request.toolName,
+          ...request.callId !== undefined ? { callId: request.callId } : {},
+          provider: this.config.reviewerProvider,
+          ...failure.model !== undefined ? { model: failure.model } : {},
+          ...failure.reviewerSessionId !== undefined ? { reviewerSessionId: failure.reviewerSessionId } : {},
+          durationMs,
+          fallback: failure.fallback,
+          error: failure.error,
+          ...outcome !== undefined ? { outcome } : {},
+        }, { ignorable: true })
+        this.probeAuditResult(result)
+      } else {
+        this.memoryFor(session).failures += 1
+      }
       this.ctx.logger.warn(`auto-review fallback (${failure.fallback}) for ${request.toolName}: ${failure.error}`)
       // A fail-closed rejection is as model-visible as a reviewer deny: the
       // agent learns WHY it was rejected (and that the reviewer failed)
@@ -324,7 +573,10 @@ export class AutoReviewRuntime {
   ): Promise<ApprovalOutcome> {
     if (circuit.action === 'delegate') return next()
     const explanation = `rejection circuit breaker tripped (${circuit.trip.kind}: ${circuit.trip.count} denials)`
-    this.recordFeedback(request.callId, circuitResultText(circuit.circuitId, request.toolName, explanation))
+    const text = this.auditMayAppend()
+      ? circuitResultText(circuit.circuitId, request.toolName, explanation)
+      : plainCircuitResultText(request.toolName, explanation)
+    this.recordFeedback(request.callId, text)
     return Promise.resolve<ApprovalOutcome>('rejected')
   }
 
@@ -337,23 +589,32 @@ export class AutoReviewRuntime {
    */
   private checkCircuit(request: ApprovalRequest): void {
     const session = request.agent.session
-    if (circuitInOpenTurn(session.events) !== undefined) return
+    const memory = this.memoryFor(session)
+    const auditOk = this.auditMayAppend()
+    if ((auditOk ? circuitInOpenTurn(session.events) : memory.circuit) !== undefined) return
     const { consecutiveDenies, windowDenies, windowSize, action } = this.config.circuitBreaker
-    const consecutive = consecutiveDeniesInOpenTurn(session.events)
+    const consecutive = auditOk ? consecutiveDeniesInOpenTurn(session.events) : AutoReviewRuntime.leadingDenials(memory.verdicts)
     const trip = consecutive >= consecutiveDenies
       ? { kind: 'consecutive' as const, count: consecutive }
       : (() => {
-        const window = deniesInRecentVerdicts(session.events, windowSize)
+        const window = auditOk
+          ? deniesInRecentVerdicts(session.events, windowSize)
+          : memory.verdicts.slice(0, windowSize).filter(verdict => verdict.denial).length
         return window >= windowDenies ? { kind: 'window' as const, count: window } : undefined
       })()
     if (trip === undefined) return
     const circuitId = newCircuitId()
-    ;(session.append as unknown as CircuitAppend)('autoReview/circuit', {
-      circuitId,
-      action,
-      trip,
-      toolName: request.toolName,
-    }, { ignorable: true })
+    if (auditOk) {
+      const result = (session.append as unknown as CircuitAppend)('autoReview/circuit', {
+        circuitId,
+        action,
+        trip,
+        toolName: request.toolName,
+      }, { ignorable: true })
+      this.probeAuditResult(result)
+    } else {
+      memory.circuit = { circuitId, action, trip, toolName: request.toolName }
+    }
     this.ctx.logger.warn(`auto-review circuit breaker tripped (${trip.kind}: ${trip.count}) by ${request.toolName}; action=${action}`)
     if (action === 'abort-turn') {
       request.agent.inject(createUserMessage({
@@ -384,7 +645,9 @@ export class AutoReviewRuntime {
 
   /**
    * Record a deny reason (plus the anti-circumvention guidance) for the
-   * denied call's tool result.
+   * denied call's tool result. On hosts whose audit envelope cannot be
+   * written the text is marker-free — the injected text itself becomes the
+   * logged tool result, so model-visible ⟺ logged still holds.
    * @param callId - the denied call.
    * @param toolName - the denied tool.
    * @param reviewId - the verdict event's id (embedded in the injected text).
@@ -396,7 +659,10 @@ export class AutoReviewRuntime {
     reviewId: AutoReviewVerdictId,
     reason: string,
   ): void {
-    this.recordFeedback(callId, `${denyResultText(reviewId, toolName, reason)}\n${this.config.denyGuidance}`)
+    const text = this.auditMayAppend()
+      ? denyResultText(reviewId, toolName, reason)
+      : plainDenyResultText(toolName, reason)
+    this.recordFeedback(callId, `${text}\n${this.config.denyGuidance}`)
   }
 
   /**
@@ -412,7 +678,10 @@ export class AutoReviewRuntime {
     fallback: AutoReviewFallback,
     error: string,
   ): void {
-    this.recordFeedback(callId, fallbackResultText(reviewId, fallback, truncate(error, this.config.reasonMaxChars)))
+    const text = this.auditMayAppend()
+      ? fallbackResultText(reviewId, fallback, truncate(error, this.config.reasonMaxChars))
+      : plainFallbackResultText(fallback, truncate(error, this.config.reasonMaxChars))
+    this.recordFeedback(callId, text)
   }
 
   /**
@@ -450,30 +719,36 @@ export class AutoReviewRuntime {
   command(invocation: CommandInvocation): CommandResult {
     const agent = invocation.agent
     const session = agent.session
+    const memory = this.memoryFor(session)
     const t = messages(this.config.language)
     const input = invocation.rawInput.trim().toLowerCase()
     if (input.startsWith('approve')) return this.approveCommand(invocation)
-    const current = effectiveAutoReviewState(session.events) ?? this.config.enableByDefault
+    const current = effectiveAutoReviewState(session.events) ?? memory.enabledOverride ?? this.config.enableByDefault
     if (input === 'status' || input === '') {
-      const stats = reviewStats(session.events)
-      const circuit = circuitInOpenTurn(session.events)
+      const auditOk = this.auditMayAppend()
+      const stats = auditOk ? reviewStats(session.events) : this.memoryStats(memory)
+      const circuit = auditOk ? circuitInOpenTurn(session.events) : memory.circuit
       const recent = stats.recent.length === 0
         ? []
         : [t.recentLine(stats.recent.map(verdict => {
           const label = verdict.decision !== undefined
             ? verdict.decision
-            : `fallback(${verdict.fallback ?? '?'})`
+            : `fallback(${(verdict as { fallback?: string }).fallback ?? '?'})`
           return `${verdict.toolName}: ${label}`
         }).join(', '))]
+      const verdictsUsed = auditOk ? autoReviewsInOpenTurn(session.events) : memory.verdicts.length
+      const failuresUsed = auditOk ? autoReviewFailuresInOpenTurn(session.events) : memory.failures
+      const auditOff = !auditOk && !this.config.allowUnmarkedAudit
       return {
         kind: 'success',
         text: [
           t.statusLine(current),
-          t.verdictsLine(autoReviewsInOpenTurn(session.events), this.config.maxReviewsPerTurn),
-          t.failuresLine(autoReviewFailuresInOpenTurn(session.events), this.config.maxFailuresPerTurn),
+          t.verdictsLine(verdictsUsed, this.config.maxReviewsPerTurn),
+          t.failuresLine(failuresUsed, this.config.maxFailuresPerTurn),
           ...circuit === undefined ? [] : [t.circuitLine(circuit.trip.kind, circuit.trip.count, circuit.action)],
           t.allTimeLine(stats.allows, stats.denies, stats.fallbacks, stats.rejections, stats.avgDurationMs),
           ...recent,
+          ...auditOff ? [t.auditDisabledNotice] : [],
           t.usage,
         ].join('\n'),
       }
@@ -488,7 +763,12 @@ export class AutoReviewRuntime {
     if (current === enabled) {
       return { kind: 'success', text: t.already(input.toUpperCase()) }
     }
-    ;(session.append as unknown as StateAppend)('autoReview/state', { enabled }, { ignorable: true })
+    if (this.auditMayAppend()) {
+      const result = (session.append as unknown as StateAppend)('autoReview/state', { enabled }, { ignorable: true })
+      this.probeAuditResult(result)
+    } else {
+      memory.enabledOverride = enabled
+    }
     agent.inject(createUserMessage({
       content: [{
         type: 'text',
@@ -511,6 +791,7 @@ export class AutoReviewRuntime {
   private approveCommand(invocation: CommandInvocation): CommandResult {
     const agent = invocation.agent
     const session = agent.session
+    const memory = this.memoryFor(session)
     const t = messages(this.config.language)
     const arg = invocation.rawInput.trim().split(/\s+/u)[1]
     const index = arg === undefined ? 1 : Number.parseInt(arg, 10)
@@ -520,15 +801,27 @@ export class AutoReviewRuntime {
         text: t.approveInvalid(arg ?? ''),
       }
     }
-    const denies = lastDeniedVerdicts(session.events, index)
+    const auditOk = this.auditMayAppend()
+    const denies = auditOk
+      ? lastDeniedVerdicts(session.events, index)
+      : memory.denies.slice(0, index).map(denial => ({
+        reviewId: denial.id as unknown as AutoReviewVerdictId,
+        toolName: denial.toolName,
+      }))
     const target = denies[index - 1]
     if (target === undefined) {
       return { kind: 'error', text: t.approveNone(index, denies.length) }
     }
-    ;(session.append as unknown as OverrideAppend)('autoReview/override', {
-      reviewId: target.reviewId,
-      toolName: target.toolName,
-    }, { ignorable: true })
+    if (auditOk) {
+      const result = (session.append as unknown as OverrideAppend)('autoReview/override', {
+        reviewId: target.reviewId,
+        toolName: target.toolName,
+      }, { ignorable: true })
+      this.probeAuditResult(result)
+    } else {
+      memory.overrides.push({ reviewId: String(target.reviewId), toolName: target.toolName, at: Date.now() })
+      if (memory.overrides.length > MEMORY_OVERRIDES_CAP) memory.overrides.splice(0, memory.overrides.length - MEMORY_OVERRIDES_CAP)
+    }
     return {
       kind: 'success',
       text: t.approveResult(target.toolName, String(target.reviewId), Math.round(this.config.overrideTtlMs / 60_000)),

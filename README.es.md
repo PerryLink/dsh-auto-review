@@ -96,6 +96,7 @@ Todas las opciones son campos Schemastery `Config` (modificables desde cordis.ym
 | `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate}` | Disyuntor de rechazos |
 | `overrideTtlMs` | `300000` | Cuánto dura una anulación de `/auto-review approve` |
 | `language` | `en` | Idioma de la UI de la salida del comando `/auto-review` (`en` \| `zh`) |
+| `allowUnmarkedAudit` | `false` | Fuerza la auditoría del registro de sesión en hosts que descartan el marcador `ignorable` (peligroso: los eventos sin marcar hacen las sesiones irrecuperables en otros hosts); por defecto se detecta y se degrada |
 
 Ejemplo (forma completa anotada: `fixtures/config/config-full.yaml`):
 
@@ -215,7 +216,7 @@ Puerta de CI: el proceso sale con 0 solo cuando todos los casos de todas las sui
 
 - **Permisos**: el manifiesto del workshop declara `session:append`, `approval:answer`, `subagent:spawn`, `command:register` y `tools:observe`.
 - **Datos**: nada se guarda en disco; el búfer circular de informes está en memoria y acotado. Sin peticiones de red propias.
-- **Registro de sesión**: los eventos `autoReview/*` llevan identidad del revisor, veredicto, razón, riesgo y duración — añadidos con el marcador de sobre `ignorable: true` para que cualquier compilación cargue el registro.
+- **Registro de sesión**: los eventos `autoReview/*` llevan identidad del revisor, veredicto, razón, riesgo y duración — añadidos con el marcador de sobre `ignorable: true` para que cualquier compilación cargue el registro. Los hosts cuyo `Session.append` es anterior al marcador (la línea `0.1.0-rc.6`) se detectan antes del primer append (precomprobación de la versión del peer y luego sondeo del sobre devuelto) y la auditoría se degrada a un espejo en memoria con comentarios sin marcador, de modo que las sesiones siguen siendo cargables en todas partes.
 
 ## Límites de seguridad
 
@@ -235,7 +236,7 @@ Puerta de CI: el proceso sale con 0 solo cuando todos los casos de todas las sui
 - Las reglas de riesgo emparejan el `reason` de la solicitud, el `toolName` o los `arguments` redactados de la llamada según su `field`; otras condiciones van en `toolsPolicy.overrides`.
 - La anulación `/auto-review approve` autoriza la siguiente revisión de la misma herramienta, no la llamada histórica exacta; una acción diferente sobre la misma herramienta la consume.
 - Los eventos de veredicto son solo-registro; el panel web de revisión lee la proyección `autoReview` plegada (el flujo crudo de eventos nunca llega a los plugins del navegador).
-- `autoReview/state` y `autoReview/verdict` se añaden con el marcador de sobre `ignorable: true`, de modo que cualquier compilación del harness carga el registro — los lectores que no conocen los tipos fuera del repo simplemente omiten esos registros. (Los hosts rc.6 aceptan e ignoran el marcador; las sesiones escritas por versiones anteriores a 0.1.1 pueden repararse con `scripts/repair-session-logs.mjs` de `dsh-permission-rules`.)
+- `autoReview/state` y `autoReview/verdict` se añaden con el marcador de sobre `ignorable: true` en hosts que lo respetan, de modo que cualquier compilación del harness carga el registro — los lectores que no conocen los tipos fuera del repo simplemente omiten esos registros. En hosts rc.6 el runtime detecta el marcador descartado y nunca escribe estos eventos (el espejo en memoria mantiene el comando, los presupuestos, el disyuntor y `approve` durante la sesión); las sesiones ya contaminadas por versiones anteriores a 0.5.1 pueden repararse con `scripts/repair-session-logs.mjs` de `dsh-permission-rules` (su conjunto de tipos por defecto cubre los cinco eventos `autoReview/*`).
 - El canal git necesita la única clave `allowBuilds` que el CLI de `dsh` imprime para el propio `dsh-auto-review`. El repo incluye su propio `pnpm-workspace.yaml` con `allowBuilds: { esbuild: true }`; `typescript` + `tsdown` son `dependencies` regulares.
 - El compañero invariant opcional necesita el servicio `invariants` (composiciones agent-spine como headless/ACP); el perfil web plano no lo proporciona, por lo que la fila se incluye comentada en el parche del bundle.
 

@@ -96,6 +96,7 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 | `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate}` | Rejection circuit breaker |
 | `overrideTtlMs` | `300000` | How long a `/auto-review approve` override stays usable |
 | `language` | `en` | UI language of the `/auto-review` command output (`en` \| `zh`) |
+| `allowUnmarkedAudit` | `false` | Force session-log audit on hosts that drop the `ignorable` marker (dangerous: unmarked events make sessions unresumable elsewhere); default is detect-and-degrade |
 
 Example (annotated full form: `fixtures/config/config-full.yaml`):
 
@@ -215,7 +216,7 @@ CI gate: the process exits 0 only when every case of every suite passed — drop
 
 - **Permissions**: the workshop manifest declares `session:append`, `approval:answer`, `subagent:spawn`, `command:register`, and `tools:observe`.
 - **Data**: nothing is stored on disk; the report ring buffer is in-memory and bounded. No network requests of its own.
-- **Session log**: `autoReview/*` events carry reviewer identity, verdict, reason, risk, and duration — appended with the envelope's `ignorable: true` marker so any build loads the log.
+- **Session log**: `autoReview/*` events carry reviewer identity, verdict, reason, risk, and duration — appended with the envelope's `ignorable: true` marker so any build loads the log. Hosts whose `Session.append` predates the marker (the `0.1.0-rc.6` line) are detected before the first append (peer-version pre-check, then a probe of the returned envelope) and audit degrades to an in-memory mirror with marker-free feedback, so sessions stay loadable everywhere.
 
 ## Security boundaries
 
@@ -235,7 +236,7 @@ CI gate: the process exits 0 only when every case of every suite passed — drop
 - Risk rules match the request `reason`, the `toolName`, or the redacted call `arguments` per their `field`; other conditions belong in `toolsPolicy.overrides`.
 - The `/auto-review approve` override authorizes the next same-tool review, not the exact historical call; a different action on the same tool consumes it.
 - The verdict events are log-only; the Web review panel reads the folded `autoReview` projection (the raw event stream never reaches browser plugins).
-- `autoReview/state` and `autoReview/verdict` are appended with the envelope's `ignorable: true` marker, so any harness build loads the log — readers that do not know the out-of-repo types simply skip those records. (rc.6 hosts accept and ignore the marker; sessions written by pre-0.1.1 versions can be repaired with `scripts/repair-session-logs.mjs` from `dsh-permission-rules`.)
+- `autoReview/state` and `autoReview/verdict` are appended with the envelope's `ignorable: true` marker on hosts that honor it, so any harness build loads the log — readers that do not know the out-of-repo types simply skip those records. On rc.6 hosts the runtime detects the dropped marker and never writes these events (the in-memory mirror keeps the command, budgets, breaker, and `approve` working for the session); sessions already polluted by pre-0.5.1 versions can be repaired with `scripts/repair-session-logs.mjs` from `dsh-permission-rules` (its default target set covers all five `autoReview/*` event types).
 - The git channel needs the single `allowBuilds` key the `dsh` CLI prints for `dsh-auto-review` itself. The repo ships its own `pnpm-workspace.yaml` with `allowBuilds: { esbuild: true }`; `typescript` + `tsdown` are regular `dependencies`.
 - The optional invariant companion needs the `invariants` service (agent-spine compositions such as headless/ACP); the plain web profile does not provide it, so the row ships commented out in the bundle patch.
 
@@ -249,13 +250,13 @@ CI gate: the process exits 0 only when every case of every suite passed — drop
 ```sh
 pnpm install                # node ^22.19 || >=24
 pnpm run typecheck          # tsc: src + tests against the local harness checkout
-pnpm test                   # vitest: 190 tests, 14 files
+pnpm test                   # vitest: 202 tests, 16 files
 pnpm run build              # tsc declarations + tsdown bundles (lib/, incl. the client bundle)
 pnpm run verify:self-contained
 pnpm pack                   # the published tarball
 ```
 
-Repository layout: `src/index.ts` (plugin contract) · `src/config.ts` (Schemastery schema + resolution) · `src/runtime.ts` (answerer, command, deny-reason injection) · `src/review.ts` (reviewer orchestration, prompt, sanitization) · `src/events.ts` (session-event vocabulary + folds) · `src/projection.ts` + `src/projection-types.ts` (the `autoReview` session projection) · `src/invariant.ts` (invariant companion) · `src/eval/` (the dsh-eval engine) · `eval/` (shipped evaluation composition) · `bin/dsh-eval.mjs` (CLI launcher) · `src/client/` (browser half) · `test/` · `fixtures/`.
+Repository layout: `src/index.ts` (plugin contract) · `src/config.ts` (Schemastery schema + resolution) · `src/runtime.ts` (answerer, command, deny-reason injection) · `src/review.ts` (reviewer orchestration, prompt, sanitization) · `src/events.ts` (session-event vocabulary + folds) · `src/audit.ts` (host `ignorable`-marker capability detection) · `src/projection.ts` + `src/projection-types.ts` (the `autoReview` session projection) · `src/invariant.ts` (invariant companion) · `src/eval/` (the dsh-eval engine) · `eval/` (shipped evaluation composition) · `bin/dsh-eval.mjs` (CLI launcher) · `src/client/` (browser half) · `test/` · `fixtures/`.
 
 ## Topics
 

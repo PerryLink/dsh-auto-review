@@ -65,6 +65,7 @@ function promptConfig(overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {
     circuitBreaker: { consecutiveDenies: 3, windowDenies: 10, windowSize: 50, action: 'delegate' },
     overrideTtlMs: 300_000,
     language: 'en',
+    allowUnmarkedAudit: false,
     ...overrides,
   }
 }
@@ -101,6 +102,7 @@ describe('reviewer prompt', () => {
       circuitBreaker: { consecutiveDenies: 3, windowDenies: 10, windowSize: 50, action: 'delegate' },
       overrideTtlMs: 300_000,
       language: 'en',
+      allowUnmarkedAudit: false,
     })
     expect(prompt).toContain('Tool name: bash')
     expect(prompt).toContain('escalate sandbox to danger-full-access')
@@ -141,6 +143,7 @@ describe('reviewer prompt', () => {
       circuitBreaker: { consecutiveDenies: 3, windowDenies: 10, windowSize: 50, action: 'delegate' },
       overrideTtlMs: 300_000,
       language: 'en',
+      allowUnmarkedAudit: false,
     })
     expect(prompt).toContain('escalate s…')
     expect(prompt).not.toContain('danger-full-access')
@@ -248,9 +251,19 @@ describe('reviewer start request', () => {
   })
 })
 
+/** Mount with the unmarked-audit opt-in (the rc.6 test peers need it for audit events to reach the log). */
+function auditHarness(
+  pluginConfig: Record<string, unknown> = {},
+  script?: Parameters<typeof mountHarness>[1],
+  approvalConfig: Record<string, unknown> = {},
+  providerCapabilities?: object,
+): ReturnType<typeof mountHarness> {
+  return mountHarness({ allowUnmarkedAudit: true, ...pluginConfig }, script, approvalConfig, providerCapabilities)
+}
+
 describe('deny reason injection', () => {
   it('replaces the denial result with the reviewer reason once, then delegates', async () => {
-    const harness = await mountHarness(
+    const harness = await auditHarness(
       { toolsPolicy: { overrides: { bash: 'ai' } } },
       () => ({ verdict: { decision: 'deny', reason: 'destructive' } }),
     )
@@ -373,7 +386,7 @@ describe('compact transcript context', () => {
 
 describe('provider capability precheck', () => {
   it('fails unavailable with a clear error when the provider lacks outputSchema', async () => {
-    const harness = await mountHarness(
+    const harness = await auditHarness(
       { toolsPolicy: { overrides: { bash: 'ai' } } },
       undefined,
       {},
@@ -391,7 +404,7 @@ describe('provider capability precheck', () => {
   })
 
   it('fails unavailable when the provider lacks toolFilter', async () => {
-    const harness = await mountHarness(
+    const harness = await auditHarness(
       { toolsPolicy: { overrides: { bash: 'ai' } } },
       undefined,
       {},

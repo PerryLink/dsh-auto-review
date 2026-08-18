@@ -28,6 +28,7 @@ export interface Messages {
   readonly approveNone: (index: number, count: number) => string
   readonly approveInvalid: (arg: string) => string
   readonly circuitNotice: (kind: string, count: number) => string
+  readonly auditDisabledNotice: string
 }
 
 const EN: Messages = {
@@ -52,6 +53,9 @@ const EN: Messages = {
   circuitNotice: (kind, count) => `The AI auto-review rejection circuit breaker tripped (${kind}: ${count} denials). `
     + 'This turn is aborted because the agent kept proposing blocked actions. '
     + 'Adjust the sandbox boundary or the review policy, then continue.',
+  auditDisabledNotice: 'Session-log audit is disabled on this host: its Session.append predates the ignorable marker and '
+    + 'unmarked audit events would make sessions unresumable on stricter harness builds. '
+    + 'Set allowUnmarkedAudit: true to opt back in, and repair already-polluted logs with scripts/repair-session-logs.mjs from dsh-permission-rules.',
 }
 
 const ZH: Messages = {
@@ -76,6 +80,8 @@ const ZH: Messages = {
   circuitNotice: (kind, count) => `AI 自动审查拒绝熔断器触发（${kind}：${count} 次拒绝）。`
     + '由于代理持续提出被阻止的操作，本回合已中止。'
     + '请调整沙箱边界或审查策略后继续。',
+  auditDisabledNotice: '本宿主上会话日志审计已停用：其 Session.append 早于 ignorable 标记支持，未标记的审计事件会使会话在更严格的 harness 构建上无法恢复。'
+    + '设 allowUnmarkedAudit: true 可重新开启；已被污染的历史日志可用 dsh-permission-rules 的 scripts/repair-session-logs.mjs 修复。',
 }
 
 /** The message tables, keyed by {@link UiLanguage}. */

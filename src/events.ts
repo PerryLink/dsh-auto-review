@@ -265,6 +265,54 @@ export function neverResultText(rejectionId: AutoReviewRejectionId, toolName: st
 }
 
 /**
+ * Marker-free deny text for hosts whose `Session.append` cannot stamp the
+ * audit envelope (`ignorable` dropped — the rc.6 line): the audit event is
+ * skipped to keep the log loadable, so the injected text must not embed an
+ * id marker. The text itself becomes the logged tool result, which keeps
+ * model-visible ⟺ logged.
+ * @param toolName - the denied tool.
+ * @param reason - the reviewer's reason (already truncated).
+ * @returns the exact error text shown to the model.
+ */
+export function plainDenyResultText(toolName: string, reason: string): string {
+  return `Error: the AI reviewer denied tool "${toolName}": ${reason}`
+}
+
+/**
+ * Marker-free fallback text for hosts whose audit envelope cannot be
+ * written (see {@link plainDenyResultText}).
+ * @param fallback - the failure category.
+ * @param error - the failure detail.
+ * @returns the exact error text shown to the model.
+ */
+export function plainFallbackResultText(fallback: AutoReviewFallback, error: string): string {
+  return `Error: the AI reviewer failed (${fallback}) and the request was rejected: ${error}`
+}
+
+/**
+ * Marker-free circuit text for hosts whose audit envelope cannot be
+ * written (see {@link plainDenyResultText}); the breaker itself still runs
+ * from the in-memory mirror.
+ * @param toolName - the rejected tool.
+ * @param explanation - why the breaker rejects (trip kind and count).
+ * @returns the exact error text shown to the model.
+ */
+export function plainCircuitResultText(toolName: string, explanation: string): string {
+  return `Error: the rejection circuit breaker rejected tool "${toolName}" before review: ${explanation}`
+}
+
+/**
+ * Marker-free hard-disable text for hosts whose audit envelope cannot be
+ * written (see {@link plainDenyResultText}).
+ * @param toolName - the hard-disabled tool.
+ * @param source - which rule or policy entry disabled it.
+ * @returns the exact error text shown to the model.
+ */
+export function plainNeverResultText(toolName: string, source: string): string {
+  return `Error: tool "${toolName}" is hard-disabled by policy: ${source}`
+}
+
+/**
  * The session's auto-review override: the last `autoReview/state` event, or
  * `undefined` when the session never switched (callers apply the configured
  * `enableByDefault`). The pure fold — replay IS the state.

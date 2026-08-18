@@ -23,6 +23,11 @@ function invoke(definition: CommandDefinition | undefined, harness: Awaited<Retu
   })
 }
 
+/** Mount with the unmarked-audit opt-in (the rc.6 test peers need it for durable state events to reach the log). */
+function auditHarness(config: Record<string, unknown> = {}): ReturnType<typeof mountHarness> {
+  return mountHarness({ allowUnmarkedAudit: true, ...config })
+}
+
 describe('/auto-review command', () => {
   it('registers the command with its usage hint', async () => {
     const harness = await mountHarness()
@@ -41,7 +46,7 @@ describe('/auto-review command', () => {
   })
 
   it('switches off: durable state event + model-visible switch notice', async () => {
-    const harness = await mountHarness()
+    const harness = await auditHarness()
     const result = invoke(harness.commands.registered[0], harness, 'off')
     expect(result).toMatchObject({ kind: 'success' })
     const state = harness.session.events.find(event => event.type === 'autoReview/state')
@@ -53,7 +58,7 @@ describe('/auto-review command', () => {
   })
 
   it('switches back on and reports the change idempotently', async () => {
-    const harness = await mountHarness()
+    const harness = await auditHarness()
     invoke(harness.commands.registered[0], harness, 'off')
     const result = invoke(harness.commands.registered[0], harness, 'on')
     expect(result).toMatchObject({ kind: 'success' })
@@ -70,7 +75,7 @@ describe('/auto-review command', () => {
   })
 
   it('survives restore: the state override folds from a replayed session log', async () => {
-    const harness = await mountHarness()
+    const harness = await auditHarness()
     invoke(harness.commands.registered[0], harness, 'off')
     const restored = Session.create(SessionId('restored'), harness.session.events)
     expect(effectiveAutoReviewState(restored.events)).toBe(false)
@@ -80,7 +85,7 @@ describe('/auto-review command', () => {
   })
 
   it('records a one-shot override for a recent denial', async () => {
-    const harness = await mountHarness()
+    const harness = await auditHarness()
     const append = harness.session.append as unknown as (type: string, data: unknown) => unknown
     append.call(harness.session, 'approval/asked', { id: 'a1', toolName: 'bash' })
     append.call(harness.session, 'autoReview/verdict', {
@@ -115,7 +120,7 @@ describe('/auto-review command', () => {
   })
 
   it('reports cumulative statistics in status', async () => {
-    const harness = await mountHarness()
+    const harness = await auditHarness()
     const append = harness.session.append as unknown as (type: string, data: unknown) => unknown
     append.call(harness.session, 'approval/asked', { id: 'a1', toolName: 'bash' })
     append.call(harness.session, 'autoReview/verdict', {
@@ -154,7 +159,7 @@ describe('/auto-review command', () => {
   })
 
   it('reports a tripped circuit breaker in status', async () => {
-    const harness = await mountHarness()
+    const harness = await auditHarness()
     const append = harness.session.append as unknown as (type: string, data: unknown) => unknown
     append.call(harness.session, 'autoReview/circuit', {
       circuitId: 'c1',
