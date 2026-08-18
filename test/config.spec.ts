@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import Loader from '@deepseek-ai/cordis-plugin-loader'
 import { Config as ConfigSchema, resolveConfig } from '../src/index.ts'
 import * as plugin from '../src/index.ts'
 
@@ -128,5 +129,12 @@ describe('plugin module contract', () => {
     expect(plugin.inject).toEqual(['approval', 'subagents', 'commands', 'tools'])
     expect(typeof plugin.apply).toBe('function')
     expect(plugin.Config).toBeDefined()
+    // The Loader unwraps `exports.default ?? exports`; the namespace must
+    // survive that round-trip with name/inject/Config/apply intact.
+    const loader = Object.create(Loader.prototype)
+    const unwrapped = loader.unwrapExports(plugin)
+    expect(unwrapped).toBe(plugin)
+    expect(unwrapped.name).toBe('auto-review')
+    expect(unwrapped.inject).toEqual(['approval', 'subagents', 'commands', 'tools'])
   })
 })

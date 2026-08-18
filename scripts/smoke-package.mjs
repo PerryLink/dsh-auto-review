@@ -71,15 +71,18 @@ assert.ok(existsSync(pkgFile('cordis.patch.yml')), 'bundle patch shipped')
 console.log('smoke-package: node faces load, exports resolve, artifact contents verified')
 `)
 try {
-  // `shell: true` lets the same `npm` name work on every platform (Windows
-  // resolves npm.cmd through cmd.exe; CI shells resolve the npm binary).
-  const install = spawnSync('npm', ['install', '--no-audit', '--no-fund', '--ignore-scripts'], {
+  // `shell: true` lets the same `pnpm` name work on every platform
+  // (Windows resolves pnpm.cmd through cmd.exe; CI shells resolve the
+  // pnpm binary). pnpm is the harness's own package manager, so the smoke
+  // reproduces the real install path (npm's strict resolver crashes on
+  // the rc.7 peer graph).
+  const install = spawnSync('pnpm', ['install', '--ignore-scripts'], {
     cwd: scratch,
     stdio: 'inherit',
     shell: true,
   })
   if (install.error !== undefined) throw install.error
-  if (install.status !== 0) fail(`npm install of the tarball failed (exit ${install.status ?? 1})`)
+  if (install.status !== 0) fail(`pnpm install of the tarball failed (exit ${install.status ?? 1})`)
   const load = spawnSync(process.execPath, [checkFile], { cwd: scratch, stdio: 'inherit' })
   if (load.error !== undefined) throw load.error
   if (load.status !== 0) fail(`loading the installed package failed (exit ${load.status ?? 1})`)
