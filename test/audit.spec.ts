@@ -8,14 +8,14 @@ import { describe, expect, it } from 'vitest'
 import { isMarkedAuditEvent, isUnmarkedHostVersion, peerSessionVersion } from '../src/audit.ts'
 
 describe('isUnmarkedHostVersion', () => {
-  it('flags the known-unmarked rc.1–rc.6 lines', () => {
-    for (const version of ['0.1.0-rc.1', '0.1.0-rc.2', '0.1.0-rc.5', '0.1.0-rc.6', ' 0.1.0-rc.6 ']) {
+  it('flags the known-unmarked rc.1–rc.7 lines (no release stamps the marker yet)', () => {
+    for (const version of ['0.1.0-rc.1', '0.1.0-rc.2', '0.1.0-rc.5', '0.1.0-rc.6', '0.1.0-rc.7', ' 0.1.0-rc.7 ']) {
       expect(isUnmarkedHostVersion(version)).toBe(true)
     }
   })
 
-  it('treats later and non-rc versions as possibly-marker-aware', () => {
-    for (const version of ['0.1.0-rc.7', '0.2.0', '0.1.0', '1.0.0', '0.1.0-rc.6-nightly']) {
+  it('treats later and non-rc versions as possibly-marker-aware (verified by the probe)', () => {
+    for (const version of ['0.1.0-rc.8', '0.2.0', '0.1.0', '1.0.0', '0.1.0-rc.7-nightly']) {
       expect(isUnmarkedHostVersion(version)).toBe(false)
     }
   })

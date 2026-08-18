@@ -6,12 +6,17 @@ All notable changes to `dsh-auto-review` are documented here. The repo is pre-re
 
 ### Fixed
 
-- **rc.6 session-corruption fix (the #918 report).** On hosts whose `Session.append` predates the `ignorable` envelope-marker surface (the `0.1.0-rc.6` line silently drops the options bag), `autoReview/*` audit events used to land in the session log WITHOUT the marker — stricter hosts then refused to resume those sessions (`SessionFormatUnsupportedError`). The runtime now detects such hosts BEFORE polluting a log (installed-peer pre-check, then a probe of the first appended envelope's return value), disables session-log audit with a one-time warning, and degrades to an in-memory audit mirror: marker-free deny/fallback/circuit feedback, in-memory budgets, circuit breaker, `/auto-review on|off` override and `approve` feed. Marker-aware hosts (post-rc.6, or any unresolvable version that probes clean) keep the full event-based audit unchanged. `allowUnmarkedAudit: true` opts back into the old behavior on unmarked hosts (deliberately dangerous), and already-polluted logs can be repaired with `scripts/repair-session-logs.mjs` from `dsh-permission-rules` (its default target set now covers `autoReview/state`, `autoReview/verdict`, `autoReview/circuit`, `autoReview/override`, `autoReview/rejection`).
+- **rc session-corruption fix (the #918 report).** On hosts whose `Session.append` predates the `ignorable` envelope-marker surface (every released rc line through `0.1.0-rc.7` silently drops the options bag — the stamping fix exists on harness master only), `autoReview/*` audit events used to land in the session log WITHOUT the marker — stricter hosts then refused to resume those sessions (`SessionFormatUnsupportedError`). The runtime now detects such hosts BEFORE polluting a log (installed-peer pre-check, then a probe of the first appended envelope's return value), disables session-log audit with a one-time warning, and degrades to an in-memory audit mirror: marker-free deny/fallback/circuit feedback, in-memory budgets, circuit breaker, `/auto-review on|off` override and `approve` feed. Marker-aware hosts (a future release that stamps the marker, or any unresolvable version that probes clean) keep the full event-based audit unchanged. `allowUnmarkedAudit: true` opts back into the old behavior on unmarked hosts (deliberately dangerous), and already-polluted logs can be repaired with `scripts/repair-session-logs.mjs` from `dsh-permission-rules` (its default target set now covers `autoReview/state`, `autoReview/verdict`, `autoReview/circuit`, `autoReview/override`, `autoReview/rejection`).
 - `/auto-review status` reports the disabled-audit notice on unmarked hosts.
+- The browser half pins the api-remotes `commands` Remote namespace shape locally (the ambient namespace merge is fragile across strict package-manager copies on rc.7).
+
+### Changed
+
+- Peers and dev/test pins bumped `0.1.0-rc.6` → `0.1.0-rc.7` (npm `latest` moved); the full gate passes against the rc.7 peers, and `dshWorkshop.dshVersions` now lists both.
 
 ### Added
 
-- New `src/audit.ts` host-capability module (`isMarkedAuditEvent`, `isUnmarkedHostVersion`, `peerSessionVersion`) shared by every audit path; unit-tested in `test/audit.spec.ts`, and the full degraded path is covered by `test/audit-degradation.spec.ts` (rc.6 default safety, in-memory breaker/override/approve, the unversioned-host probe).
+- New `src/audit.ts` host-capability module (`isMarkedAuditEvent`, `isUnmarkedHostVersion`, `peerSessionVersion`) shared by every audit path; unit-tested in `test/audit.spec.ts`, and the full degraded path is covered by `test/audit-degradation.spec.ts` (unmarked-host default safety, in-memory breaker/override/approve, the unversioned-host probe).
 
 ## [0.5.0] — 2026-08-16
 

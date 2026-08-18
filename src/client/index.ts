@@ -38,6 +38,25 @@ export const name = 'dsh-auto-review'
 export const inject = ['slots', 'locale', 'remote', 'remote.commands']
 
 /**
+ * The structural shape of the api-remotes `commands` Remote namespace the
+ * panel needs. Declared locally because the ambient namespace merge onto
+ * `TypertClientRemote` is assembled from several generated modules and can
+ * resolve to a different physical copy under strict package managers —
+ * the runtime contract is what this client depends on, so the type is
+ * pinned to it explicitly (rc.6 and rc.7 both serve this shape).
+ */
+interface CommandsRemote {
+  readonly execute: (
+    agentId: SessionId,
+    line: string,
+    signal?: AbortSignal,
+  ) => Promise<
+    | { ok: false; error: { code: string; message: string } }
+    | { ok: true; value?: { result?: { kind?: string; text?: string } } }
+  >
+}
+
+/**
  * Browser plugin body: dictionaries, the scoped stylesheet, and the
  * session-header action registration.
  * @param ctx - client root context.
@@ -53,8 +72,9 @@ export function apply(ctx: ClientContext): void {
       order: 40,
       locale: NS,
       inject: (sessionId: SessionId): ReviewPanelInjected => {
+        const remote = ctx.remote as unknown as { commands: CommandsRemote }
         const executeCommand = async (line: string): Promise<string> => {
-          const result = await ctx.remote.commands.execute(sessionId, line)
+          const result = await remote.commands.execute(sessionId, line)
           if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
           if (result.value === undefined) throw new Error('unknown command: /auto-review')
           const command = result.value.result

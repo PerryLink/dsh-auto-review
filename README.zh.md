@@ -24,7 +24,7 @@
 
 | 方面 | 状态 |
 |---|---|
-| Harness | DeepSeek Harness `0.1.0-rc.6`（peer 依赖锁定在 `0.1.0-rc.6`） |
+| Harness | DeepSeek Harness `0.1.0-rc.7`（peer 依赖锁定在 `0.1.0-rc.7`） |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | 平台 | 全部（宿主 answerer；可选 Web 审查面板，依赖会话投影能力） |
 | 模型 | 任意（审查器默认继承会话代理的路由；`reviewerModel` 可覆盖） |
@@ -216,7 +216,7 @@ CI 门禁：仅当每个套件的每个用例都通过时，进程才以 0 退�
 
 - **权限**：workshop 清单声明 `session:append`、`approval:answer`、`subagent:spawn`、`command:register` 与 `tools:observe`。
 - **数据**：不向磁盘写入任何内容；报告环形缓冲在内存中且有界。自身不发起网络请求。
-- **会话日志**：`autoReview/*` 事件携带审查器身份、裁决、理由、风险与耗时 —— 以信封 `ignorable: true` 标记追加，任何构建都能加载日志。`Session.append` 早于该标记的宿主（`0.1.0-rc.6` 系列）会在首次追加前被探测出来（peer 版本预检 + 返回信封探测），审计降级为内存镜像 + 无标记反馈，会话日志始终保持可加载。
+- **会话日志**：`autoReview/*` 事件携带审查器身份、裁决、理由、风险与耗时 —— 以信封 `ignorable: true` 标记追加，任何构建都能加载日志。`Session.append` 早于该标记的宿主（迄今发布的所有 rc 版本，至 `0.1.0-rc.7`——任何发布版都还未盖标记）会在首次追加前被探测出来（peer 版本预检 + 返回信封探测），审计降级为内存镜像 + 无标记反馈，会话日志始终保持可加载。
 
 ## 安全边界
 
@@ -236,7 +236,7 @@ CI 门禁：仅当每个套件的每个用例都通过时，进程才以 0 退�
 - 风险规则按各自的 `field` 匹配请求的 `reason`、`toolName` 或脱敏后的调用 `arguments`；其他条件应放入 `toolsPolicy.overrides`。
 - `/auto-review approve` 覆盖授权的是下一次对同一工具的审查，而不是那次确切的历史调用；同一工具上的不同操作也会消耗它。
 - 裁决事件是仅日志的；Web 审查面板读取折叠后的 `autoReview` 投影（原始事件流绝不会到达浏览器插件）。
-- `autoReview/state` 与 `autoReview/verdict` 在支持标记的宿主上以信封 `ignorable: true` 追加，任何 harness 构建都能加载日志 —— 不认识这些仓库外类型的读取方直接跳过这些记录。rc.6 宿主上运行时会检测到标记被丢弃并完全不写这些事件（内存镜像继续提供命令、预算、熔断器与 `approve`）；pre-0.5.1 版本污染的会话可用 `dsh-permission-rules` 的 `scripts/repair-session-logs.mjs` 修复（其默认目标集已覆盖全部五种 `autoReview/*` 事件）。
+- `autoReview/state` 与 `autoReview/verdict` 在支持标记的宿主上以信封 `ignorable: true` 追加，任何 harness 构建都能加载日志 —— 不认识这些仓库外类型的读取方直接跳过这些记录。已发布的 rc 宿主（rc.1–rc.7）上运行时会检测到标记被丢弃并完全不写这些事件（内存镜像继续提供命令、预算、熔断器与 `approve`）；pre-0.5.1 版本污染的会话可用 `dsh-permission-rules` 的 `scripts/repair-session-logs.mjs` 修复（其默认目标集已覆盖全部五种 `autoReview/*` 事件）。
 - git 渠道需要 `dsh` CLI 为 `dsh-auto-review` 打印的那个 `allowBuilds` 键。仓库自带 `pnpm-workspace.yaml`，声明 `allowBuilds: { esbuild: true }`；`typescript` + `tsdown` 是普通 `dependencies`。
 - 可选的 invariant 配套插件需要 `invariants` 服务（agent-spine 组合，如 headless/ACP）；普通 web profile 不提供该服务，所以该行在 bundle 补丁中默认被注释。
 
