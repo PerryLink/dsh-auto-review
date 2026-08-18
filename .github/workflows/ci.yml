@@ -32,6 +32,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
       - run: pnpm test
+      - run: pnpm run test:coverage
+      - run: pnpm run lint
+      - run: pnpm run check:readmes
       - run: pnpm run build
       - run: pnpm run verify:self-contained
       # Pack once, then prove the SHIPPED artifact installs and loads: the

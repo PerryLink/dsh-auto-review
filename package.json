@@ -191,7 +191,9 @@
     "@deepseek-ai/schemastery": "^3.18.0",
     "@types/node": "^26.2.0",
     "@types/react": "18.3.31",
+    "@vitest/coverage-v8": "4.1.10",
     "jsdom": "^30.0.1",
+    "oxlint": "0.18.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "vitest": "^4.1.10"
@@ -200,6 +202,9 @@
     "build": "node scripts/prepare.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "oxlint",
+    "check:readmes": "node scripts/check-readme-sync.mjs",
     "prepare": "node scripts/prepare.mjs",
     "verify:self-contained": "node scripts/verify-self-contained.mjs",
     "prepublishOnly": "pnpm run typecheck && pnpm test && pnpm run build && pnpm run verify:self-contained"

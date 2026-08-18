@@ -7,6 +7,7 @@ import { createRequire } from 'node:module'
 import { spawnSync } from 'node:child_process'
 import { rmSync } from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const require = createRequire(import.meta.url)
 
@@ -30,4 +31,7 @@ rmSync(new URL('../lib', import.meta.url), { recursive: true, force: true })
 
 run(binOf('typescript', 'tsc'), ['-p', 'tsconfig.json'])
 run(binOf('tsdown', 'tsdown'), [])
+// TS 5.9 does not rewrite `.ts` specifiers in declaration emit; fix them so
+// NodeNext declaration consumers can resolve lib/types.
+run(path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'fix-dts.mjs'), [])
 console.log('build complete: lib/types + lib/index.js + lib/invariant.js + lib/client.js')
