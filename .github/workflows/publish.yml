@@ -53,10 +53,25 @@ jobs:
             exit 1
           fi
       - name: Publish to npm
-        # prepublishOnly re-runs the full gate on the fresh checkout.
-        run: pnpm publish --no-git-checks
+        # prepublishOnly re-runs the full gate on the fresh checkout. A tag
+        # push without the secret, or for a version already on the registry
+        # (e.g. published manually before the tag), skips the publish instead
+        # of failing the release tag.
+        shell: bash
         env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "NPM_TOKEN secret is not set; skipping npm publish"
+            exit 0
+          fi
+          if npm view "dsh-auto-review@${version}" version >/dev/null 2>&1; then
+            echo "dsh-auto-review@${version} is already published; skipping npm publish"
+          else
+            pnpm publish --no-git-checks
+          fi
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
