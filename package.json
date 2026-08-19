@@ -1,6 +1,6 @@
 {
   "name": "dsh-auto-review",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Second-model AI auto-review for DeepSeek Harness approval requests: a read-only reviewer subagent decides allow/deny on the approval answerer chain, with fail-closed fallback and full session-log audit.",
   "private": false,
   "author": {

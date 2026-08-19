@@ -2,6 +2,12 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [0.5.2] — 2026-08-19
+
+### Fixed
+
+- The circuit breaker's deferred abort-turn `setTimeout(…, 0)` is now tracked by the runtime and cleared through a teardown effect when the plugin fiber unloads — an unload inside the macro-task window can no longer fire a stale `agent.cancel` against a disposed composition.
+
 ## [0.5.1] — 2026-08-17
 
 ### Fixed
