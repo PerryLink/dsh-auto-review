@@ -167,7 +167,8 @@ function policyFor(config: ResolvedConfig, request: ApprovalRequest, argumentsTe
 
 /**
  * Answerer state and behavior. One instance per plugin mount; disposals are
- * owned by the ctx.on / commands.register effects in {@link apply}.
+ * owned by the ctx.on / commands.register effects in {@link apply}, plus the
+ * teardown effect that clears the pending circuit-breaker timers.
  */
 export class AutoReviewRuntime {
   /** Live reviewer child sessions — their approval asks never re-enter AI review. */
@@ -184,6 +185,9 @@ export class AutoReviewRuntime {
 
   /** The one-time warning that session-log audit was disabled was already logged. */
   private warnedUnmarked = false
+
+  /** Pending circuit-breaker abort-turn timers, cleared when the plugin unloads. */
+  private readonly pendingAborts = new Set<ReturnType<typeof setTimeout>>()
 
   constructor(
     private readonly ctx: Context,
@@ -621,9 +625,11 @@ export class AutoReviewRuntime {
         content: [{ type: 'text', text: messages(this.config.language).circuitNotice(trip.kind, trip.count) }],
         source: { kind: 'plugin', plugin: 'auto-review' },
       }))
-      setTimeout(() => {
+      const timer = setTimeout(() => {
+        this.pendingAborts.delete(timer)
         request.agent.cancel({ kind: 'hook', reason: `auto-review circuit breaker: ${trip.kind} ${trip.count}` })
       }, 0)
+      this.pendingAborts.add(timer)
     }
   }
 
@@ -827,6 +833,12 @@ export class AutoReviewRuntime {
       text: t.approveResult(target.toolName, String(target.reviewId), Math.round(this.config.overrideTtlMs / 60_000)),
     }
   }
+
+  /** Clear every pending circuit-breaker abort-turn timer; called by the plugin fiber's teardown effect. */
+  dispose(): void {
+    for (const timer of this.pendingAborts) clearTimeout(timer)
+    this.pendingAborts.clear()
+  }
 }
 
 /**
@@ -841,6 +853,8 @@ export class AutoReviewRuntime {
 export function apply(ctx: Context, config: Config): void {
   const resolved = resolveConfig(config)
   const runtime = new AutoReviewRuntime(ctx, resolved)
+  // Unloading the plugin clears any pending circuit-breaker abort-turn timer.
+  ctx.effect(() => () => runtime.dispose(), 'dsh-auto-review: runtime teardown')
   // The resolved runtime is also published as a service so in-process
   // consumers (the dsh-eval engine) read the exact mounted configuration
   // instead of re-resolving a second, driftable copy.
