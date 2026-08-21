@@ -19,11 +19,12 @@ function invoke(definition: CommandDefinition | undefined, harness: Awaited<Retu
     commandId: CommandId('cmd-1'),
     agent: harness.agent,
     rawInput,
+    attachments: [],
     signal: new AbortController().signal,
   })
 }
 
-/** Mount with the unmarked-audit opt-in (the rc.6 test peers need it for durable state events to reach the log). */
+/** Mount with the unmarked-audit opt-in (the released rc test peers need it for durable state events to reach the log). */
 function auditHarness(config: Record<string, unknown> = {}): ReturnType<typeof mountHarness> {
   return mountHarness({ allowUnmarkedAudit: true, ...config })
 }

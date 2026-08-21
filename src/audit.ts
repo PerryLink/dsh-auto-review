@@ -35,7 +35,7 @@ export function isMarkedAuditEvent(result: unknown): boolean {
 /**
  * Whether a `@deepseek-ai/dsh-session` version line predates the
  * `ignorable` envelope-marker surface: every released rc line through
- * `0.1.0-rc.7` silently drops the marker from `Session.append` options
+ * `0.1.0-rc.8` silently drops the marker from `Session.append` options
  * (the stamping fix exists on harness master only — no release carries it
  * yet), so audit events written by those builds land unmarked and break
  * resume on stricter hosts. Extend the bound when a new rc line ships that
@@ -43,12 +43,12 @@ export function isMarkedAuditEvent(result: unknown): boolean {
  * versions are treated as possibly-marker-aware and verified by the append
  * probe.
  * @param version - the installed peer version string.
- * @returns true for the known-unmarked rc.1–rc.7 lines.
+ * @returns true for the known-unmarked rc.1–rc.8 lines.
  */
 export function isUnmarkedHostVersion(version: string): boolean {
   const match = /^0\.1\.0-rc\.(\d+)$/.exec(version.trim())
   if (match === null) return false
-  return Number(match[1]) <= 7
+  return Number(match[1]) <= 8
 }
 
 /**

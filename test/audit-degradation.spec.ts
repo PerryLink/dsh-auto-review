@@ -1,11 +1,12 @@
 /**
- * The rc.6-safe degraded path: on hosts whose `Session.append` drops the
- * `ignorable` envelope marker (the 0.1.0-rc.6 peers this suite runs
- * against), the runtime must NEVER write unmarked `autoReview/*` events —
- * they would make sessions unresumable on stricter harness builds. Instead
- * it degrades to an in-memory mirror: marker-free feedback, in-memory
- * budgets/breaker/override/approve, and a status notice. The append probe
- * for unversioned hosts is covered last.
+ * The unmarked-host degraded path: on hosts whose `Session.append` drops
+ * the `ignorable` envelope marker (every released rc line through
+ * 0.1.0-rc.8; this suite pins the peer version to 0.1.0-rc.6 to exercise
+ * the pre-check), the runtime must NEVER write unmarked `autoReview/*`
+ * events — they would make sessions unresumable on stricter harness
+ * builds. Instead it degrades to an in-memory mirror: marker-free
+ * feedback, in-memory budgets/breaker/override/approve, and a status
+ * notice. The append probe for unversioned hosts is covered last.
  * @module dsh-auto-review/test/audit-degradation.spec
  */
 
@@ -28,6 +29,7 @@ function invoke(definition: CommandDefinition | undefined, harness: Awaited<Retu
     commandId: CommandId('cmd-1'),
     agent: harness.agent,
     rawInput,
+    attachments: [],
     signal: new AbortController().signal,
   })
 }
