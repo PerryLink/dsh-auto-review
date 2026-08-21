@@ -16,7 +16,7 @@ body:
     attributes:
       label: Harness runtime version
       description: The DeepSeek Harness runtime it runs on (e.g. `@deepseek-ai/dsh` version, or `dsh --version` output).
-      placeholder: '0.1.0-rc.6'
+      placeholder: '0.1.0-rc.8'
     validations:
       required: true
   - type: input
