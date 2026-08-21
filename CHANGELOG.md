@@ -2,6 +2,14 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [0.5.3] — 2026-08-21
+
+### Changed
+
+- Peers and dev/test pins bumped `0.1.0-rc.7` → `0.1.0-rc.8` (npm `next` moved; the batch rc8 compatibility release). Peer specs now use the `>=0.1.0-rc.8 <0.2.0` range form; runtime `dependencies` and `devDependencies` pin the exact `0.1.0-rc.8` line, and `dshWorkshop.dshVersions` lists `0.1.0-rc.8`.
+- `isUnmarkedHostVersion` bound extended to `0.1.0-rc.8`: the rc.8 release still drops the `ignorable` envelope marker (the stamping fix exists on harness master only), so rc.8 hosts are detected BEFORE the first append and session-log audit degrades to the in-memory mirror instead of polluting the log with an unmarked `autoReview/*` event. Docs (five-language READMEs, AGENTS.md) and the README compatibility table updated to the rc.8 line.
+- `scripts/check-host-versions.mjs` now accepts both exact (`0.1.0-rc.N`) and range (`>=0.1.0-rc.N <0.2.0`) peer pins and fails when they no longer cover the newest rc line published by `@deepseek-ai/dsh` (on `latest` or `next`).
+
 ## [0.5.2] — 2026-08-19
 
 ### Fixed

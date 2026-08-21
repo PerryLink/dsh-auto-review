@@ -24,7 +24,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `0.1.0-rc.7` (peers pinned to `0.1.0-rc.7`) |
+| Harness | DeepSeek Harness `0.1.0-rc.8` (peers pinned to `0.1.0-rc.8`) |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | Platforms | All (host answerer; optional Web review panel via the session-projection capability) |
 | Model | Any (the reviewer inherits the session agent's route; `reviewerModel` overrides) |
@@ -216,7 +216,7 @@ CI gate: the process exits 0 only when every case of every suite passed — drop
 
 - **Permissions**: the workshop manifest declares `session:append`, `approval:answer`, `subagent:spawn`, `command:register`, and `tools:observe`.
 - **Data**: nothing is stored on disk; the report ring buffer is in-memory and bounded. No network requests of its own.
-- **Session log**: `autoReview/*` events carry reviewer identity, verdict, reason, risk, and duration — appended with the envelope's `ignorable: true` marker so any build loads the log. Hosts whose `Session.append` predates the marker (every released rc line through `0.1.0-rc.7` — no release stamps it yet) are detected before the first append (peer-version pre-check, then a probe of the returned envelope) and audit degrades to an in-memory mirror with marker-free feedback, so sessions stay loadable everywhere.
+- **Session log**: `autoReview/*` events carry reviewer identity, verdict, reason, risk, and duration — appended with the envelope's `ignorable: true` marker so any build loads the log. Hosts whose `Session.append` predates the marker (every released rc line through `0.1.0-rc.8` — no release stamps it yet) are detected before the first append (peer-version pre-check, then a probe of the returned envelope) and audit degrades to an in-memory mirror with marker-free feedback, so sessions stay loadable everywhere.
 
 ## Security boundaries
 
@@ -236,7 +236,7 @@ CI gate: the process exits 0 only when every case of every suite passed — drop
 - Risk rules match the request `reason`, the `toolName`, or the redacted call `arguments` per their `field`; other conditions belong in `toolsPolicy.overrides`.
 - The `/auto-review approve` override authorizes the next same-tool review, not the exact historical call; a different action on the same tool consumes it.
 - The verdict events are log-only; the Web review panel reads the folded `autoReview` projection (the raw event stream never reaches browser plugins).
-- `autoReview/state` and `autoReview/verdict` are appended with the envelope's `ignorable: true` marker on hosts that honor it, so any harness build loads the log — readers that do not know the out-of-repo types simply skip those records. On released rc hosts (rc.1–rc.7) the runtime detects the dropped marker and never writes these events (the in-memory mirror keeps the command, budgets, breaker, and `approve` working for the session); sessions already polluted by pre-0.5.1 versions can be repaired with `scripts/repair-session-logs.mjs` from `dsh-permission-rules` (its default target set covers all five `autoReview/*` event types).
+- `autoReview/state` and `autoReview/verdict` are appended with the envelope's `ignorable: true` marker on hosts that honor it, so any harness build loads the log — readers that do not know the out-of-repo types simply skip those records. On released rc hosts (rc.1–rc.8) the runtime detects the dropped marker and never writes these events (the in-memory mirror keeps the command, budgets, breaker, and `approve` working for the session); sessions already polluted by pre-0.5.1 versions can be repaired with `scripts/repair-session-logs.mjs` from `dsh-permission-rules` (its default target set covers all five `autoReview/*` event types).
 - The git channel needs the single `allowBuilds` key the `dsh` CLI prints for `dsh-auto-review` itself. The repo ships its own `pnpm-workspace.yaml` with `allowBuilds: { esbuild: true }`; `typescript` + `tsdown` are regular `dependencies`.
 - The optional invariant companion needs the `invariants` service (agent-spine compositions such as headless/ACP); the plain web profile does not provide it, so the row ships commented out in the bundle patch.
 
