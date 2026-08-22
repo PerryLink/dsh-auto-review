@@ -25,7 +25,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `0.1.0-rc.8` (peers pinned to `0.1.0-rc.8`) |
+| Harness | DeepSeek Harness `0.1.1-rc.2` (dependencies pinned to `0.1.1-rc.2`; peers `>=0.1.0-rc.8 <0.2.0`) |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | Platforms | All (host answerer; optional Web review panel via the session-projection capability) |
 | Model | Any (the reviewer inherits the session agent's route; `reviewerModel` overrides) |
@@ -217,7 +217,7 @@ CI gate: the process exits 0 only when every case of every suite passed — drop
 
 - **Permissions**: the workshop manifest declares `session:append`, `approval:answer`, `subagent:spawn`, `command:register`, and `tools:observe`.
 - **Data**: nothing is stored on disk; the report ring buffer is in-memory and bounded. No network requests of its own.
-- **Session log**: `autoReview/*` events carry reviewer identity, verdict, reason, risk, and duration — appended with the envelope's `ignorable: true` marker so any build loads the log. Hosts whose `Session.append` predates the marker (every released rc line through `0.1.0-rc.8` — no release stamps it yet) are detected before the first append (peer-version pre-check, then a probe of the returned envelope) and audit degrades to an in-memory mirror with marker-free feedback, so sessions stay loadable everywhere.
+- **Session log**: `autoReview/*` events carry reviewer identity, verdict, reason, risk, and duration — appended with the envelope's `ignorable: true` marker so any build loads the log. Hosts whose `Session.append` predates the marker (every released rc line through `0.1.1-rc.2` — no release stamps it yet) are detected before the first append (peer-version pre-check, then a probe of the returned envelope) and audit degrades to an in-memory mirror with marker-free feedback, so sessions stay loadable everywhere.
 
 ## Security boundaries
 

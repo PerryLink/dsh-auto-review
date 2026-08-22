@@ -24,7 +24,7 @@
 
 | Superficie | Estado |
 |---|---|
-| Harness | DeepSeek Harness `0.1.0-rc.8` (peers fijados a `0.1.0-rc.8`) |
+| Harness | DeepSeek Harness `0.1.1-rc.2` (dependencias fijadas a `0.1.1-rc.2`; peers `>=0.1.0-rc.8 <0.2.0`) |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | Plataformas | Todas (answerer de host; panel web opcional mediante la capacidad de proyección de sesión) |
 | Modelo | Cualquiera (el revisor hereda la ruta del agente de sesión; `reviewerModel` la reemplaza) |
@@ -216,7 +216,7 @@ Puerta de CI: el proceso sale con 0 solo cuando todos los casos de todas las sui
 
 - **Permisos**: el manifiesto del workshop declara `session:append`, `approval:answer`, `subagent:spawn`, `command:register` y `tools:observe`.
 - **Datos**: nada se guarda en disco; el búfer circular de informes está en memoria y acotado. Sin peticiones de red propias.
-- **Registro de sesión**: los eventos `autoReview/*` llevan identidad del revisor, veredicto, razón, riesgo y duración — añadidos con el marcador de sobre `ignorable: true` para que cualquier compilación cargue el registro. Los hosts cuyo `Session.append` es anterior al marcador (todas las líneas rc publicadas hasta `0.1.0-rc.8` — ninguna versión lo estampa aún) se detectan antes del primer append (precomprobación de la versión del peer y luego sondeo del sobre devuelto) y la auditoría se degrada a un espejo en memoria con comentarios sin marcador, de modo que las sesiones siguen siendo cargables en todas partes.
+- **Registro de sesión**: los eventos `autoReview/*` llevan identidad del revisor, veredicto, razón, riesgo y duración — añadidos con el marcador de sobre `ignorable: true` para que cualquier compilación cargue el registro. Los hosts cuyo `Session.append` es anterior al marcador (todas las líneas rc publicadas hasta `0.1.1-rc.2` — ninguna versión lo estampa aún) se detectan antes del primer append (precomprobación de la versión del peer y luego sondeo del sobre devuelto) y la auditoría se degrada a un espejo en memoria con comentarios sin marcador, de modo que las sesiones siguen siendo cargables en todas partes.
 
 ## Límites de seguridad
 

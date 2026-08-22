@@ -2,6 +2,15 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [0.5.4] — 2026-08-22
+
+### Changed
+
+- Runtime `dependencies` and `devDependencies` pin the exact `0.1.1-rc.2` line and `dshWorkshop.dshVersions` lists `0.1.1-rc.2`; the peer specs stay on the `>=0.1.0-rc.8 <0.2.0` range, which already covers `0.1.1-rc.2`.
+- The session-projection unit migrated to the rc2 `ProjectionDefinition` contract (`stateSchema` + `wire: { viewSchema, view }` + the required `stateVersion`), and the `autoReview` key now declares both the client `SessionProjectionMap` and the host `SessionProjectionStateMap` entries.
+- The browser panel calls the rc2 `remote.commands.execute` shape (empty image list for the text-only `/auto-review` command).
+- `scripts/check-host-versions.mjs` now recognizes the `0.1.1-rc.N` line family; `pnpm-workspace.yaml` excludes the whole `@deepseek-ai/*` scope from `minimumReleaseAge`; the compat workflow pins the rc2 CLI and `dsh-base`/`dsh-headless` bundles.
+
 ## [0.5.3] — 2026-08-21
 
 ### Changed
