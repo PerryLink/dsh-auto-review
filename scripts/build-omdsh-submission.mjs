@@ -30,7 +30,7 @@ const submission = {
     ref,
     updatedAt,
     channel: 'stable',
-    compatibility: '0.1.0-rc.6',
+    compatibility: '0.1.1-rc.2',
     changelog: '0.4.1 adds the omdsh-workshop-package/v1 dshWorkshop intake manifest plus author-run install/remove evidence; runtime behavior is unchanged from 0.4.0.',
     capabilities: { requiresFabric: false, deepHook: false, restartRequired: true },
     profileBundle: { packageName: 'dsh-auto-review', spec: pkg.version },

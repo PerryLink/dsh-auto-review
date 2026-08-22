@@ -81,7 +81,7 @@ jobs:
           pnpm run build
           pnpm pack --pack-destination "$RUNNER_TEMP"
       - name: Install dsh CLI
-        run: npm install -g @deepseek-ai/dsh@0.1.0-rc.8
+        run: npm install -g @deepseek-ai/dsh@0.1.1-rc.2
 
       - name: Install into a scratch profile (builds allowlisted)
         run: |
@@ -101,7 +101,7 @@ jobs:
             protobufjs: true
             '@google/genai': true
           YAML
-          dsh plugin --profile compat add '@deepseek-ai/dsh-base@0.1.0-rc.8' '@deepseek-ai/dsh-headless@0.1.0-rc.8' "$TARBALL"
+          dsh plugin --profile compat add '@deepseek-ai/dsh-base@0.1.1-rc.2' '@deepseek-ai/dsh-headless@0.1.1-rc.2' "$TARBALL"
 
       - name: Row-mount assertion
         run: |
