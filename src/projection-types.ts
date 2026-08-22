@@ -54,8 +54,33 @@ export interface AutoReviewProjection {
   readonly recentDenies: readonly AutoReviewDenyView[]
 }
 
+/**
+ * The host fold state behind the `autoReview` projection unit — plain JSON
+ * (the persisted-cache precondition). It carries the internal counters the
+ * wire value derives `avgDurationMs` from (`durationSum`/`decided`) and the
+ * open-turn gate (`turnOpen`) that the client never needs.
+ */
+export interface AutoReviewProjectionState {
+  readonly enabled: boolean
+  readonly turnOpen: boolean
+  readonly verdictsUsed: number
+  readonly failuresUsed: number
+  readonly allows: number
+  readonly denies: number
+  readonly fallbacks: number
+  readonly neverRejects: number
+  readonly durationSum: number
+  readonly decided: number
+  readonly circuit: AutoReviewProjection['circuit']
+  readonly recent: readonly AutoReviewVerdictView[]
+  readonly recentDenies: readonly AutoReviewDenyView[]
+}
+
 declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionMap {
     autoReview: AutoReviewProjection
+  }
+  interface SessionProjectionStateMap {
+    autoReview: AutoReviewProjectionState
   }
 }

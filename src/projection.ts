@@ -10,7 +10,7 @@
 import { z } from 'zod'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { SessionEvent, SessionEventMap } from '@deepseek-ai/dsh-session'
-import type { AutoReviewDenyView, AutoReviewProjection, AutoReviewVerdictView } from './projection-types.ts'
+import type { AutoReviewDenyView, AutoReviewProjection, AutoReviewProjectionState, AutoReviewVerdictView } from './projection-types.ts'
 
 /** How many verdict rows the panel carries. */
 const RECENT_CAP = 8
@@ -59,23 +59,6 @@ export const AUTO_REVIEW_PROJECTION_SCHEMA = z.object({
   recent: z.array(VERDICT_VIEW_SCHEMA),
   recentDenies: z.array(DENY_VIEW_SCHEMA),
 })
-
-/** The fold's plain-JSON state (the persisted-cache precondition). */
-export interface AutoReviewProjectionState {
-  readonly enabled: boolean
-  readonly turnOpen: boolean
-  readonly verdictsUsed: number
-  readonly failuresUsed: number
-  readonly allows: number
-  readonly denies: number
-  readonly fallbacks: number
-  readonly neverRejects: number
-  readonly durationSum: number
-  readonly decided: number
-  readonly circuit: AutoReviewProjection['circuit']
-  readonly recent: readonly AutoReviewVerdictView[]
-  readonly recentDenies: readonly AutoReviewDenyView[]
-}
 
 /** Drop `readonly` from a view type so a fold can fill optional fields conditionally. */
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
@@ -198,6 +181,32 @@ export function viewAutoReview(state: AutoReviewProjectionState): AutoReviewProj
   }
 }
 
+/** Strict state schema — validates the persisted fold state before it seeds a fold. */
+export const AUTO_REVIEW_STATE_SCHEMA = z.object({
+  enabled: z.boolean(),
+  turnOpen: z.boolean(),
+  verdictsUsed: z.number().int().nonnegative(),
+  failuresUsed: z.number().int().nonnegative(),
+  allows: z.number().int().nonnegative(),
+  denies: z.number().int().nonnegative(),
+  fallbacks: z.number().int().nonnegative(),
+  neverRejects: z.number().int().nonnegative(),
+  durationSum: z.number().int().nonnegative(),
+  decided: z.number().int().nonnegative(),
+  circuit: CIRCUIT_VIEW_SCHEMA,
+  recent: z.array(VERDICT_VIEW_SCHEMA),
+  recentDenies: z.array(DENY_VIEW_SCHEMA),
+})
+
+/**
+ * The register-ready client-visible unit shape: the rc2 `register` overload
+ * requires `wire` to be PRESENT for a `SessionProjectionMap` key (the plain
+ * `ProjectionDefinition` keeps `wire` optional for host-only units).
+ */
+type AutoReviewProjectionUnit = Omit<ProjectionDefinition<'autoReview', AutoReviewProjectionState>, 'wire'> & {
+  wire: NonNullable<ProjectionDefinition<'autoReview', AutoReviewProjectionState>['wire']>
+}
+
 /**
  * Build the registered unit for one mount. The unit's initial `enabled` is
  * the mount's resolved `enableByDefault` (the pure `init` cannot see plugin
@@ -208,15 +217,18 @@ export function viewAutoReview(state: AutoReviewProjectionState): AutoReviewProj
  * @param enabledByDefault - the resolved `enableByDefault` config value.
  * @returns the projection unit for `ctx.sessionProjections.register`.
  */
-export function makeAutoReviewProjection(enabledByDefault: boolean): ProjectionDefinition<'autoReview', AutoReviewProjectionState> {
+export function makeAutoReviewProjection(enabledByDefault: boolean): AutoReviewProjectionUnit {
   return {
     key: 'autoReview',
     // zod v4's `.optional()` output carries `| undefined`, which exact-optional
     // property types reject; the runtime validation is what matters on the wire.
-    schema: AUTO_REVIEW_PROJECTION_SCHEMA as unknown as ProjectionDefinition<'autoReview', AutoReviewProjectionState>['schema'],
+    stateSchema: AUTO_REVIEW_STATE_SCHEMA as unknown as ProjectionDefinition<'autoReview', AutoReviewProjectionState>['stateSchema'],
     init: () => initAutoReviewProjection(enabledByDefault),
     apply: applyAutoReview,
-    view: viewAutoReview,
+    wire: {
+      viewSchema: AUTO_REVIEW_PROJECTION_SCHEMA as unknown as NonNullable<ProjectionDefinition<'autoReview', AutoReviewProjectionState>['wire']>['viewSchema'],
+      view: viewAutoReview,
+    },
     // v2: `init.enabled` follows `enableByDefault` (was hardcoded true) and the
     // wire gained the cumulative `neverRejects` counter.
     stateVersion: 2,

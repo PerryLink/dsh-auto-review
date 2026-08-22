@@ -49,7 +49,7 @@ interface CommandsRemote {
   readonly execute: (
     agentId: SessionId,
     line: string,
-    signal?: AbortSignal,
+    images?: readonly unknown[],
   ) => Promise<
     | { ok: false; error: { code: string; message: string } }
     | { ok: true; value?: { result?: { kind?: string; text?: string } } }
@@ -74,7 +74,7 @@ export function apply(ctx: ClientContext): void {
       inject: (sessionId: SessionId): ReviewPanelInjected => {
         const remote = ctx.remote as unknown as { commands: CommandsRemote }
         const executeCommand = async (line: string): Promise<string> => {
-          const result = await remote.commands.execute(sessionId, line)
+          const result = await remote.commands.execute(sessionId, line, [])
           if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
           if (result.value === undefined) throw new Error('unknown command: /auto-review')
           const command = result.value.result
