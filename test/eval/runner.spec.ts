@@ -16,7 +16,7 @@ import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import type { Session, SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
 import { parseSuite } from '../../src/eval/dsl.ts'
 import type { EvalSuite } from '../../src/eval/dsl.ts'
-import { EvalEngine } from '../../src/eval/runner.ts'
+import { EvalEngine, resolvePromptBaselines } from '../../src/eval/runner.ts'
 
 const REVIEW_CONFIG = { reviewerProvider: 'mock', reviewerTimeoutMs: 1000, reviewerTools: ['read'] }
 
@@ -272,5 +272,35 @@ cases:
     }, { keepWorkspaces: true })
     expect(report.cases[0]?.status).toBe('pass')
     expect(existsSync(seenWorkspace as string)).toBe(true)
+  })
+})
+
+describe('resolvePromptBaselines', () => {
+  it('passes inline baselines through and reads baselineFrom files', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-eval-baseline-'))
+    dirs.push(root)
+    await writeFile(join(root, 'base.txt'), 'You are a helpful software engineer assistant.')
+    const suite = parseSuite(`
+name: s
+cases:
+  - id: inline
+    input: "1"
+    expect:
+      prompt: {baseline: "inline baseline"}
+  - id: fromFile
+    input: "2"
+    expect:
+      prompt: {baselineFrom: "base.txt"}
+`) as EvalSuite
+    const map = await resolvePromptBaselines(suite, root)
+    expect(map.get('inline')).toBe('inline baseline')
+    expect(map.get('fromFile')).toBe('You are a helpful software engineer assistant.')
+  })
+
+  it('fails loud on a missing baselineFrom file', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-eval-baseline-'))
+    dirs.push(root)
+    const suite = parseSuite('name: s\ncases:\n  - id: a\n    input: "1"\n    expect:\n      prompt: {baselineFrom: "nope.txt"}\n') as EvalSuite
+    await expect(resolvePromptBaselines(suite, root)).rejects.toThrow(/cannot read prompt baselineFrom/u)
   })
 })

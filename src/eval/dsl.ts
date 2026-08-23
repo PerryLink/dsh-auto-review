@@ -76,6 +76,52 @@ const OUTPUT_EXPECTATION = z.object({
   { message: 'output expectation must declare at least one of: contains, notContains, regex, notRegex' },
 )
 
+/** Prompt-regression expectation: the rendered system prompt must match a committed baseline. */
+const PROMPT_EXPECTATION = z.object({
+  /** Inline baseline system prompt the captured prompt must equal. */
+  baseline: z.string().optional(),
+  /** Path to a baseline file (relative to the suite file, or absolute). */
+  baselineFrom: z.string().min(1).optional(),
+  /** Regexes that whitelist changed lines: a change covered by any of these does not fail the diff. */
+  allowedChanges: z.array(z.string().min(1)).optional(),
+}).refine(value => value.baseline !== undefined || value.baselineFrom !== undefined, {
+  message: 'prompt expectation must declare exactly one of: baseline, baselineFrom',
+}).refine(value => !(value.baseline !== undefined && value.baselineFrom !== undefined), {
+  message: 'prompt expectation must declare exactly one of: baseline, baselineFrom',
+})
+
+/** Stress-metric expectation: gate P99 latency, TTFT, and token generation speed. */
+const STRESS_EXPECTATION = z.object({
+  /** 99th-percentile step latency must stay at or below this (ms). */
+  maxP99Ms: z.number().positive().optional(),
+  /** Worst time-to-first-token must stay at or below this (ms). */
+  maxTtftMs: z.number().positive().optional(),
+  /** Aggregate token generation speed must reach at least this (tokens/second). */
+  minTokensPerSecond: z.number().positive().optional(),
+}).refine(
+  value => value.maxP99Ms !== undefined || value.maxTtftMs !== undefined || value.minTokensPerSecond !== undefined,
+  { message: 'stress expectation must declare at least one of: maxP99Ms, maxTtftMs, minTokensPerSecond' },
+)
+
+/** Fairness (bias-radar) expectation: a configurable lexicon of category regexes over the final output. */
+const BIAS_EXPECTATION = z.object({
+  /** Bias dimension → regex sources. Each dimension is one radar axis. */
+  categories: z.record(z.string(), z.array(z.string().min(1)).min(1)).default(() => ({})),
+  /** Regexes that must never match the final output. */
+  forbid: z.array(z.string().min(1)).default(() => []),
+  /** Total hits across every category must stay at or below this. */
+  maxHits: z.number().int().min(0).optional(),
+  /** Each category's hits must stay at or below this. */
+  maxCategoryHits: z.number().int().min(0).optional(),
+}).refine(
+  value => value.forbid.length > 0 || Object.keys(value.categories).length > 0
+    || value.maxHits !== undefined || value.maxCategoryHits !== undefined,
+  { message: 'bias expectation must declare categories, forbid, maxHits, or maxCategoryHits' },
+).refine(
+  value => value.maxCategoryHits === undefined || Object.keys(value.categories).length > 0,
+  { message: 'maxCategoryHits requires at least one bias category' },
+)
+
 /** Structured expectation block of one case. */
 const EXPECTATION = z.object({
   /** The ordered tool-call sequence expectation: each entry consumes the earliest still-unconsumed matching call (skips allowed). */
@@ -92,6 +138,12 @@ const EXPECTATION = z.object({
   turnEnds: z.enum(['completed', 'any']).default('completed'),
   /** Total output tokens (summed across steps) must stay at or below this. */
   maxTokens: z.number().int().min(0).optional(),
+  /** Prompt-regression assertion (side-by-side diff against a baseline). */
+  prompt: PROMPT_EXPECTATION.optional(),
+  /** Stress-metric assertion (P99 latency / TTFT / token speed). */
+  stress: STRESS_EXPECTATION.optional(),
+  /** Fairness (bias-radar) assertion. */
+  bias: BIAS_EXPECTATION.optional(),
 })
 
 /** Second-model review block: a supplementary assertion layer over the same run. */
@@ -193,6 +245,15 @@ export type ResultExpectation = z.infer<typeof RESULT_EXPECTATION>
 
 /** Final-output expectation. */
 export type OutputExpectation = z.infer<typeof OUTPUT_EXPECTATION>
+
+/** Prompt-regression expectation. */
+export type PromptExpectation = z.infer<typeof PROMPT_EXPECTATION>
+
+/** Stress-metric expectation. */
+export type StressExpectation = z.infer<typeof STRESS_EXPECTATION>
+
+/** Fairness (bias-radar) expectation. */
+export type BiasExpectation = z.infer<typeof BIAS_EXPECTATION>
 
 /** Suite schema (zod v4). */
 export const SuiteSchema: z.ZodType<EvalSuite> = SUITE

@@ -18,7 +18,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { isAbsolute, join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
@@ -140,6 +140,40 @@ export function evalReviewConfig(config: ResolvedConfig): EvalReviewConfig {
     reviewerTimeoutMs: config.reviewerTimeoutMs,
     reviewerTools: config.reviewerTools,
   }
+}
+
+/**
+ * Resolve every `expect.prompt` baseline into its text: inline `baseline`
+ * passes through, and `baselineFrom` is read relative to the suite file (or
+ * as an absolute path). A missing/unreadable file fails loudly BEFORE any
+ * agent runs — a prompt-regression case whose baseline cannot load is a
+ * configuration error, not a silent skip.
+ * @param suite - the validated suite.
+ * @param suiteDir - the suite-file directory (anchor for relative paths).
+ * @returns a case-id → baseline-text map.
+ */
+export async function resolvePromptBaselines(suite: EvalSuite, suiteDir?: string): Promise<ReadonlyMap<string, string>> {
+  const map = new Map<string, string>()
+  for (const caze of suite.cases) {
+    const prompt = caze.expect.prompt
+    if (prompt === undefined) continue
+    if (prompt.baseline !== undefined) {
+      map.set(caze.id, prompt.baseline)
+      continue
+    }
+    const rel = prompt.baselineFrom
+    if (rel !== undefined) {
+      const path = isAbsolute(rel) ? rel : resolve(suiteDir ?? process.cwd(), rel)
+      let text: string
+      try {
+        text = await readFile(path, 'utf8')
+      } catch (error: unknown) {
+        throw new TypeError(`case "${caze.id}": cannot read prompt baselineFrom ${JSON.stringify(rel)}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+      map.set(caze.id, text)
+    }
+  }
+  return map
 }
 
 /** Serialize one session header as the persistence-backend header line. */
@@ -271,6 +305,7 @@ export class EvalEngine {
       }
       validateExpectations(caze)
     }
+    const promptBaselines = await resolvePromptBaselines(suite, options.suiteDir)
     await mkdir(options.workspaceRoot, { recursive: true })
     const startedAt = Date.now()
     const concurrency = Math.max(1, Math.min(options.concurrency, suite.cases.length))
@@ -281,7 +316,7 @@ export class EvalEngine {
         const index = cursor
         cursor += 1
         const caze = suite.cases[index] as EvalCase
-        const result = await this.runCase(suite, caze, table, options)
+        const result = await this.runCase(suite, caze, table, options, promptBaselines)
         results[index] = result
         options.onProgress?.({ suite: suite.name, caseId: caze.id, index, total: suite.cases.length, status: result.status })
       }
@@ -348,6 +383,7 @@ export class EvalEngine {
     caze: EvalCase,
     table: ResolvedModelTable,
     options: EvalRunOptions,
+    promptBaselines: ReadonlyMap<string, string>,
   ): Promise<CaseResult> {
     const model = resolveCaseModel(caze, suite, table) as string
     const timeoutMs = resolveCaseTimeout(caze, suite, options.cliTimeoutMs) as number
@@ -400,7 +436,7 @@ export class EvalEngine {
       await this.flushSession(agent)
       const trace = collectTrace(agent.session.id, agent.session.events, firstSeq)
       const artifacts = await this.writeTraceArtifacts(options, caze, agent.session.header, agent.session.events, trace)
-      const assertionResults = runAssertions(caze, trace)
+      const assertionResults = runAssertions(caze, trace, promptBaselines)
       let review: CaseReviewRecord | undefined
       if (caze.review !== undefined && !options.signal.aborted) {
         review = await this.runReview(agent, caze, trace, options.signal)

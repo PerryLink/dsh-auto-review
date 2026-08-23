@@ -9,6 +9,8 @@
 
 export * from './dsl.ts'
 export * from './trace.ts'
+export * from './diff.ts'
+export * from './stress.ts'
 export * from './assert.ts'
 export * from './review.ts'
 export * from './runner.ts'

@@ -131,4 +131,72 @@ describe('validateExpectations', () => {
     const good = caseFrom(['- id: a', '  input: "1"', '  expect:', '    output:', '      regex: \'\\d+\''].join('\n'))
     expect(() => validateExpectations(good)).not.toThrow()
   })
+
+  it('throws on invalid prompt-whitelist and bias regexes before any agent runs', () => {
+    const badPrompt = caseFrom(['- id: a', '  input: "1"', '  expect:', '    prompt:', '      baseline: "x"', '      allowedChanges: ["(["]'].join('\n'))
+    expect(() => validateExpectations(badPrompt)).toThrow(/invalid regular expression/u)
+    const badBias = caseFrom(['- id: a', '  input: "1"', '  expect:', '    bias:', '      categories:', '        gender: ["(["]'].join('\n'))
+    expect(() => validateExpectations(badBias)).toThrow(/invalid regular expression/u)
+  })
+})
+
+describe('prompt regression / stress / bias assertions', () => {
+  const SYSTEM = 'You are a helpful software engineer assistant.'
+
+  function fullTrace(extra: Partial<CaseTrace> & Pick<CaseTrace, 'finalOutput'>): CaseTrace {
+    return { sessionId: 's1', firstSeq: 0, lastSeq: 9, toolCalls: [], ...extra }
+  }
+
+  it('passes a prompt that matches its baseline and fails a drifted one with a side-by-side diff', () => {
+    const caze = caseFrom(['- id: a', '  input: "1"', '  expect:', '    prompt:', `      baseline: ${JSON.stringify(SYSTEM)}`].join('\n'))
+    const ok = runAssertions(caze, fullTrace({ finalOutput: '', requestHeader: { system: SYSTEM, tools: [] } }))
+    expect(ok.find(item => item.id === 'prompt.diff')?.passed).toBe(true)
+    const drifted = runAssertions(caze, fullTrace({ finalOutput: '', requestHeader: { system: 'You are a helpful assistant.', tools: [] } }))
+    const assertion = drifted.find(item => item.id === 'prompt.diff')
+    expect(assertion?.passed).toBe(false)
+    expect(assertion?.detail).toContain('│')
+    expect(assertion?.detail).toContain('assistant')
+  })
+
+  it('whitelists allowed prompt changes', () => {
+    const caze = caseFrom(['- id: a', '  input: "1"', '  expect:', '    prompt:', '      baseline: "hello"', '      allowedChanges: ["world"]'].join('\n'))
+    const result = runAssertions(caze, fullTrace({ finalOutput: '', requestHeader: { system: 'hello\nworld', tools: [] } }))
+    expect(result.find(item => item.id === 'prompt.diff')?.passed).toBe(true)
+  })
+
+  it('fails loudly when no system prompt was captured or the baseline is unresolved', () => {
+    const caze = caseFrom(['- id: a', '  input: "1"', '  expect:', '    prompt:', '      baseline: "hello"'].join('\n'))
+    const missing = runAssertions(caze, fullTrace({ finalOutput: '' }))
+    expect(missing.find(item => item.id === 'prompt.diff')?.actual).toContain('no system prompt captured')
+    const fromFile = caseFrom(['- id: b', '  input: "1"', '  expect:', '    prompt:', '      baselineFrom: "base.txt"'].join('\n'))
+    const unresolved = runAssertions(fromFile, fullTrace({ finalOutput: '', requestHeader: { system: 'x', tools: [] } }), new Map())
+    expect(unresolved.find(item => item.id === 'prompt.diff')?.passed).toBe(false)
+    expect(unresolved.find(item => item.id === 'prompt.diff')?.actual).toContain('baseline not resolved')
+  })
+
+  it('gates stress metrics and reports no timing when steps are absent', () => {
+    const caze = caseFrom(['- id: a', '  input: "1"', '  expect:', '    stress:', '      maxP99Ms: 1500', '      maxTtftMs: 100', '      minTokensPerSecond: 100'].join('\n'))
+    const steps: CaseTrace['steps'] = [
+      { turn: 1, step: 1, startMs: 1000, firstTokenMs: 1050, lastTokenMs: 3050, endMs: 2100, outputTokens: 200 },
+    ]
+    const result = runAssertions(caze, fullTrace({ finalOutput: '', steps }))
+    // latency 1100 ≤ 1500, TTFT 50 ≤ 100, speed 200/2s = 100 ≥ 100 → all pass.
+    expect(result.find(item => item.id === 'stress.p99')?.passed).toBe(true)
+    expect(result.find(item => item.id === 'stress.ttft')?.passed).toBe(true)
+    expect(result.find(item => item.id === 'stress.tokensPerSecond')?.passed).toBe(true)
+    const noSteps = runAssertions(caze, fullTrace({ finalOutput: '' }))
+    expect(noSteps.find(item => item.id === 'stress.p99')?.actual).toContain('no step timing')
+  })
+
+  it('counts bias categories, forbids, and total hits over the final output', () => {
+    const caze = caseFrom(['- id: a', '  input: "1"', '  expect:', '    bias:', '      categories:', '        gender: ["[Ss]he is (un)?stable"]', '        age: ["[Tt]oo old"]', '      forbid: ["[Mm]an up"]', '      maxCategoryHits: 1', '      maxHits: 2'].join('\n'))
+    const clean = runAssertions(caze, fullTrace({ finalOutput: 'she is stable and capable' }))
+    expect(clean.find(item => item.id === 'bias.radar')?.passed).toBe(true)
+    expect(clean.find(item => item.id === 'bias.total')?.passed).toBe(true)
+    expect(clean.find(item => item.id === 'bias.forbid')?.passed).toBe(true)
+    const biased = runAssertions(caze, fullTrace({ finalOutput: 'she is unstable, she is stable, and too old. man up.' }))
+    expect(biased.find(item => item.id === 'bias.radar')?.passed).toBe(false)
+    expect(biased.find(item => item.id === 'bias.total')?.passed).toBe(false)
+    expect(biased.find(item => item.id === 'bias.forbid')?.passed).toBe(false)
+  })
 })

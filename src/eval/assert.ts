@@ -8,6 +8,8 @@
 
 import { DslError } from './dsl.ts'
 import type { EvalCase, ToolCallExpectation } from './dsl.ts'
+import { diffLines, hasChanges, renderSideBySide } from './diff.ts'
+import { computeStressMetrics } from './stress.ts'
 import type { CaseTrace, ToolCallRecord } from './trace.ts'
 
 /** One evaluated assertion. */
@@ -21,6 +23,8 @@ export interface AssertionResult {
   readonly expected: string
   /** Human-readable actual state. */
   readonly actual: string
+  /** Optional multi-line detail (a side-by-side prompt diff, a bias radar). */
+  readonly detail?: string
 }
 
 /** Whether a tool-name pattern matches an actual tool name (exact or `*` suffix wildcard). */
@@ -108,6 +112,40 @@ export function validateExpectations(caze: EvalCase): void {
     const output = caze.expect.output
     if (output !== undefined && output[key] !== undefined) check(output[key] as string)
   }
+  for (const source of caze.expect.prompt?.allowedChanges ?? []) check(source)
+  for (const source of caze.expect.bias?.forbid ?? []) check(source)
+  for (const sources of Object.values(caze.expect.bias?.categories ?? {})) {
+    for (const source of sources) check(source)
+  }
+}
+
+/** Count non-overlapping regex matches across sources (compiled with the unicode + global flags). */
+function countRegexMatches(text: string, sources: readonly string[]): number {
+  let total = 0
+  for (const source of sources) {
+    const regex = new RegExp(source, 'gu')
+    let match: RegExpExecArray | null
+    while ((match = regex.exec(text)) !== null) {
+      total += 1
+      if (match[0] === '') regex.lastIndex += 1
+    }
+  }
+  return total
+}
+
+/** Count matches per bias category (one radar axis each). */
+function biasCategoryCounts(text: string, categories: Readonly<Record<string, readonly string[]>>): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const [category, sources] of Object.entries(categories)) {
+    counts.set(category, countRegexMatches(text, sources))
+  }
+  return counts
+}
+
+/** Render a compact per-category count list (the bias radar). */
+function renderRadar(counts: ReadonlyMap<string, number>): string {
+  const entries = [...counts.entries()].map(([category, count]) => `${category}: ${count}`)
+  return entries.length === 0 ? '(no categories)' : entries.join(', ')
 }
 
 /**
@@ -117,7 +155,7 @@ export function validateExpectations(caze: EvalCase): void {
  * @param trace - the collected trace.
  * @returns one result per assertion, in definition order.
  */
-export function runAssertions(caze: EvalCase, trace: CaseTrace): AssertionResult[] {
+export function runAssertions(caze: EvalCase, trace: CaseTrace, promptBaselines?: ReadonlyMap<string, string>): AssertionResult[] {
   const results: AssertionResult[] = []
   const push = (result: AssertionResult): void => {
     results.push(result)
@@ -273,6 +311,125 @@ export function runAssertions(caze: EvalCase, trace: CaseTrace): AssertionResult
       expected: `output tokens ≤ ${caze.expect.maxTokens}`,
       actual: tokens === undefined ? '(adapter reported no usage)' : `${tokens} output tokens`,
     })
+  }
+  // Prompt regression (side-by-side diff against a baseline).
+  const prompt = caze.expect.prompt
+  if (prompt !== undefined) {
+    const baseline = prompt.baseline ?? promptBaselines?.get(caze.id)
+    const actual = trace.requestHeader?.system
+    const allowedChanges = prompt.allowedChanges ?? []
+    if (actual === undefined) {
+      push({
+        id: 'prompt.diff',
+        kind: 'prompt regression',
+        passed: false,
+        expected: baseline === undefined ? 'a resolved prompt baseline' : 'the captured system prompt',
+        actual: 'no system prompt captured (the log had no request/header event)',
+      })
+    } else if (baseline === undefined) {
+      push({
+        id: 'prompt.diff',
+        kind: 'prompt regression',
+        passed: false,
+        expected: 'a resolved prompt baseline',
+        actual: `baseline not resolved for "${caze.id}" (inline baseline or a resolved baselineFrom is required)`,
+      })
+    } else {
+      const rows = diffLines(baseline, actual)
+      const changeRows = rows.filter(row => row.kind !== 'unchanged')
+      const unWhitelisted = changeRows.filter(row => {
+        const text = row.kind === 'removed' ? row.baseline ?? '' : row.actual ?? ''
+        return !allowedChanges.some(source => new RegExp(source, 'u').test(text))
+      })
+      push({
+        id: 'prompt.diff',
+        kind: 'prompt regression',
+        passed: !hasChanges(rows) || unWhitelisted.length === 0,
+        expected: `system prompt matches the baseline (${baseline.split('\n').length} line(s))`,
+        actual: hasChanges(rows)
+          ? `${unWhitelisted.length} changed line(s) not covered by the allowedChanges whitelist`
+          : 'system prompt matches the baseline',
+        detail: renderSideBySide(rows),
+      })
+    }
+  }
+  // Stress metrics (P99 latency, TTFT, token speed).
+  const stress = caze.expect.stress
+  if (stress !== undefined) {
+    const metrics = computeStressMetrics(trace.steps ?? [])
+    const noTiming = metrics.stepCount === 0
+    if (stress.maxP99Ms !== undefined) {
+      push({
+        id: 'stress.p99',
+        kind: 'stress metric',
+        passed: metrics.p99Ms !== undefined && metrics.p99Ms <= stress.maxP99Ms,
+        expected: `P99 step latency ≤ ${stress.maxP99Ms} ms`,
+        actual: metrics.p99Ms === undefined
+          ? noTiming ? 'no step timing recorded' : 'steps recorded no latency window'
+          : `${metrics.p99Ms} ms P99`,
+      })
+    }
+    if (stress.maxTtftMs !== undefined) {
+      push({
+        id: 'stress.ttft',
+        kind: 'stress metric',
+        passed: metrics.ttftMaxMs !== undefined && metrics.ttftMaxMs <= stress.maxTtftMs,
+        expected: `time-to-first-token ≤ ${stress.maxTtftMs} ms`,
+        actual: metrics.ttftMaxMs === undefined
+          ? noTiming ? 'no step timing recorded' : 'no first-token time recorded'
+          : `${metrics.ttftMaxMs} ms worst TTFT`,
+      })
+    }
+    if (stress.minTokensPerSecond !== undefined) {
+      push({
+        id: 'stress.tokensPerSecond',
+        kind: 'stress metric',
+        passed: metrics.tokensPerSecond !== undefined && metrics.tokensPerSecond >= stress.minTokensPerSecond,
+        expected: `token generation speed ≥ ${stress.minTokensPerSecond} tokens/second`,
+        actual: metrics.tokensPerSecond === undefined
+          ? noTiming ? 'no step timing recorded' : 'no generation window recorded'
+          : `${metrics.tokensPerSecond.toFixed(1)} tokens/second`,
+      })
+    }
+  }
+  // Bias radar (fairness assertions over the final output).
+  const bias = caze.expect.bias
+  if (bias !== undefined) {
+    const text = trace.finalOutput
+    const counts = biasCategoryCounts(text, bias.categories)
+    const totalHits = [...counts.values()].reduce((sum, count) => sum + count, 0)
+    if (bias.forbid.length > 0) {
+      const forbidden = countRegexMatches(text, bias.forbid)
+      push({
+        id: 'bias.forbid',
+        kind: 'bias radar',
+        passed: forbidden === 0,
+        expected: `none of the ${bias.forbid.length} forbidden pattern(s) match`,
+        actual: forbidden === 0 ? 'no forbidden match' : `${forbidden} forbidden match(es)`,
+      })
+    }
+    if (Object.keys(bias.categories).length > 0) {
+      const over = [...counts.entries()].filter(([, count]) => bias.maxCategoryHits !== undefined && count > bias.maxCategoryHits)
+      push({
+        id: 'bias.radar',
+        kind: 'bias radar',
+        passed: bias.maxCategoryHits === undefined || over.length === 0,
+        expected: bias.maxCategoryHits === undefined
+          ? 'bias categories counted'
+          : `each bias category ≤ ${bias.maxCategoryHits} hit(s)`,
+        actual: renderRadar(counts),
+        ...(over.length > 0 ? { detail: `categories over the cap: ${over.map(([category, count]) => `${category}: ${count}`).join(', ')}` } : {}),
+      })
+    }
+    if (bias.maxHits !== undefined) {
+      push({
+        id: 'bias.total',
+        kind: 'bias radar',
+        passed: totalHits <= bias.maxHits,
+        expected: `total bias hits ≤ ${bias.maxHits}`,
+        actual: `${totalHits} total hit(s) (${renderRadar(counts)})`,
+      })
+    }
   }
   return results
 }

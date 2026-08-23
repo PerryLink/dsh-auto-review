@@ -68,6 +68,24 @@ export interface TraceToolSchema {
   readonly description?: string
 }
 
+/** Owned per-step timing record, folded from the event log's `time` stamps. */
+export interface TraceStep {
+  /** The turn this step belongs to. */
+  readonly turn: number
+  /** The step index inside its turn. */
+  readonly step: number
+  /** The `step/start` wall-clock time, when the log has it. */
+  readonly startMs?: number
+  /** The first `assistant/chunk` wall-clock time (time-to-first-token base). */
+  readonly firstTokenMs?: number
+  /** The last `assistant/chunk` wall-clock time. */
+  readonly lastTokenMs?: number
+  /** The `step/end` wall-clock time, when the step completed. */
+  readonly endMs?: number
+  /** The step's output tokens, when the adapter reported usage. */
+  readonly outputTokens?: number
+}
+
 /** The complete collected trace of one case run. */
 export interface CaseTrace {
   /** The agent/session id the run executed in. */
@@ -86,6 +104,8 @@ export interface CaseTrace {
   readonly turnEnd?: TraceTurnEnd
   /** The last request header of the traced interval. */
   readonly requestHeader?: TraceRequestHeader
+  /** Per-step timing records (step latency, TTFT, token speed), in turn/step order. */
+  readonly steps?: readonly TraceStep[]
 }
 
 /** Extract the text blocks of a message's content as one string. */
@@ -141,9 +161,42 @@ function copyTurnEnd(value: unknown): TraceTurnEnd {
  * @param firstSeq - the anchor sequence (inclusive).
  * @returns the owned trace.
  */
+/** Mutable per-step accumulator, finalized into owned {@link TraceStep}s. */
+interface MutableStep {
+  readonly turn: number
+  readonly step: number
+  startMs: number | undefined
+  firstTokenMs: number | undefined
+  lastTokenMs: number | undefined
+  endMs: number | undefined
+  outputTokens: number | undefined
+}
+
+/** Finalize one mutable accumulator into an owned trace step. */
+function toTraceStep(step: MutableStep): TraceStep {
+  return {
+    turn: step.turn,
+    step: step.step,
+    ...(step.startMs !== undefined ? { startMs: step.startMs } : {}),
+    ...(step.firstTokenMs !== undefined ? { firstTokenMs: step.firstTokenMs } : {}),
+    ...(step.lastTokenMs !== undefined ? { lastTokenMs: step.lastTokenMs } : {}),
+    ...(step.endMs !== undefined ? { endMs: step.endMs } : {}),
+    ...(step.outputTokens !== undefined ? { outputTokens: step.outputTokens } : {}),
+  }
+}
+
 export function collectTrace(sessionId: SessionId, events: readonly SessionEvent[], firstSeq: number): CaseTrace {
   const toolCalls: ToolCallRecord[] = []
   const resultsByCall = new Map<string, { text: string; isError: boolean; error?: { name: string; code: string } }>()
+  const stepsById = new Map<string, MutableStep>()
+  const stepOf = (turn: number, step: number): MutableStep => {
+    const key = `${turn}:${step}`
+    const existing = stepsById.get(key)
+    if (existing !== undefined) return existing
+    const created: MutableStep = { turn, step, startMs: undefined, firstTokenMs: undefined, lastTokenMs: undefined, endMs: undefined, outputTokens: undefined }
+    stepsById.set(key, created)
+    return created
+  }
   let finalOutput = ''
   let usage: TraceTokenUsage | undefined
   let turnEnd: TraceTurnEnd | undefined
@@ -153,6 +206,20 @@ export function collectTrace(sessionId: SessionId, events: readonly SessionEvent
     if (event.seq < firstSeq) continue
     lastSeq = event.seq
     switch (event.type) {
+      case 'step/start': {
+        stepOf(event.data.turn, event.data.step).startMs = event.time
+        break
+      }
+      case 'assistant/chunk': {
+        const step = stepOf(event.data.turn, event.data.step)
+        if (step.firstTokenMs === undefined) step.firstTokenMs = event.time
+        step.lastTokenMs = event.time
+        break
+      }
+      case 'step/end': {
+        stepOf(event.data.turn, event.data.step).endMs = event.time
+        break
+      }
       case 'tool/call': {
         toolCalls.push({
           callId: event.data.callId,
@@ -189,6 +256,8 @@ export function collectTrace(sessionId: SessionId, events: readonly SessionEvent
             cacheWriteTokens: acc.cacheWriteTokens + (event.data.usage.cacheWriteTokens ?? 0),
             reasoningTokens: acc.reasoningTokens + (event.data.usage.reasoningTokens ?? 0),
           }
+          const step = stepOf(event.data.turn, event.data.step)
+          step.outputTokens = (step.outputTokens ?? 0) + event.data.usage.outputTokens
         }
         break
       }
@@ -226,6 +295,9 @@ export function collectTrace(sessionId: SessionId, events: readonly SessionEvent
     const result = resultsByCall.get(call.callId)
     if (result !== undefined) (call as { result?: ToolCallRecord['result'] }).result = result
   }
+  const steps: TraceStep[] = [...stepsById.values()]
+    .sort((a, b) => a.turn - b.turn || a.step - b.step)
+    .map(toTraceStep)
   return {
     sessionId: sessionId as string,
     firstSeq,
@@ -235,6 +307,7 @@ export function collectTrace(sessionId: SessionId, events: readonly SessionEvent
     ...(usage !== undefined ? { tokenUsage: usage } : {}),
     ...(turnEnd !== undefined ? { turnEnd } : {}),
     ...(requestHeader !== undefined ? { requestHeader } : {}),
+    steps,
   }
 }
 

@@ -96,6 +96,25 @@ describe('collectTrace', () => {
     expect(trace.toolCalls[0]?.argumentsJson).toBeUndefined()
   })
 
+  it('collects per-step timing (latency, first/last token, output tokens)', () => {
+    const events = [
+      event(5, 'step/start', { turn: 1, step: 1 }),
+      event(6, 'assistant/chunk', { turn: 1, step: 1, chunk: { type: 'text-delta', text: 'hi' } }),
+      event(7, 'assistant/chunk', { turn: 1, step: 1, chunk: { type: 'text-delta', text: ' there' } }),
+      event(8, 'assistant/message', { turn: 1, step: 1, message: { role: 'assistant', content: [] }, usage: { inputTokens: 3, outputTokens: 9 } }),
+      event(9, 'step/end', { turn: 1, step: 1 }),
+    ]
+    const trace = collectTrace(SessionId('s1'), events, 5)
+    expect(trace.steps).toHaveLength(1)
+    const step = trace.steps?.[0]
+    expect(step?.turn).toBe(1)
+    expect(step?.startMs).toBe(5000)
+    expect(step?.firstTokenMs).toBe(6000)
+    expect(step?.lastTokenMs).toBe(7000)
+    expect(step?.endMs).toBe(9000)
+    expect(step?.outputTokens).toBe(9)
+  })
+
   it('renderToolCall compacts a call to one line', () => {
     const trace: CaseTrace = {
       sessionId: 's1', firstSeq: 0, lastSeq: 9, finalOutput: '',

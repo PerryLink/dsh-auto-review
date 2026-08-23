@@ -60,6 +60,27 @@ describe('renderMarkdownReport', () => {
     expect(md).toContain('```text')
     expect(md).toContain('session.jsonl')
   })
+
+  it('renders multi-line assertion detail as a code block (prompt side-by-side diff)', () => {
+    const detailed: SuiteReport = {
+      ...report(['fail']),
+      cases: [{
+        ...FAIL_CASE,
+        assertions: [{
+          id: 'prompt.diff',
+          kind: 'prompt regression',
+          passed: false,
+          expected: 'system prompt matches the baseline',
+          actual: '1 changed line(s)',
+          detail: 'baseline │ actual\n- a      │ + b',
+        }],
+      } as SuiteReport['cases'][number]],
+    }
+    const md = renderMarkdownReport(detailed)
+    expect(md).toContain('<details><summary><code>prompt.diff</code> detail</summary>')
+    expect(md).toContain('baseline │ actual')
+    expect(md).toContain('- a')
+  })
 })
 
 describe('renderTerminalSummary', () => {

@@ -83,6 +83,36 @@ describe('parseSuite', () => {
     const yaml = 'name: m\ncases:\n  - id: a\n    input: "1"\n    review:\n      statement: ""\n'
     expect(() => parseSuite(yaml)).toThrow(/statement/u)
   })
+
+  it('parses a prompt-regression expectation with a baseline and whitelist', () => {
+    const suite = parseSuite('name: m\ncases:\n  - id: a\n    input: "1"\n    expect:\n      prompt:\n        baseline: "You are a helpful software engineer assistant."\n        allowedChanges: ["copyright"]\n')
+    expect(suite.cases[0]?.expect.prompt?.baseline).toContain('software engineer')
+    expect(suite.cases[0]?.expect.prompt?.allowedChanges).toEqual(['copyright'])
+  })
+
+  it('rejects a prompt expectation with neither baseline nor baselineFrom (and both)', () => {
+    expect(() => parseSuite('name: m\ncases:\n  - id: a\n    input: "1"\n    expect:\n      prompt: {allowedChanges: [x]}\n')).toThrow(/baseline/u)
+    expect(() => parseSuite('name: m\ncases:\n  - id: a\n    input: "1"\n    expect:\n      prompt: {baseline: "a", baselineFrom: "b.txt"}\n')).toThrow(/exactly one/u)
+  })
+
+  it('parses a stress expectation and rejects an empty one', () => {
+    const suite = parseSuite('name: m\ncases:\n  - id: a\n    input: "1"\n    expect:\n      stress: {maxP99Ms: 2000, minTokensPerSecond: 5}\n')
+    expect(suite.cases[0]?.expect.stress?.maxP99Ms).toBe(2000)
+    expect(() => parseSuite('name: m\ncases:\n  - id: a\n    input: "1"\n    expect:\n      stress: {}\n')).toThrow(/stress/u)
+  })
+
+  it('parses a bias expectation with categories, forbid, and caps', () => {
+    const suite = parseSuite('name: m\ncases:\n  - id: a\n    input: "1"\n    expect:\n      bias:\n        categories:\n          gender: ["(?:he|she) is (?:un)?stable"]\n        forbid: ["man up"]\n        maxHits: 2\n        maxCategoryHits: 1\n')
+    const bias = suite.cases[0]?.expect.bias
+    expect(bias?.categories.gender).toHaveLength(1)
+    expect(bias?.forbid).toEqual(['man up'])
+    expect(bias?.maxHits).toBe(2)
+  })
+
+  it('rejects maxCategoryHits without categories and an empty bias block', () => {
+    expect(() => parseSuite('name: m\ncases:\n  - id: a\n    input: "1"\n    expect:\n      bias: {maxCategoryHits: 1}\n')).toThrow(/category/u)
+    expect(() => parseSuite('name: m\ncases:\n  - id: a\n    input: "1"\n    expect:\n      bias: {}\n')).toThrow(/bias/u)
+  })
 })
 
 describe('resolveCaseModel', () => {

@@ -53,6 +53,11 @@ function renderCaseMarkdown(result: CaseResult): string {
       lines.push(`| \`${cell(assertion.id)}\` | ${assertion.passed ? 'pass' : 'FAIL'} | ${cell(assertion.expected)} | ${cell(assertion.actual)} |`)
     }
     lines.push('')
+    for (const assertion of result.assertions) {
+      if (assertion.detail !== undefined) {
+        lines.push(`<details><summary><code>${cell(assertion.id)}</code> detail</summary>`, '', '```text', assertion.detail, '```', '', '</details>', '')
+      }
+    }
   }
   if (result.review !== undefined) {
     lines.push('**Second-model review**', '', '| | |', '|---|---|')
