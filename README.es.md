@@ -210,7 +210,46 @@ Ejecútalo (una clave de API de DeepSeek debe estar en el entorno):
 dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
 ```
 
-Puerta de CI: el proceso sale con 0 solo cuando todos los casos de todas las suites han pasado — colócalo en un paso de GitHub Action y las evaluaciones que fallen harán fallar la compilación. Cada caso deja un JSONL de sesión reproducible y un JSON de rastro junto a `report.md`/`report.json`; los resultados de las aserciones, el uso de tokens y el veredicto de revisión se escriben todos en los archivos de informe.
+### Familias de aserciones
+
+El bloque `expect` admite seis familias de aserciones; cada aserción se evalúa de forma independiente e informa su propio aprobado/fallo con valores esperados/reales, de modo que un caso que falla se explica a sí mismo sin volver a ejecutarlo.
+
+| Familia | Claves DSL | Qué verifica |
+|---|---|---|
+| Rastro de herramientas | `toolCalls`, `toolCallsExact`, `noToolCalls`, `results` | secuencia ordenada de llamadas (subsecuencia con saltos), secuencia exacta de nombres, resultado por herramienta (`isError`/`contains`/`regex`) |
+| Salida y presupuesto | `output`, `turnEnds`, `maxTokens` | subcadena/regex de la salida final, resultado del turno, presupuesto de tokens |
+| Regresión de prompt | `prompt` | el prompt de sistema renderizado debe coincidir con un `baseline` comprometido (o un archivo `baselineFrom`); cualquier deriva se informa como un **diff lado a lado**, con regex `allowedChanges` para permitir ediciones intencionales |
+| Métricas de estrés | `stress` | latencia de paso P99 (`maxP99Ms`), peor tiempo al primer token (`maxTtftMs`), velocidad agregada de generación de tokens (`minTokensPerSecond`) |
+| Equidad | `bias` | radar de sesgo sobre la salida final: conteos por categoría con regex (`categories`), patrones `forbid` duros, topes `maxHits`/`maxCategoryHits` |
+| Revisión de segundo modelo | `review` | un veredicto aprobado/fallo complementario del subagente revisor (capa separada, la misma costura que el revisor de aprobación) |
+
+```yaml
+- id: regression-gate
+  input: Answer in one sentence.
+  expect:
+    prompt:
+      baseline: "You are a helpful software engineer assistant."
+      allowedChanges: ["copyright-year"]
+    stress:
+      maxP99Ms: 8000
+      maxTtftMs: 3000
+      minTokensPerSecond: 20
+    bias:
+      categories: { gender: ["[Hh]e is (un)?stable"] }
+      forbid: ["[Ss]crew that"]
+      maxCategoryHits: 0
+```
+
+Puerta de CI: el proceso sale con 0 solo cuando todos los casos de todas las suites han pasado — las evaluaciones que fallen hacen fallar la compilación. Cada caso deja un JSONL de sesión reproducible y un JSON de rastro junto a `report.md`/`report.json`; los resultados de las aserciones (incluido el diff lado a lado del prompt), el uso de tokens, las métricas de estrés/equidad y el veredicto de revisión se escriben todos en los archivos de informe.
+
+```yaml
+- name: dsh-eval
+  run: npx dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+  env:
+    DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+```
+
+`dsh-eval` difiere de [openai/codex-research](https://github.com/openai/codex-research): codex-research puntúa trayectorias de agentes para comparación de investigación; `dsh-eval` es un arnés declarativo de regresión aprobado/fallo — casos YAML, aserciones estructuradas de rastro/prompt/estrés/equidad, una revisión opcional de segundo modelo y un código de salida de CI — para gatear cualquier agente DSH, no para ranking de investigación.
 
 ## Permisos y datos
 

@@ -211,7 +211,46 @@ Run it (a DeepSeek API key must be in the environment):
 dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
 ```
 
-CI gate: the process exits 0 only when every case of every suite passed — drop it into a GitHub Action step and failing evaluations fail the build. Each case leaves a replayable session JSONL and a trace JSON beside `report.md`/`report.json`; assertion results, token usage, and the review verdict are all written into the report files.
+### Assertion families
+
+The `expect` block supports six assertion families; each assertion is evaluated independently and reports its own pass/fail with expected/actual values, so a failing case explains itself without a rerun.
+
+| Family | DSL keys | What it gates |
+|---|---|---|
+| Tool trace | `toolCalls`, `toolCallsExact`, `noToolCalls`, `results` | ordered tool-call sequence (subsequence with skips), exact name sequence, per-tool result (`isError`/`contains`/`regex`) |
+| Output & budget | `output`, `turnEnds`, `maxTokens` | final-output substring/regex, turn outcome, token budget |
+| Prompt regression | `prompt` | the rendered system prompt must match a committed `baseline` (or a `baselineFrom` file); any drift is reported as a **side-by-side diff**, with `allowedChanges` regexes to whitelist intended edits |
+| Stress metrics | `stress` | P99 step latency (`maxP99Ms`), worst time-to-first-token (`maxTtftMs`), aggregate token generation speed (`minTokensPerSecond`) |
+| Fairness | `bias` | bias radar over the final output: per-category regex counts (`categories`), hard `forbid` patterns, `maxHits`/`maxCategoryHits` caps |
+| Second-model review | `review` | a supplementary pass/fail verdict from the reviewer subagent (a separate layer, same seam as the approval reviewer) |
+
+```yaml
+- id: regression-gate
+  input: Answer in one sentence.
+  expect:
+    prompt:
+      baseline: "You are a helpful software engineer assistant."
+      allowedChanges: ["copyright-year"]
+    stress:
+      maxP99Ms: 8000
+      maxTtftMs: 3000
+      minTokensPerSecond: 20
+    bias:
+      categories: { gender: ["[Hh]e is (un)?stable"] }
+      forbid: ["[Ss]crew that"]
+      maxCategoryHits: 0
+```
+
+CI gate: the process exits 0 only when every case of every suite passed — failing evaluations fail the build. Each case leaves a replayable session JSONL and a trace JSON beside `report.md`/`report.json`; assertion results (including the prompt side-by-side diff), token usage, stress/bias metrics, and the review verdict are all written into the report files.
+
+```yaml
+- name: dsh-eval
+  run: npx dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+  env:
+    DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+```
+
+`dsh-eval` differs from [openai/codex-research](https://github.com/openai/codex-research): codex-research scores agent trajectories for research comparison; `dsh-eval` is a declarative pass/fail regression harness — YAML cases, structured trace/prompt/stress/bias assertions, an optional second-model review, and a CI exit code — for gating any DSH agent, not research ranking.
 
 ## Permissions & data
 
@@ -251,7 +290,7 @@ CI gate: the process exits 0 only when every case of every suite passed — drop
 ```sh
 pnpm install                # node ^22.19 || >=24
 pnpm run typecheck          # tsc: src + tests against the local harness checkout
-pnpm test                   # vitest: 202 tests, 16 files
+pnpm test                   # vitest: 233 tests, 20 files
 pnpm run build              # tsc declarations + tsdown bundles (lib/, incl. the client bundle)
 pnpm run verify:self-contained
 pnpm pack                   # the published tarball

@@ -210,7 +210,46 @@ suite:
 dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
 ```
 
-CI 门禁：仅当每个套件的每个用例都通过时，进程才以 0 退出 —— 放进 GitHub Action 步骤，评估失败即构建失败。每个用例都会在 `report.md`/`report.json` 旁边留下可重放的会话 JSONL 与轨迹 JSON；断言结果、token 用量与审查裁决都会写入报告文件。
+### 断言族
+
+`expect` 块支持六类断言族；每条断言独立求值，并报告各自的通过/失败与期望/实际值，失败的用例无需重跑即可自我解释。
+
+| 断言族 | DSL 键 | 门禁内容 |
+|---|---|---|
+| 工具轨迹 | `toolCalls`、`toolCallsExact`、`noToolCalls`、`results` | 有序工具调用序列（允许跳过的子序列）、精确名称序列、逐工具结果（`isError`/`contains`/`regex`） |
+| 输出与预算 | `output`、`turnEnds`、`maxTokens` | 最终输出的子串/正则、回合结果、token 预算 |
+| Prompt 回归 | `prompt` | 渲染后的系统提示词必须匹配已提交的 `baseline`（或 `baselineFrom` 文件）；任何漂移都会以**并排 diff** 报告，可用 `allowedChanges` 正则白名单放行有意的修改 |
+| 压测指标 | `stress` | P99 步延迟（`maxP99Ms`）、最差首 token 时延（`maxTtftMs`）、聚合 token 生成速度（`minTokensPerSecond`） |
+| 公平性 | `bias` | 最终输出上的偏差雷达：逐类别正则计数（`categories`）、硬性 `forbid` 模式、`maxHits`/`maxCategoryHits` 上限 |
+| 第二模型审查 | `review` | 审查子代理给出的补充通过/失败裁决（独立层，与审批审查器同一条接缝） |
+
+```yaml
+- id: regression-gate
+  input: Answer in one sentence.
+  expect:
+    prompt:
+      baseline: "You are a helpful software engineer assistant."
+      allowedChanges: ["copyright-year"]
+    stress:
+      maxP99Ms: 8000
+      maxTtftMs: 3000
+      minTokensPerSecond: 20
+    bias:
+      categories: { gender: ["[Hh]e is (un)?stable"] }
+      forbid: ["[Ss]crew that"]
+      maxCategoryHits: 0
+```
+
+CI 门禁：仅当每个套件的每个用例都通过时，进程才以 0 退出 —— 评估失败即构建失败。每个用例都会在 `report.md`/`report.json` 旁边留下可重放的会话 JSONL 与轨迹 JSON；断言结果（含 prompt 并排 diff）、token 用量、压测/公平性指标与审查裁决都会写入报告文件。
+
+```yaml
+- name: dsh-eval
+  run: npx dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+  env:
+    DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+```
+
+`dsh-eval` 与 [openai/codex-research](https://github.com/openai/codex-research) 的区别：codex-research 为研究对比对代理轨迹打分；`dsh-eval` 是声明式的通过/失败回归门禁 —— YAML 用例、结构化的轨迹/prompt/压测/公平性断言、可选的第二模型审查与 CI 退出码 —— 面向任何 DSH 代理的门禁，而非研究排名。
 
 ## 权限与数据
 

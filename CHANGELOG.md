@@ -2,6 +2,17 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [Unreleased]
+
+### Added
+
+- **dsh-eval assertion engine gains three structured assertion families** (completing the evaluation-platform direction):
+  - **Prompt regression** (`expect.prompt`): the rendered system prompt must match a committed `baseline` (inline or via `baselineFrom` file); any drift is reported as a **side-by-side diff** in the report, with `allowedChanges` regexes to whitelist intended edits. The baseline file is resolved before any agent runs, and a missing/unreadable file fails the suite loudly.
+  - **Stress metrics** (`expect.stress`): gates P99 step latency (`maxP99Ms`), worst time-to-first-token (`maxTtftMs`), and aggregate token generation speed (`minTokensPerSecond`), folded from per-step timing records (`step/start` → first/last `assistant/chunk` → `step/end`).
+  - **Bias radar** (`expect.bias`): per-category regex counts over the final output (`categories`), hard `forbid` patterns, and `maxHits`/`maxCategoryHits` caps — the fairness (Bias-Radar) assertion.
+  - Per-step timing is now collected into `trace.steps`, and the assertion engine reports optional multi-line `detail` (the prompt diff, the bias radar) which the Markdown report renders as a code block.
+- Five-language READMEs document the assertion families with a combined `prompt`/`stress`/`bias` example, a GitHub Action CI snippet, and the contrast with `openai/codex-research`.
+
 ## [0.5.4] — 2026-08-22
 
 ### Changed

@@ -210,7 +210,46 @@ suite:
 dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
 ```
 
-CI द्वार: प्रक्रिया केवल तभी 0 से निकलती है जब हर सुइट का हर केस पास हो — इसे GitHub Action चरण में डालें और असफल मूल्यांकन बिल्ड को असफल कर देते हैं। हर केस `report.md`/`report.json` के पास एक पुनः-चलाने योग्य सत्र JSONL और एक ट्रेस JSON छोड़ता है; दावा परिणाम, टोकन उपयोग और समीक्षा निर्णय सभी रिपोर्ट फ़ाइलों में लिखे जाते हैं।
+### दावा परिवार
+
+`expect` ब्लॉक छह दावा परिवारों का समर्थन करता है; हर दावा स्वतंत्र रूप से मूल्यांकित होता है और अपने पास/फेल को अपेक्षित/वास्तविक मानों के साथ रिपोर्ट करता है, इसलिए विफल केस बिना दोबारा चलाए खुद को समझा देता है।
+
+| परिवार | DSL कुंजियाँ | यह क्या जाँचता है |
+|---|---|---|
+| टूल ट्रेस | `toolCalls`, `toolCallsExact`, `noToolCalls`, `results` | क्रमबद्ध टूल-कॉल अनुक्रम (छूट के साथ उप-अनुक्रम), सटीक नाम अनुक्रम, प्रति-टूल परिणाम (`isError`/`contains`/`regex`) |
+| आउटपुट और बजट | `output`, `turnEnds`, `maxTokens` | अंतिम आउटपुट का सबस्ट्रिंग/रेगेक्स, टर्न परिणाम, टोकन बजट |
+| प्रॉम्प्ट रिग्रेशन | `prompt` | रेंडर किया गया सिस्टम प्रॉम्प्ट एक प्रतिबद्ध `baseline` (या `baselineFrom` फ़ाइल) से मेल खाना चाहिए; कोई भी विचलन **side-by-side diff** के रूप में रिपोर्ट होता है, जिसमें इच्छित संपादनों की अनुमति के लिए `allowedChanges` रेगेक्स होते हैं |
+| स्ट्रेस मेट्रिक्स | `stress` | P99 स्टेप लेटेंसी (`maxP99Ms`), सबसे खराब पहला-टोकन समय (`maxTtftMs`), कुल टोकन निर्माण गति (`minTokensPerSecond`) |
+| निष्पक्षता | `bias` | अंतिम आउटपुट पर पूर्वाग्रह रडार: प्रति-श्रेणी रेगेक्स गणना (`categories`), कठोर `forbid` पैटर्न, `maxHits`/`maxCategoryHits` सीमाएँ |
+| द्वितीय-मॉडल समीक्षा | `review` | समीक्षक उप-एजेंट से एक पूरक पास/फेल निर्णय (अलग परत, अनुमोदन समीक्षक जैसी ही सीम) |
+
+```yaml
+- id: regression-gate
+  input: Answer in one sentence.
+  expect:
+    prompt:
+      baseline: "You are a helpful software engineer assistant."
+      allowedChanges: ["copyright-year"]
+    stress:
+      maxP99Ms: 8000
+      maxTtftMs: 3000
+      minTokensPerSecond: 20
+    bias:
+      categories: { gender: ["[Hh]e is (un)?stable"] }
+      forbid: ["[Ss]crew that"]
+      maxCategoryHits: 0
+```
+
+CI द्वार: प्रक्रिया केवल तभी 0 से निकलती है जब हर सुइट का हर केस पास हो — असफल मूल्यांकन बिल्ड को असफल कर देते हैं। हर केस `report.md`/`report.json` के पास एक पुनः-चलाने योग्य सत्र JSONL और एक ट्रेस JSON छोड़ता है; दावा परिणाम (प्रॉम्प्ट side-by-side diff सहित), टोकन उपयोग, स्ट्रेस/निष्पक्षता मेट्रिक्स और समीक्षा निर्णय सभी रिपोर्ट फ़ाइलों में लिखे जाते हैं।
+
+```yaml
+- name: dsh-eval
+  run: npx dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+  env:
+    DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+```
+
+`dsh-eval` [openai/codex-research](https://github.com/openai/codex-research) से भिन्न है: codex-research अनुसंधान तुलना के लिए एजेंट ट्रैजेक्टरी को स्कोर करता है; `dsh-eval` एक घोषणात्मक पास/फेल रिग्रेशन हार्नेस है — YAML केस, संरचित ट्रेस/प्रॉम्प्ट/स्ट्रेस/निष्पक्षता दावे, एक वैकल्पिक द्वितीय-मॉडल समीक्षा और एक CI एग्जिट कोड — किसी भी DSH एजेंट को गेट करने के लिए, अनुसंधान रैंकिंग के लिए नहीं।
 
 ## अनुमतियाँ और डेटा
 
