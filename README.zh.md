@@ -304,6 +304,8 @@ pnpm pack                   # 发布产物
 ## 贡献者
 
 - [@PerryLink](https://github.com/PerryLink) —— 创建者与维护者：审批 answerer、审查子代理、风险策略与熔断器、会话投影审查面板、invariant 配套插件、dsh-eval，以及五语文档。
+- [@weipeng1999](https://github.com/weipeng1999) —— 提出审查器独立的 provider/model 路由（[#11](https://github.com/PerryLink/dsh-auto-review/issues/11)、[讨论 #12](https://github.com/PerryLink/dsh-auto-review/discussions/12)），已落地为 `reviewerProvider` / `reviewerModel`。
+- [@alexchenzl](https://github.com/alexchenzl) —— 将本插件收录进 DSH 插件目录（[#10](https://github.com/PerryLink/dsh-auto-review/issues/10)）。
 
 ## PerryLink DSH 插件家族
 

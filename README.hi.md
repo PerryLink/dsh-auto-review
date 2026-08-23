@@ -304,6 +304,8 @@ pnpm pack                   # प्रकाशित tarball
 ## योगदानकर्ता
 
 - [@PerryLink](https://github.com/PerryLink) — निर्माता और अनुरक्षक: अनुमोदन answerer, समीक्षक उप-एजेंट, जोखिम नीति और सर्किट ब्रेकर, सत्र-प्रोजेक्शन समीक्षा पैनल, invariant साथी, dsh-eval, और पाँच-भाषा दस्तावेज़।
+- [@weipeng1999](https://github.com/weipeng1999) — समीक्षक के स्वतंत्र प्रदाता/मॉडल रूटिंग का प्रस्ताव रखा ([#11](https://github.com/PerryLink/dsh-auto-review/issues/11), [चर्चा #12](https://github.com/PerryLink/dsh-auto-review/discussions/12)), जो `reviewerProvider` / `reviewerModel` के रूप में जारी हुआ।
+- [@alexchenzl](https://github.com/alexchenzl) — DSH प्लगइन निर्देशिका में प्लगइन को सूचीबद्ध किया ([#10](https://github.com/PerryLink/dsh-auto-review/issues/10))।
 
 ## PerryLink DSH प्लगइन परिवार
 

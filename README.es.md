@@ -304,6 +304,8 @@ Estructura del repositorio: `src/index.ts` (contrato del plugin) · `src/config.
 ## Contribuidores
 
 - [@PerryLink](https://github.com/PerryLink) — creador y mantenedor: el answerer de aprobación, el subagente revisor, la política de riesgo y el disyuntor, el panel de revisión por proyección de sesión, el compañero invariant, dsh-eval y la documentación en cinco idiomas.
+- [@weipeng1999](https://github.com/weipeng1999) — propuso el enrutamiento independiente de proveedor/modelo del revisor ([#11](https://github.com/PerryLink/dsh-auto-review/issues/11), [discusión #12](https://github.com/PerryLink/dsh-auto-review/discussions/12)), que se publicó como `reviewerProvider` / `reviewerModel`.
+- [@alexchenzl](https://github.com/alexchenzl) — incluyó el plugin en el directorio de plugins de DSH ([#10](https://github.com/PerryLink/dsh-auto-review/issues/10)).
 
 ## Familia de plugins DSH de PerryLink
 
