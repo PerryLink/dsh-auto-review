@@ -253,6 +253,49 @@ CI 门禁：仅当每个套件的每个用例都通过时，进程才以 0 退�
 
 `dsh-eval` 与 [openai/codex-research](https://github.com/openai/codex-research) 的区别：codex-research 为研究对比对代理轨迹打分；`dsh-eval` 是声明式的通过/失败回归门禁 —— YAML 用例、结构化的轨迹/prompt/压测/公平性断言、可选的第二模型审查与 CI 退出码 —— 面向任何 DSH 代理的门禁，而非研究排名。
 
+## MCP 服务器（独立进程）
+
+`dsh-auto-review` 还附带一个 stdio **MCP 服务器**（`dsh-auto-review-mcp`），让外部 MCP 客户端（Claude、Codex 等）无需 harness 即可消费确定性裁决路径。它通过 newline-delimited JSON（NDJSON）承载 JSON-RPC 2.0——每行一个 JSON 对象，不支持 `Content-Length` 分帧。
+
+**边界。** 完整 reviewer 依赖 harness 的 subagent seam 与第二模型，独立 stdio 进程无法调用。因此独立服务器是**确定性规则 + 缓存，无模型评审**：
+
+- `review_action` 复用同指纹裁决缓存（`src/cache.ts`）与风险规则 / 工具策略解析（`src/config.ts`）：命中 `never` 规则 → `deny`；缓存命中相同 `tool + arguments` 指纹 → 重放该裁决；其余情况（`ai` 需要模型、`human` 需要人工）→ fail-closed `deny`，reason 为 `"standalone path, no model"`。它绝不会放行一个模型尚未放行的动作。
+- `cache_stats` 报告命中/存储计数与 TTL 状态。
+
+| 工具 | 用途 |
+|---|---|
+| `review_action` | `{tool, args?, reason?}` → `{decision, reason, riskLevel}` —— 确定性拒绝 / 缓存重放 |
+| `cache_stats` | `{}` → `{hits, stores, size, ttlMs, enabled}` |
+
+直接运行：
+
+```sh
+# 风险规则来自环境变量
+export DSH_AUTO_REVIEW_RISK_RULES='[{"pattern":"rm -rf","policy":"never","field":"arguments"}]'
+node bin/dsh-auto-review-mcp.mjs
+# 或 npm 安装后：npx dsh-auto-review-mcp
+```
+
+环境变量配置：`DSH_AUTO_REVIEW_RISK_RULES`（`{pattern, policy, field?}` 的 JSON 数组）、`DSH_AUTO_REVIEW_TOOLS_POLICY`（JSON `{default?, overrides?}`）、`DSH_AUTO_REVIEW_CACHE_TTL_MS`、`DSH_AUTO_REVIEW_CACHE_MAX_ENTRIES`。
+
+Claude Desktop（`claude_desktop_config.json`）配置示例：
+
+```json
+{
+  "mcpServers": {
+    "dsh-auto-review": {
+      "command": "npx",
+      "args": ["-y", "dsh-auto-review-mcp"],
+      "env": {
+        "DSH_AUTO_REVIEW_RISK_RULES": "[{\"pattern\":\"rm -rf\",\"policy\":\"never\",\"field\":\"arguments\"}]"
+      }
+    }
+  }
+}
+```
+
+服务器只读且确定性：无网络、无模型、无写入。
+
 ## 权限与数据
 
 - **权限**：workshop 清单声明 `session:append`、`approval:answer`、`subagent:spawn`、`command:register` 与 `tools:observe`。

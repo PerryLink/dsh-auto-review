@@ -253,6 +253,49 @@ Portão de CI: o processo sai com 0 somente quando todos os casos de todas as su
 
 `dsh-eval` difere de [openai/codex-research](https://github.com/openai/codex-research): o codex-research pontua trajetórias de agentes para comparação de pesquisa; `dsh-eval` é um harness declarativo de regressão aprovação/falha — casos YAML, asserções estruturadas de rastro/prompt/estresse/equidade, uma revisão opcional de segundo modelo e um código de saída de CI — para gatear qualquer agente DSH, não para ranking de pesquisa.
 
+## Servidor MCP (autônomo)
+
+O `dsh-auto-review` também inclui um **servidor MCP** stdio (`dsh-auto-review-mcp`) para que clientes MCP externos (Claude, Codex, …) consumam uma rota de revisão determinista sem o harness. Ele fala JSON-RPC 2.0 sobre JSON delimitado por novas linhas (NDJSON): um objeto JSON por linha, sem enquadramento `Content-Length`.
+
+**Limite.** O revisor completo precisa do seam de subagentes do harness e de um segundo modelo, que um processo stdio separado não consegue alcançar. Portanto, o servidor autônomo é **regras deterministas + cache, sem revisão por modelo**:
+
+- `review_action` reutiliza o cache de veredictos por impressão digital (`src/cache.ts`) e a resolução de regras de risco / políticas de ferramentas (`src/config.ts`): uma regra `never` → `deny`; um acerto de cache sobre uma impressão idêntica de `tool + arguments` reproduz esse veredicto; todo o resto (`ai` precisa de modelo, `human` precisa de um humano) → `deny` fail-closed com `reason: "standalone path, no model"`. Ele nunca permite uma ação que um modelo ainda não tenha permitido.
+- `cache_stats` informa os contadores de acertos/armazenamento e o estado do TTL.
+
+| Ferramenta | Propósito |
+|---|---|
+| `review_action` | `{tool, args?, reason?}` → `{decision, reason, riskLevel}` — negação determinista / reprodução de cache |
+| `cache_stats` | `{}` → `{hits, stores, size, ttlMs, enabled}` |
+
+Execução direta:
+
+```sh
+# as regras de risco vêm de variáveis de ambiente
+export DSH_AUTO_REVIEW_RISK_RULES='[{"pattern":"rm -rf","policy":"never","field":"arguments"}]'
+node bin/dsh-auto-review-mcp.mjs
+# ou, após npm install: npx dsh-auto-review-mcp
+```
+
+Configuração por ambiente: `DSH_AUTO_REVIEW_RISK_RULES` (array JSON de `{pattern, policy, field?}`), `DSH_AUTO_REVIEW_TOOLS_POLICY` (JSON `{default?, overrides?}`), `DSH_AUTO_REVIEW_CACHE_TTL_MS`, `DSH_AUTO_REVIEW_CACHE_MAX_ENTRIES`.
+
+Exemplo para o Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "dsh-auto-review": {
+      "command": "npx",
+      "args": ["-y", "dsh-auto-review-mcp"],
+      "env": {
+        "DSH_AUTO_REVIEW_RISK_RULES": "[{\"pattern\":\"rm -rf\",\"policy\":\"never\",\"field\":\"arguments\"}]"
+      }
+    }
+  }
+}
+```
+
+O servidor é somente-leitura e determinista: sem rede, sem modelo, sem gravações.
+
 ## Permissões e dados
 
 - **Permissões**: o manifesto do workshop declara `session:append`, `approval:answer`, `subagent:spawn`, `command:register` e `tools:observe`.

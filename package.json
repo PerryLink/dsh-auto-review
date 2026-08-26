@@ -21,12 +21,17 @@
   "main": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
   "bin": {
-    "dsh-eval": "./bin/dsh-eval.mjs"
+    "dsh-eval": "./bin/dsh-eval.mjs",
+    "dsh-auto-review-mcp": "./bin/dsh-auto-review-mcp.mjs"
   },
   "exports": {
     ".": {
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
+    },
+    "./mcp": {
+      "types": "./lib/types/mcp/index.d.ts",
+      "default": "./lib/mcp.js"
     },
     "./invariant": {
       "types": "./lib/types/invariant.d.ts",

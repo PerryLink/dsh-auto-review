@@ -253,6 +253,49 @@ CI द्वार: प्रक्रिया केवल तभी 0 से 
 
 `dsh-eval` [openai/codex-research](https://github.com/openai/codex-research) से भिन्न है: codex-research अनुसंधान तुलना के लिए एजेंट ट्रैजेक्टरी को स्कोर करता है; `dsh-eval` एक घोषणात्मक पास/फेल रिग्रेशन हार्नेस है — YAML केस, संरचित ट्रेस/प्रॉम्प्ट/स्ट्रेस/निष्पक्षता दावे, एक वैकल्पिक द्वितीय-मॉडल समीक्षा और एक CI एग्जिट कोड — किसी भी DSH एजेंट को गेट करने के लिए, अनुसंधान रैंकिंग के लिए नहीं।
 
+## MCP सर्वर (स्टैंडअलोन)
+
+`dsh-auto-review` एक stdio **MCP सर्वर** (`dsh-auto-review-mcp`) भी देता है ताकि बाहरी MCP क्लाइंट (Claude, Codex, …) बिना harness के एक निर्धारक समीक्षा पथ का उपयोग कर सकें। यह newline-delimited JSON (NDJSON) पर JSON-RPC 2.0 बोलता है — प्रति पंक्ति एक JSON ऑब्जेक्ट, कोई `Content-Length` फ़्रेमिंग नहीं।
+
+**सीमा।** पूर्ण reviewer को harness के subagent seam और दूसरे मॉडल की आवश्यकता होती है, जिसे एक अलग stdio प्रक्रिया नहीं पहुँच सकती। इसलिए स्टैंडअलोन सर्वर **निर्धारक नियम + कैश, कोई मॉडल समीक्षा नहीं** है:
+
+- `review_action` समान-फ़िंगरप्रिंट वर्डिक्ट कैश (`src/cache.ts`) और जोखिम-नियम / टूल-नीति समाधान (`src/config.ts`) का पुनः उपयोग करता है: एक `never` नियम → `deny`; समान `tool + arguments` फ़िंगरप्रिंट पर कैश हिट उस वर्डिक्ट को दोहराता है; बाकी सब (`ai` को मॉडल चाहिए, `human` को मानव चाहिए) → fail-closed `deny` जिसका reason `"standalone path, no model"` है। यह कभी भी ऐसी कार्रवाई की अनुमति नहीं देता जिसे किसी मॉडल ने पहले से अनुमति न दी हो।
+- `cache_stats` हिट/स्टोर गणना और TTL स्थिति की सूचना देता है।
+
+| टूल | उद्देश्य |
+|---|---|
+| `review_action` | `{tool, args?, reason?}` → `{decision, reason, riskLevel}` — निर्धारक अस्वीकृति / कैश पुनरावृत्ति |
+| `cache_stats` | `{}` → `{hits, stores, size, ttlMs, enabled}` |
+
+सीधे चलाएँ:
+
+```sh
+# जोखिम नियम पर्यावरण चरों से आते हैं
+export DSH_AUTO_REVIEW_RISK_RULES='[{"pattern":"rm -rf","policy":"never","field":"arguments"}]'
+node bin/dsh-auto-review-mcp.mjs
+# या, npm install के बाद: npx dsh-auto-review-mcp
+```
+
+पर्यावरण विन्यास: `DSH_AUTO_REVIEW_RISK_RULES` (`{pattern, policy, field?}` की JSON सरणी), `DSH_AUTO_REVIEW_TOOLS_POLICY` (JSON `{default?, overrides?}`), `DSH_AUTO_REVIEW_CACHE_TTL_MS`, `DSH_AUTO_REVIEW_CACHE_MAX_ENTRIES`।
+
+Claude Desktop (`claude_desktop_config.json`) उदाहरण:
+
+```json
+{
+  "mcpServers": {
+    "dsh-auto-review": {
+      "command": "npx",
+      "args": ["-y", "dsh-auto-review-mcp"],
+      "env": {
+        "DSH_AUTO_REVIEW_RISK_RULES": "[{\"pattern\":\"rm -rf\",\"policy\":\"never\",\"field\":\"arguments\"}]"
+      }
+    }
+  }
+}
+```
+
+सर्वर केवल-पठन और निर्धारक है: कोई नेटवर्क नहीं, कोई मॉडल नहीं, कोई लेखन नहीं।
+
 ## अनुमतियाँ और डेटा
 
 - **अनुमतियाँ**: workshop मेनिफ़ेस्ट `session:append`, `approval:answer`, `subagent:spawn`, `command:register` और `tools:observe` घोषित करता है।

@@ -75,6 +75,23 @@ export default defineConfig([
     },
   },
   {
+    name: `${PLUGIN_ID}/mcp`,
+    entry: { mcp: 'src/mcp/index.ts' },
+    outDir: 'lib',
+    format: ['esm'],
+    platform: 'node',
+    target: 'es2024',
+    dts: false,
+    clean: false,
+    fixedExtension: false,
+    deps: {
+      // The standalone reviewer reuses src/cache.ts (node:crypto) and
+      // src/config.ts (schemastery, an existing peer) — no new dependencies.
+      neverBundle: [/^node:/, /^@deepseek-ai\//],
+      alwaysBundle: ['zod', 'yaml'],
+    },
+  },
+  {
     name: `${PLUGIN_ID}/client`,
     entry: { client: 'src/client/index.ts' },
     outDir: 'lib',
