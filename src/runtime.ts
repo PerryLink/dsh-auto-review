@@ -18,6 +18,7 @@ import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-subagent'
 import type { PostToolDecision, ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { isMarkedAuditEvent, isUnmarkedHostVersion, peerSessionVersion, type AuditSupport } from './audit.ts'
+import { fingerprint, VerdictCache } from './cache.ts'
 import { resolveConfig, riskExceeds } from './config.ts'
 import type { Config, ResolvedConfig, ToolReviewPolicy } from './config.ts'
 import { messages } from './messages.ts'
@@ -34,6 +35,7 @@ import {
   denyResultText,
   effectiveAutoReviewState,
   fallbackResultText,
+  findPresentedCall,
   lastDeniedVerdicts,
   neverResultText,
   plainCircuitResultText,
@@ -50,7 +52,7 @@ import {
   type VerdictAppend,
 } from './events.ts'
 import { isReviewFailure, newCircuitId, newRejectionId, newVerdictId, runReview, sanitizedArgumentsText, truncate } from './review.ts'
-import type { OverrideContext, ReviewFailure } from './review.ts'
+import type { OverrideContext, ReviewFailure, ReviewResolution } from './review.ts'
 
 export const name = 'auto-review'
 export const inject = ['approval', 'subagents', 'commands', 'tools']
@@ -189,10 +191,15 @@ export class AutoReviewRuntime {
   /** Pending circuit-breaker abort-turn timers, cleared when the plugin unloads. */
   private readonly pendingAborts = new Set<ReturnType<typeof setTimeout>>()
 
+  /** Same-fingerprint verdict cache (TTL + eviction only; no verdict semantics). */
+  private readonly cache: VerdictCache
+
   constructor(
     private readonly ctx: Context,
     readonly config: ResolvedConfig,
-  ) {}
+  ) {
+    this.cache = new VerdictCache({ ttlMs: config.verdictCacheTtlMs, maxEntries: config.verdictCacheMaxEntries })
+  }
 
   // --- Audit-host capability (ignorable envelope marker) --------------------
 
@@ -422,6 +429,25 @@ export class AutoReviewRuntime {
   }
 
   /**
+   * The same-fingerprint cache key for a pending request, or undefined when
+   * the verdict is not replayable from `tool + arguments` alone: the cache is
+   * disabled (`verdictCacheTtlMs: 0`), the reviewer transcript is enabled
+   * (the verdict depends on session context), or the log lacks a parseable
+   * presented call. The caller also bypasses the cache for a pending human
+   * override, which changes the reviewer's evidence.
+   * @param request - the pending approval request.
+   * @returns the fingerprint, or undefined to skip the cache (fail-closed:
+   *   the request then runs the second model as before).
+   */
+  private fingerprintFor(request: ApprovalRequest): string | undefined {
+    if (this.config.verdictCacheTtlMs <= 0) return undefined
+    if (this.config.contextBudget.turns > 0) return undefined
+    if (request.callId === undefined) return undefined
+    const raw = findPresentedCall(request.agent.session.events, request.callId)
+    return fingerprint(request.toolName, raw)
+  }
+
+  /**
    * Run the reviewer for one claimed request, register the child for
    * anti-recursion, apply the risk policy, record the verdict, trip the
    * circuit breaker on denials, and settle the answerer chain.
@@ -438,7 +464,27 @@ export class AutoReviewRuntime {
     override?: OverrideContext,
   ): Promise<ApprovalOutcome> {
     const started = Date.now()
-    const resolution = await runReview(this.ctx, this.config, request, this.reviewerSessions, override)
+    const cacheKey = this.fingerprintFor(request)
+    let resolution: ReviewResolution
+    let cached = false
+    if (cacheKey !== undefined && override === undefined) {
+      const hit = this.cache.get(cacheKey, started)
+      if (hit !== undefined) {
+        resolution = { ...hit }
+        cached = true
+      } else {
+        resolution = await runReview(this.ctx, this.config, request, this.reviewerSessions, override)
+        if (!isReviewFailure(resolution)) {
+          this.cache.set(cacheKey, {
+            decision: resolution.decision,
+            reason: resolution.reason,
+            ...resolution.riskLevel !== undefined ? { riskLevel: resolution.riskLevel } : {},
+          }, started)
+        }
+      }
+    } else {
+      resolution = await runReview(this.ctx, this.config, request, this.reviewerSessions, override)
+    }
     const durationMs = Date.now() - started
     if (isReviewFailure(resolution)) {
       return this.finish(request, approvalId, resolution, next, durationMs)
@@ -466,6 +512,7 @@ export class AutoReviewRuntime {
         ...resolution.riskLevel !== undefined ? { riskLevel: resolution.riskLevel } : {},
         ...overridden ? { escalation: 'risk-policy' } : {},
         ...outcome !== undefined ? { outcome } : {},
+        ...cached ? { cached: true } : {},
       }, { ignorable: true })
       this.probeAuditResult(result)
     } else {

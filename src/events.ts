@@ -58,6 +58,14 @@ declare module '@deepseek-ai/dsh-session/types' {
        * A risk-policy override never carries `outcome: 'allowed-once'`.
        */
       escalation?: 'risk-policy'
+      /**
+       * Present when this verdict was replayed from the same-fingerprint
+       * cache (no reviewer subagent ran): decision/reason/riskLevel were
+       * copied from a recent identical `tool + arguments` verdict within
+       * `verdictCacheTtlMs`. A cached verdict still settles exactly like a
+       * real one (risk policy, circuit breaker, deny feedback all apply).
+       */
+      cached?: true
     }
     /**
      * The rejection circuit breaker tripped — log-only audit, once per turn.

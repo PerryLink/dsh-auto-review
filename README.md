@@ -96,6 +96,8 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 | `riskPolicy` | `{maxAutoAllow: high, onHighRisk: delegate}` | `allow` verdicts above `maxAutoAllow` delegate or deny |
 | `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate}` | Rejection circuit breaker |
 | `overrideTtlMs` | `300000` | How long a `/auto-review approve` override stays usable |
+| `verdictCacheTtlMs` | `60000` | Reuse a recent verdict for an identical `tool + arguments` fingerprint; `0` disables the cache |
+| `verdictCacheMaxEntries` | `256` | Maximum cached fingerprints before oldest-eviction |
 | `language` | `en` | UI language of the `/auto-review` command output (`en` \| `zh`) |
 | `allowUnmarkedAudit` | `false` | Force session-log audit on hosts that drop the `ignorable` marker (dangerous: unmarked events make sessions unresumable elsewhere); default is detect-and-degrade |
 
@@ -142,7 +144,7 @@ Example (annotated full form: `fixtures/config/config-full.yaml`):
 
 ## Web review panel
 
-In the Web GUI (web profile), the package contributes a session-header action (**AI Review**) that opens a panel with the session's auto-review state: the switch with on/off buttons (they execute `/auto-review on|off`), both per-turn budgets, cumulative statistics (including hard-disable rejections), the circuit trip, the recent verdicts, and one-shot **approve** buttons for recent denials (they execute `/auto-review approve [n]`).
+In the Web GUI (web profile), the package contributes a session-header action (**AI Review**) that opens a panel with the session's auto-review state: the switch with on/off buttons (they execute `/auto-review on|off`), both per-turn budgets, cumulative statistics (including hard-disable rejections and cache hits), the circuit trip, the recent verdicts, and one-shot **approve** buttons for recent denials (they execute `/auto-review approve [n]`).
 
 How it is wired:
 

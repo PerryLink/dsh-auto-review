@@ -95,6 +95,8 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 | `riskPolicy` | `{maxAutoAllow: high, onHighRisk: delegate}` | `maxAutoAllow` से ऊपर के `allow` निर्णय सौंपते या अस्वीकार करते हैं |
 | `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate}` | अस्वीकृति सर्किट ब्रेकर |
 | `overrideTtlMs` | `300000` | `/auto-review approve` ओवरराइड कितनी देर उपयोगी रहता है |
+| `verdictCacheTtlMs` | `60000` | समान `टूल + तर्क` फ़िंगरप्रिंट के लिए हालिया निर्णय पुनः उपयोग करें; `0` कैश बंद करता है |
+| `verdictCacheMaxEntries` | `256` | सबसे पुराने को निकालने से पहले कैश किए गए फ़िंगरप्रिंट की अधिकतम संख्या |
 | `language` | `en` | `/auto-review` कमांड आउटपुट की UI भाषा (`en` \| `zh`) |
 | `allowUnmarkedAudit` | `false` | `ignorable` मार्कर छोड़ने वाले होस्ट पर सत्र-लॉग ऑडिट बलपूर्वक चालू करें (खतरनाक: बिना मार्कर वाली घटनाएँ अन्य होस्ट पर सत्र अप्राप्य बनाती हैं); डिफ़ॉल्ट पहचान-और-डिग्रेड है |
 

@@ -95,6 +95,8 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 | `riskPolicy` | `{maxAutoAllow: high, onHighRisk: delegate}` | 超过 `maxAutoAllow` 的 `allow` 裁决委派或拒绝 |
 | `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate}` | 拒绝熔断器 |
 | `overrideTtlMs` | `300000` | `/auto-review approve` 覆盖的有效时长 |
+| `verdictCacheTtlMs` | `60000` | 对相同 `工具 + 参数` 指纹复用近期裁决的时长；`0` 关闭缓存 |
+| `verdictCacheMaxEntries` | `256` | 缓存指纹上限，超出后淘汰最旧条目 |
 | `language` | `en` | `/auto-review` 命令输出的界面语言（`en` \| `zh`） |
 | `allowUnmarkedAudit` | `false` | 强制在丢弃 `ignorable` 标记的宿主上写入会话审计（危险：未标记事件会让会话在其他宿主上无法恢复）；默认自动探测并降级 |
 

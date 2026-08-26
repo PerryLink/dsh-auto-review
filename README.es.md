@@ -95,6 +95,8 @@ Todas las opciones son campos Schemastery `Config` (modificables desde cordis.ym
 | `riskPolicy` | `{maxAutoAllow: high, onHighRisk: delegate}` | Los veredictos `allow` por encima de `maxAutoAllow` delegan o deniegan |
 | `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate}` | Disyuntor de rechazos |
 | `overrideTtlMs` | `300000` | Cuánto dura una anulación de `/auto-review approve` |
+| `verdictCacheTtlMs` | `60000` | Reutiliza un veredicto reciente para una huella `herramienta + argumentos` idéntica; `0` desactiva la caché |
+| `verdictCacheMaxEntries` | `256` | Máximo de huellas en caché antes de desalojar la más antigua |
 | `language` | `en` | Idioma de la UI de la salida del comando `/auto-review` (`en` \| `zh`) |
 | `allowUnmarkedAudit` | `false` | Fuerza la auditoría del registro de sesión en hosts que descartan el marcador `ignorable` (peligroso: los eventos sin marcar hacen las sesiones irrecuperables en otros hosts); por defecto se detecta y se degrada |
 

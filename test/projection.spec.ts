@@ -109,6 +109,19 @@ describe('autoReview projection fold', () => {
     expect(viewAutoReview(state).recentDenies.map(row => row.reviewId)).toEqual(['r1'])
   })
 
+  it('counts cached verdicts separately while they still count as decisions', () => {
+    let state = initAutoReviewProjection(true)
+    state = applyAutoReview(state, rawEvent('autoReview/verdict', {
+      reviewId: 'r1', approvalId: 'a1', toolName: 'bash', provider: 'fork',
+      durationMs: 0, decision: 'allow', reason: 'ok', outcome: 'allowed-once', cached: true,
+    }))
+    state = applyAutoReview(state, rawEvent('autoReview/verdict', allow('r2', 'a2')))
+    const value = viewAutoReview(state)
+    expect(value.cacheHits).toBe(1)
+    expect(value.allows).toBe(2)
+    expect(AUTO_REVIEW_PROJECTION_SCHEMA.safeParse(value).success).toBe(true)
+  })
+
   it('starts at the mount-configured enableByDefault', () => {
     expect(viewAutoReview(initAutoReviewProjection(true)).enabled).toBe(true)
     expect(viewAutoReview(initAutoReviewProjection(false)).enabled).toBe(false)
@@ -121,7 +134,7 @@ describe('autoReview projection fold', () => {
   })
 
   it('bumps stateVersion with the enabled-default change', () => {
-    expect(makeAutoReviewProjection(true).stateVersion).toBeGreaterThanOrEqual(2)
+    expect(makeAutoReviewProjection(true).stateVersion).toBeGreaterThanOrEqual(3)
     // The wire schema still validates both init variants.
     expect(AUTO_REVIEW_PROJECTION_SCHEMA.safeParse(viewAutoReview(initAutoReviewProjection(false))).success).toBe(true)
   })

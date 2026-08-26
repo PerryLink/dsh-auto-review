@@ -54,6 +54,7 @@ export const AUTO_REVIEW_PROJECTION_SCHEMA = z.object({
   denies: z.number().int().nonnegative(),
   fallbacks: z.number().int().nonnegative(),
   neverRejects: z.number().int().nonnegative(),
+  cacheHits: z.number().int().nonnegative(),
   avgDurationMs: z.number().int().nonnegative(),
   circuit: CIRCUIT_VIEW_SCHEMA,
   recent: z.array(VERDICT_VIEW_SCHEMA),
@@ -79,6 +80,7 @@ export function initAutoReviewProjection(enabledByDefault: boolean): AutoReviewP
     denies: 0,
     fallbacks: 0,
     neverRejects: 0,
+    cacheHits: 0,
     durationSum: 0,
     decided: 0,
     circuit: null,
@@ -151,6 +153,7 @@ export function applyAutoReview(state: AutoReviewProjectionState, event: Session
         allows: state.allows + (data.decision === 'allow' ? 1 : 0),
         denies: state.denies + (data.decision === 'deny' ? 1 : 0),
         fallbacks: state.fallbacks + (decision ? 0 : 1),
+        cacheHits: state.cacheHits + (data.cached === true ? 1 : 0),
         durationSum: state.durationSum + (decision ? data.durationMs : 0),
         decided: state.decided + (decision ? 1 : 0),
         recent: [row, ...state.recent].slice(0, RECENT_CAP),
@@ -174,6 +177,7 @@ export function viewAutoReview(state: AutoReviewProjectionState): AutoReviewProj
     denies: state.denies,
     fallbacks: state.fallbacks,
     neverRejects: state.neverRejects,
+    cacheHits: state.cacheHits,
     avgDurationMs: state.decided === 0 ? 0 : Math.round(state.durationSum / state.decided),
     circuit: state.circuit,
     recent: state.recent,
@@ -191,6 +195,7 @@ export const AUTO_REVIEW_STATE_SCHEMA = z.object({
   denies: z.number().int().nonnegative(),
   fallbacks: z.number().int().nonnegative(),
   neverRejects: z.number().int().nonnegative(),
+  cacheHits: z.number().int().nonnegative(),
   durationSum: z.number().int().nonnegative(),
   decided: z.number().int().nonnegative(),
   circuit: CIRCUIT_VIEW_SCHEMA,
@@ -229,8 +234,8 @@ export function makeAutoReviewProjection(enabledByDefault: boolean): AutoReviewP
       viewSchema: AUTO_REVIEW_PROJECTION_SCHEMA as unknown as NonNullable<ProjectionDefinition<'autoReview', AutoReviewProjectionState>['wire']>['viewSchema'],
       view: viewAutoReview,
     },
-    // v2: `init.enabled` follows `enableByDefault` (was hardcoded true) and the
-    // wire gained the cumulative `neverRejects` counter.
-    stateVersion: 2,
+    // v3: the wire gained the cumulative `cacheHits` counter (same-fingerprint
+    // verdict cache replays).
+    stateVersion: 3,
   }
 }

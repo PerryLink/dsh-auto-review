@@ -161,6 +161,14 @@ export interface Config {
   circuitBreaker?: Partial<CircuitBreakerConfig>
   /** How long a `/auto-review approve` override stays usable, in milliseconds. Default 5 minutes. */
   overrideTtlMs?: number
+  /**
+   * How long an identical `tool + arguments` fingerprint reuses its last
+   * verdict before the second model is consulted again, in milliseconds.
+   * `0` disables the cache. Default 60000.
+   */
+  verdictCacheTtlMs?: number
+  /** Hard cap on cached verdict fingerprints; the oldest entry is evicted beyond it. Default 256. */
+  verdictCacheMaxEntries?: number
   /** UI language of the `/auto-review` command output (`en` | `zh`). Default `'en'`. */
   language?: UiLanguage
   /**
@@ -193,6 +201,8 @@ export interface ResolvedConfig {
   readonly riskPolicy: RiskPolicyConfig
   readonly circuitBreaker: CircuitBreakerConfig
   readonly overrideTtlMs: number
+  readonly verdictCacheTtlMs: number
+  readonly verdictCacheMaxEntries: number
   readonly language: UiLanguage
   readonly allowUnmarkedAudit: boolean
 }
@@ -258,6 +268,8 @@ export const Config: z<Config> = z.object({
     action: CIRCUIT_ACTION.default('delegate'),
   }).default({ consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: 'delegate' }),
   overrideTtlMs: z.number().default(5 * 60_000),
+  verdictCacheTtlMs: z.number().default(60_000),
+  verdictCacheMaxEntries: z.number().default(256),
   language: z.union(['en', 'zh'] as const).default('en'),
   allowUnmarkedAudit: z.boolean().default(false),
 })
@@ -305,6 +317,12 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
   }
   if (!Number.isSafeInteger(config.overrideTtlMs ?? 5 * 60_000) || (config.overrideTtlMs ?? 5 * 60_000) <= 0) {
     throw new TypeError(`overrideTtlMs must be a positive safe integer, got ${String(config.overrideTtlMs)}`)
+  }
+  if (!Number.isSafeInteger(config.verdictCacheTtlMs ?? 60_000) || (config.verdictCacheTtlMs ?? 60_000) < 0) {
+    throw new TypeError(`verdictCacheTtlMs must be a non-negative safe integer (0 disables the cache), got ${String(config.verdictCacheTtlMs)}`)
+  }
+  if (!Number.isSafeInteger(config.verdictCacheMaxEntries ?? 256) || (config.verdictCacheMaxEntries ?? 256) <= 0) {
+    throw new TypeError(`verdictCacheMaxEntries must be a positive safe integer, got ${String(config.verdictCacheMaxEntries)}`)
   }
   if (config.allowUnmarkedAudit !== undefined && typeof config.allowUnmarkedAudit !== 'boolean') {
     throw new TypeError(`allowUnmarkedAudit must be a boolean, got ${String(config.allowUnmarkedAudit)}`)
@@ -354,6 +372,8 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
       action: breaker.action ?? 'delegate',
     },
     overrideTtlMs: config.overrideTtlMs ?? 5 * 60_000,
+    verdictCacheTtlMs: config.verdictCacheTtlMs ?? 60_000,
+    verdictCacheMaxEntries: config.verdictCacheMaxEntries ?? 256,
     language: config.language ?? 'en',
     allowUnmarkedAudit: config.allowUnmarkedAudit ?? false,
   }

@@ -64,6 +64,8 @@ function promptConfig(overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {
     riskPolicy: { maxAutoAllow: 'high', onHighRisk: 'delegate' },
     circuitBreaker: { consecutiveDenies: 3, windowDenies: 10, windowSize: 50, action: 'delegate' },
     overrideTtlMs: 300_000,
+    verdictCacheTtlMs: 60_000,
+    verdictCacheMaxEntries: 256,
     language: 'en',
     allowUnmarkedAudit: false,
     ...overrides,
@@ -101,6 +103,8 @@ describe('reviewer prompt', () => {
       riskPolicy: { maxAutoAllow: 'high', onHighRisk: 'delegate' },
       circuitBreaker: { consecutiveDenies: 3, windowDenies: 10, windowSize: 50, action: 'delegate' },
       overrideTtlMs: 300_000,
+      verdictCacheTtlMs: 60_000,
+      verdictCacheMaxEntries: 256,
       language: 'en',
       allowUnmarkedAudit: false,
     })
@@ -142,6 +146,8 @@ describe('reviewer prompt', () => {
       riskPolicy: { maxAutoAllow: 'high', onHighRisk: 'delegate' },
       circuitBreaker: { consecutiveDenies: 3, windowDenies: 10, windowSize: 50, action: 'delegate' },
       overrideTtlMs: 300_000,
+      verdictCacheTtlMs: 60_000,
+      verdictCacheMaxEntries: 256,
       language: 'en',
       allowUnmarkedAudit: false,
     })

@@ -1,11 +1,11 @@
 /**
  * The session-header review panel: a button in the conversation header that
  * opens a popover with this session's auto-review state — the on/off switch,
- * budgets, cumulative statistics (including hard-disable rejections), the
- * circuit trip, recent verdicts, and one-shot approve buttons for recent
- * denials. Data arrives through the `autoReview` session projection;
- * switches and approves execute the `/auto-review` command through the
- * commands Remote.
+ * budgets, cumulative statistics (including hard-disable rejections and
+ * cache hits), the circuit trip, recent verdicts, and one-shot approve
+ * buttons for recent denials. Data arrives through the `autoReview` session
+ * projection; switches and approves execute the `/auto-review` command
+ * through the commands Remote.
  * @module dsh-auto-review/client/ReviewPanel
  */
 
@@ -122,6 +122,10 @@ export function ReviewPanel({ useProjection, approve, setEnabled, t }: ReviewPan
                 <div data-dsh-auto-review-row>
                   <span>{t('failures')}</span>
                   <span>{value.failuresUsed}</span>
+                </div>
+                <div data-dsh-auto-review-row>
+                  <span>{t('cacheHits')}</span>
+                  <span>{value.cacheHits}</span>
                 </div>
                 <div data-dsh-auto-review-row>
                   <span>{t('allTime')}</span>

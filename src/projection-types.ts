@@ -40,6 +40,8 @@ export interface AutoReviewProjection {
   readonly fallbacks: number
   /** Hard-disable (`never` policy) rejections — no reviewer ran for these. */
   readonly neverRejects: number
+  /** Cumulative verdicts replayed from the same-fingerprint cache (no second model ran). */
+  readonly cacheHits: number
   /** Mean duration of decision-carrying verdicts, rounded; 0 without any. */
   readonly avgDurationMs: number
   /** The current turn's circuit trip, or null. */
@@ -69,6 +71,7 @@ export interface AutoReviewProjectionState {
   readonly denies: number
   readonly fallbacks: number
   readonly neverRejects: number
+  readonly cacheHits: number
   readonly durationSum: number
   readonly decided: number
   readonly circuit: AutoReviewProjection['circuit']

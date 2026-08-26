@@ -23,6 +23,8 @@ describe('config resolution', () => {
       maxReviewsPerTurn: 10,
       maxFailuresPerTurn: 10,
       reasonMaxChars: 2000,
+      verdictCacheTtlMs: 60_000,
+      verdictCacheMaxEntries: 256,
     })
     expect(resolved.riskRules).toEqual([])
     expect(resolved.reviewerModel).toBeUndefined()
@@ -47,6 +49,12 @@ describe('config resolution', () => {
     expect(resolved.overrideTtlMs).toBe(5 * 60_000)
     expect(resolved.reviewerPolicyText).toBeUndefined()
     expect(resolved.language).toBe('en')
+  })
+
+  it('defaults the verdict cache and accepts 0 as off', () => {
+    expect(resolveConfig().verdictCacheTtlMs).toBe(60_000)
+    expect(resolveConfig().verdictCacheMaxEntries).toBe(256)
+    expect(resolveConfig({ verdictCacheTtlMs: 0 }).verdictCacheTtlMs).toBe(0)
   })
 
   it('rejects an unsupported UI language', () => {
@@ -98,6 +106,8 @@ describe('config resolution', () => {
     expect(() => resolveConfig({ maxReviewsPerTurn: -1 })).toThrow(/maxReviewsPerTurn/u)
     expect(() => resolveConfig({ maxFailuresPerTurn: 0 })).toThrow(/maxFailuresPerTurn/u)
     expect(() => resolveConfig({ reasonMaxChars: 0 })).toThrow(/reasonMaxChars/u)
+    expect(() => resolveConfig({ verdictCacheTtlMs: -1 })).toThrow(/verdictCacheTtlMs/u)
+    expect(() => resolveConfig({ verdictCacheMaxEntries: 0 })).toThrow(/verdictCacheMaxEntries/u)
   })
 
   it('keeps partial overrides and defaults the rest of the table', () => {
