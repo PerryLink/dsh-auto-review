@@ -2,6 +2,21 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [0.7.0] — 2026-08-26
+
+### Added
+
+- **stdio MCP server export** (`dsh-auto-review/mcp` + the `dsh-auto-review-mcp` bin): a standalone stdio JSON-RPC 2.0 / MCP server (newline-delimited JSON, one object per line) exposing two tools — `review_action` (deterministic deny on a matched never-rule or fail-closed, otherwise replay a cached verdict for an identical fingerprint) and `cache_stats` (cache counters + TTL). The new `src/mcp/` modules own only protocol dispatch; every decision lives in the standalone reviewer.
+- **Same-fingerprint verdict cache with TTL**: a repeated, identical tool action reuses its recent reviewer verdict instead of paying another second-model round-trip. The fingerprint is a SHA-256 digest of the tool name plus canonicalized call arguments (volatile keys stripped, keys sorted); only the digest is stored, so plaintext arguments never enter the cache. New config knobs control TTL and cacheability, `cache_stats` reports hits/stores/live size, and the web panel shows the cache state.
+
+### Changed
+
+- Renovate is enabled via the shared `dsh-plugin-kit` preset, and the five-language READMEs credit community contributors. No plugin behavior changed.
+
+### Fixed
+
+- Packed smoke install now resolves the next-tagged rc line: the `@deepseek-ai/dsh-*` peer floor is raised to `0.1.1-rc.2` (the peer ranges already cover it), so `pnpm pack` plus the smoke install no longer fails to resolve peers.
+
 ## [0.6.0] — 2026-08-23
 
 ### Added
