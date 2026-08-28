@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write # GitHub Release
+  id-token: write # npm provenance
 
 concurrency:
   group: publish-${{ github.ref }}
@@ -70,7 +71,7 @@ jobs:
           if npm view "dsh-auto-review@${version}" version >/dev/null 2>&1; then
             echo "dsh-auto-review@${version} is already published; skipping npm publish"
           else
-            pnpm publish --no-git-checks
+            pnpm publish --no-git-checks --provenance
           fi
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
