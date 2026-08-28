@@ -70,6 +70,7 @@ Out of the box the shipped patch AI-reviews `bash` and `write`; every other tool
 - **npm channel** (published releases): `dsh plugin --profile web add dsh-auto-review`.
 - **tarball channel**: `pnpm pack` in this repo, then `dsh plugin --profile web add ./dsh-auto-review-<version>.tgz`.
 - **uninstall**: `dsh plugin --profile web remove dsh-auto-review` (or remove the row from the profile patch).
+- **native build scripts**: when `dsh plugin add` stops at `ERR_PNPM_IGNORED_BUILDS` for `koffi` / `node-pty` (pulled in by the eval harness), run `pnpm approve-builds` to approve those build scripts.
 
 ## Configuration
 

@@ -2,6 +2,12 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [Unreleased]
+
+### Fixed
+
+- Declared the five client `@deepseek-ai/dsh-client-*` services (`dsh-client-connection`, `dsh-client-runtime`, `dsh-client-locale`, `dsh-client-ui-slots`, `dsh-client-ui-conversation`) as optional peerDependencies (via `peerDependenciesMeta.optional`) to match the client `inject` manifest. Added an install note to run `pnpm approve-builds` for the `koffi`/`node-pty` build scripts when pnpm reports `ERR_PNPM_IGNORED_BUILDS`.
+
 ## [0.7.0] — 2026-08-26
 
 ### Added
