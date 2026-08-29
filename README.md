@@ -68,6 +68,7 @@ Out of the box the shipped patch AI-reviews `bash` and `write`; every other tool
 
 - **git channel** (latest `main`): `dsh plugin --profile web add "github:PerryLink/dsh-auto-review#main"` — the isolated `prepare` build needs the single `allowBuilds: { esbuild: true }` key the `dsh` CLI prints for `dsh-auto-review`.
 - **npm channel** (published releases): `dsh plugin --profile web add dsh-auto-review`.
+- **1024 store channel**: `npm i -g dsh1024` once, then `dsh1024 plugin --profile web add dsh-auto-review` (counts toward the [deepseek1024.com](https://deepseek1024.com) install ranking).
 - **tarball channel**: `pnpm pack` in this repo, then `dsh plugin --profile web add ./dsh-auto-review-<version>.tgz`.
 - **uninstall**: `dsh plugin --profile web remove dsh-auto-review` (or remove the row from the profile patch).
 - **native build scripts**: when `dsh plugin add` stops at `ERR_PNPM_IGNORED_BUILDS` for `koffi` / `node-pty` (pulled in by the eval harness), run `pnpm approve-builds` to approve those build scripts.

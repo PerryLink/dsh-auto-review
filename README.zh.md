@@ -67,6 +67,7 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 
 - **git 渠道**（最新 `main`）：`dsh plugin --profile web add "github:PerryLink/dsh-auto-review#main"` —— 隔离的 `prepare` 构建需要 `dsh` CLI 为 `dsh-auto-review` 打印出的那个 `allowBuilds: { esbuild: true }` 键。
 - **npm 渠道**（已发布版本）：`dsh plugin --profile web add dsh-auto-review`。
+- **1024 商店渠道**：先 `npm i -g dsh1024`，再 `dsh1024 plugin --profile web add dsh-auto-review`（计入 [deepseek1024.com](https://deepseek1024.com) 安装排行）。
 - **tarball 渠道**：在本仓库执行 `pnpm pack`，然后 `dsh plugin --profile web add ./dsh-auto-review-<version>.tgz`。
 - **卸载**：`dsh plugin --profile web remove dsh-auto-review`（或从 profile 补丁中删除该行）。
 
