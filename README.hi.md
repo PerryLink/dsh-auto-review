@@ -6,6 +6,8 @@
 
 *जब कोई क्रिया सैंडबॉक्स सीमा पार करती है, तो दूसरा मॉडल साक्ष्य पढ़ता है और कारण सहित निर्णय लौटाता है — ताकि मनुष्य कुछ भी स्वीकृत न करें और कुछ भी असुरक्षित छूट न जाए।*
 
+> **आधिकारिक रिपॉज़िटरी।** यह PerryLink द्वारा अनुरक्षित dsh-auto-review का एकमात्र आधिकारिक रिपॉज़िटरी है। अन्य खातों के समान-नाम रिपॉज़िटरी इससे संबद्ध नहीं हैं।
+
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![DSH plugin](https://img.shields.io/badge/dsh-plugin-✅-green)](https://github.com/topics/dsh-plugin)
 [![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-brightgreen.svg)](#)

@@ -6,6 +6,8 @@
 
 *Cuando una acción cruza el límite del sandbox, un segundo modelo lee la evidencia y devuelve un veredicto con su razón — para que los humanos no aprueben nada y nada inseguro se cuele.*
 
+> **Repositorio oficial.** Este es el único repositorio oficial de dsh-auto-review, mantenido por PerryLink. Los repositorios del mismo nombre bajo otras cuentas no están afiliados.
+
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![DSH plugin](https://img.shields.io/badge/dsh-plugin-✅-green)](https://github.com/topics/dsh-plugin)
 [![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-brightgreen.svg)](#)
