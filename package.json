@@ -236,5 +236,9 @@
     "verify:self-contained": "node scripts/verify-self-contained.mjs",
     "prepublishOnly": "pnpm run typecheck && pnpm test && pnpm run build && pnpm run verify:self-contained"
   },
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "funding": {
+    "type": "individual",
+    "url": "https://github.com/sponsors/PerryLink"
+  }
 }
