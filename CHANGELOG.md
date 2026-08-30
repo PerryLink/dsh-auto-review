@@ -4,6 +4,14 @@ All notable changes to `dsh-auto-review` are documented here. The repo is pre-re
 
 ## [Unreleased]
 
+### Changed
+
+- Host `0.1.2-alpha.1` compatibility: master removed the `ignorable` envelope (42dc2a46c2) and fail-closes on unknown session event types, so `isUnmarkedHostVersion` now also classifies `0.1.2-alpha.1`+ lines as unmarked, and an unresolvable peer version fails closed BEFORE the first append (the append probe now only runs for recognized marker-aware future lines) — a probe append would otherwise pollute the log and make the session unloadable. `allowUnmarkedAudit: true` still opts back in.
+
+### Fixed
+
+- Test harness derives synthetic tool-call ids from `dsh-tools`' `ToolExecution['callId']` instead of importing `CallId` (renamed `ToolCallId` on host HEAD), keeping `typecheck` (checkout) and the published `0.1.1-rc.2` types both green.
+
 ### Fixed
 
 - Declared the five client `@deepseek-ai/dsh-client-*` services (`dsh-client-connection`, `dsh-client-runtime`, `dsh-client-locale`, `dsh-client-ui-slots`, `dsh-client-ui-conversation`) as optional peerDependencies (via `peerDependenciesMeta.optional`) to match the client `inject` manifest. Added an install note to run `pnpm approve-builds` for the `koffi`/`node-pty` build scripts when pnpm reports `ERR_PNPM_IGNORED_BUILDS`.
