@@ -33,25 +33,32 @@ export function isMarkedAuditEvent(result: unknown): boolean {
 }
 
 /**
- * Whether a `@deepseek-ai/dsh-session` version line predates the
- * `ignorable` envelope-marker surface: every released rc line through
- * `0.1.1-rc.2` silently drops the marker from `Session.append` options
- * (the stamping fix exists on harness master only — no release carries it
- * yet), so audit events written by those builds land unmarked and break
- * resume on stricter hosts. Extend the bound when a new rc line ships that
- * still drops the marker. Non-matching (later rc, stable, or unresolvable)
+ * Whether a `@deepseek-ai/dsh-session` version line lacks a safe audit
+ * write path: every released rc line through `0.1.1-rc.2` silently drops
+ * the marker from `Session.append` options (the stamping fix exists on
+ * harness master only — no release carries it), and host master
+ * (`0.1.2-alpha.1`+, 42dc2a46c2) removed the ignorable envelope entirely
+ * and fail-closes on unknown event types (`autoReview/*` is not in
+ * `KNOWN_SESSION_EVENT_TYPES`), so writing there makes sessions
+ * unresumable. Extend the bound when a new rc line ships that still drops
+ * the marker. Non-matching (later rc, stable 0.2+, or unresolvable)
  * versions are treated as possibly-marker-aware and verified by the append
  * probe.
  * @param version - the installed peer version string.
- * @returns true for the known-unmarked `0.1.0-rc.1–rc.8` and
- *   `0.1.1-rc.1–rc.2` lines.
+ * @returns true for the known-unmarked `0.1.0-rc.1–rc.8`, `0.1.1-rc.1–rc.2`,
+ *   and `0.1.2-alpha.1`+ fail-closed lines.
  */
 export function isUnmarkedHostVersion(version: string): boolean {
-  const match = /^0\.1\.(\d+)-rc\.(\d+)$/.exec(version.trim())
-  if (match === null) return false
-  const minor = Number(match[1])
-  const rc = Number(match[2])
-  return (minor === 0 && rc <= 8) || (minor === 1 && rc <= 2)
+  const v = version.trim()
+  const rc = /^0\.1\.(\d+)-rc\.(\d+)$/.exec(v)
+  if (rc !== null) {
+    const minor = Number(rc[1])
+    const patch = Number(rc[2])
+    return (minor === 0 && patch <= 8) || (minor === 1 && patch <= 2)
+  }
+  const line = /^0\.1\.(\d+)(?:-.*)?$/.exec(v)
+  if (line !== null) return Number(line[1]) >= 2
+  return false
 }
 
 /**

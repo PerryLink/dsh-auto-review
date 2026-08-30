@@ -207,7 +207,10 @@ export class AutoReviewRuntime {
    * Whether the session-log audit may append now: enabled when the host
    * stamps the `ignorable` marker (peer-version pre-check, then the append
    * probe) or when `allowUnmarkedAudit` opts back in. Degrades to the
-   * in-memory mirror otherwise, with a one-time warning.
+   * in-memory mirror otherwise, with a one-time warning. Decides BEFORE the
+   * first append: an unresolvable version also fails closed (host
+   * `0.1.2-alpha.1`+ rejects unknown event types on read, so a probe append
+   * would pollute the log).
    * @returns true when audit appends are safe on this host.
    */
   private auditMayAppend(): boolean {
@@ -215,13 +218,13 @@ export class AutoReviewRuntime {
     if (this.auditSupport === 'unsupported') return false
     if (this.auditSupport === 'unknown') {
       const version = peerSessionVersion()
-      if (version !== null && isUnmarkedHostVersion(version)) {
+      if (version === null || isUnmarkedHostVersion(version)) {
         this.auditSupport = 'unsupported'
         this.warnUnmarkedAuditHost()
         return false
       }
     }
-    return true // unknown with no resolvable version: append once and probe the envelope
+    return true // a recognized marker-aware future line: append once and probe the envelope
   }
 
   /** After the first append on an unversioned host, probe the returned envelope for the ignorable marker. */
@@ -240,7 +243,7 @@ export class AutoReviewRuntime {
     if (this.warnedUnmarked) return
     this.warnedUnmarked = true
     this.ctx.logger.warn(
-      'auto-review: this host drops the ignorable marker on audit events (Session.append predates it), which would make sessions unresumable on stricter harness builds — session-log audit is disabled and an in-memory mirror takes over; set allowUnmarkedAudit: true to opt back in, and repair already-polluted logs with scripts/repair-session-logs.mjs from dsh-permission-rules',
+      'auto-review: this host drops the ignorable marker on audit events or rejects unknown event types on read (Session.append predates the marker / fail-closed event vocabulary), which would make sessions unresumable — session-log audit is disabled and an in-memory mirror takes over; set allowUnmarkedAudit: true to opt back in, and repair already-polluted logs with scripts/repair-session-logs.mjs from dsh-permission-rules',
     )
   }
 
