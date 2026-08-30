@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { CallId } from './call-id.ts'
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
 import { dispatchAskedApproval, mountHarness, type Harness } from './harness.ts'
 

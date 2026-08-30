@@ -6,12 +6,15 @@
  * events — they would make sessions unresumable on stricter harness
  * builds. Instead it degrades to an in-memory mirror: marker-free
  * feedback, in-memory budgets/breaker/override/approve, and a status
- * notice. The append probe for unversioned hosts is covered last.
+ * notice. Host master (0.1.2-alpha.1+) removes the envelope entirely and
+ * fail-closes on unknown event types, so unresolvable versions now also
+ * fail closed BEFORE any append (the probe path only runs for recognized
+ * marker-aware future lines).
  * @module dsh-auto-review/test/audit-degradation.spec
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { CallId } from './call-id.ts'
 import { CommandId } from '@deepseek-ai/dsh-commands'
 import type { CommandDefinition } from '@deepseek-ai/dsh-commands'
 import { dispatchAskedApproval, dispatchPostExecute, mountHarness, type ScriptedReview } from './harness.ts'
@@ -142,18 +145,16 @@ describe('audit-disabled degradation (rc.6 host)', () => {
   })
 })
 
-describe('append probe for unversioned hosts', () => {
-  it('probes the first appended envelope and degrades when the marker is dropped', async () => {
+describe('fail-closed audit for unresolvable versions', () => {
+  it('decides before the first append: no probe append pollutes the log', async () => {
     const { peerSessionVersion } = await import('../src/audit.ts')
     vi.mocked(peerSessionVersion).mockReturnValue(null)
     const harness = await mountHarness({ toolsPolicy: { overrides: { bash: 'ai' } } }, denyScript)
     await dispatchAskedApproval(harness.ctx, harness.session, { agent: harness.agent, toolName: 'bash' }, next)
-    // The first (probe) append lands unmarked on this rc.6 session…
-    const firstCount = harness.session.events.filter(event => event.type === 'autoReview/verdict').length
-    expect(firstCount).toBe(1)
-    // …the probe then flips the runtime to unsupported: later verdicts stay out of the log.
     await dispatchAskedApproval(harness.ctx, harness.session, { agent: harness.agent, toolName: 'bash' }, next)
-    expect(harness.session.events.filter(event => event.type === 'autoReview/verdict')).toHaveLength(1)
+    // 0.1.2-alpha.1+ fail-closes on unknown event types, so an unresolvable
+    // version must not be probed by writing a real event: nothing lands.
+    expect(harness.session.events.filter(event => event.type === 'autoReview/verdict')).toHaveLength(0)
     vi.mocked(peerSessionVersion).mockReset()
   })
 })

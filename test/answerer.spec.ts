@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { CallId } from './call-id.ts'
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
 import { CIRCUIT_MARKER_PATTERN, DENY_MARKER_PATTERN, FALLBACK_MARKER_PATTERN, NEVER_MARKER_PATTERN, autoReviewFailuresInOpenTurn, autoReviewsInOpenTurn } from '../src/index.ts'
 import {

@@ -7,7 +7,8 @@
 
 import { readFileSync } from 'node:fs'
 import { Context } from '@deepseek-ai/cordis'
-import { CallId, createToolResultMessage } from '@deepseek-ai/dsh-llm'
+import { createToolResultMessage } from '@deepseek-ai/dsh-llm'
+import { CallId } from './call-id.ts'
 import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 import SessionStore from '@deepseek-ai/dsh-session'
 import type { Session } from '@deepseek-ai/dsh-session'
