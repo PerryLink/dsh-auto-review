@@ -2,6 +2,16 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [Unreleased]
+
+### Changed
+
+- Host `0.1.2-alpha.2` compatibility: `Session.append`'s third parameter is now `SurfaceIntent` (surface event types only — no `ignorable` option), so append can never stamp the audit marker; the `ignorable` field stays on the event envelope and the persistence read path still fails closed on unmarked unknown event types. The `isUnmarkedHostVersion` classification (`0.1.2.x` → unmarked, stay-write) is unchanged — the audit docs are calibrated to the alpha.2 facts.
+- The call-id brand is derived locally (`src/call-id.ts`) from `dsh-tools`' `ToolExecution['callId']` instead of importing `CallId` from `@deepseek-ai/dsh-llm` (renamed `ToolCallId` on host master), keeping the source green on both the published `0.1.1-rc.2` line and host checkout.
+- The client half no longer imports `@deepseek-ai/dsh-client-runtime` (removed from the host): `ClientContext` is cordis `Context`, `SessionId` comes from `@deepseek-ai/dsh-session/types`, and the slots registry is accessed structurally (`ctx.get('slots')`). The `@deepseek-ai/dsh-client-runtime` peer/dev dependency, client `inject` entry, and bundle external are dropped.
+- Peer lower bounds relaxed `>=0.1.1-rc.2 <0.2.0` → `>=0.1.0-rc.8 <0.2.0`; dev/test pins bumped to `0.1.2-alpha.2`; `@deepseek-ai/cordis` `^4.0.2`; `@deepseek-ai/schemastery` `^3.18.2`.
+- `scripts/check-host-versions.mjs` now also watches the npm `alpha` release line (the exact dev pins are its coverage), so a newer host alpha fails the gate before a publish.
+
 ## [0.8.0] - 2026-08-30
 
 ### Changed
