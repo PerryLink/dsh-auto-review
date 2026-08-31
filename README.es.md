@@ -124,6 +124,20 @@ Ejemplo (forma completa anotada: `fixtures/config/config-full.yaml`):
         circuitBreaker: { consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate }
 ```
 
+### De dónde sale realmente la configuración
+
+**`~/.dsh/settings.yaml` NO es una fuente de configuración para este plugin.** Un bloque `auto-review:` allí no tiene efecto ni produce aviso alguno: como todo plugin-función de DSH, `dsh-auto-review` recibe su `Config` de la fila con la que el loader lo monta — la capa de parches cordis del perfil. (Algunos otros plugins de DSH sí leen además el servicio de settings, así que la inconsistencia es fácil de sufrir y el síntoma es indistinguible de que el revisor simplemente deniegue.)
+
+Pon la configuración en el `cordis.patch.yml` de tu perfil. Una **anulación dirigida por id reemplaza la fila de config entera**, así que reafirma cada clave que necesites — omitir `toolsPolicy` devuelve `bash`/`write` al valor por defecto del esquema, `human`, y el revisor deja de ejecutarse por completo:
+
+```yaml
+- id: auto-review
+  config:
+    toolsPolicy:
+      overrides: { bash: ai, write: ai }
+    contextBudget: { turns: 4, maxChars: 8000 }
+```
+
 ## Herramientas y superficies
 
 | Superficie | Tipo | Notas |

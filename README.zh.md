@@ -124,6 +124,20 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
         circuitBreaker: { consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate }
 ```
 
+### 配置究竟从哪里来
+
+**`~/.dsh/settings.yaml` 不是本插件的配置来源。** 在其中写 `auto-review:` 块不会生效，也不会有任何警告：与每个 DSH 函数插件一样，`dsh-auto-review` 的 `Config` 来自 Loader 挂载它的那一行——也就是 profile 的 cordis patch 层。（部分其他 DSH 插件还会读取 settings 服务，因此这种不一致很容易踩坑，而且其症状与“审查器就是拒绝了”完全无法区分。）
+
+请把配置写进 profile 的 `cordis.patch.yml`。**按 id 定向的 override 会替换整行 config**，因此需要重述你所需的每一个键——省略 `toolsPolicy` 会让 `bash`/`write` 悄悄回落到 schema 默认值 `human`，审查器随即完全不再运行：
+
+```yaml
+- id: auto-review
+  config:
+    toolsPolicy:
+      overrides: { bash: ai, write: ai }
+    contextBudget: { turns: 4, maxChars: 8000 }
+```
+
 ## 工具与界面
 
 | 界面 | 类型 | 说明 |

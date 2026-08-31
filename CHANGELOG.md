@@ -15,6 +15,10 @@ All notable changes to `dsh-auto-review` are documented here. The repo is pre-re
 - **The context budget's character cap is spent newest-line first.** `buildContextSection` truncated the joined transcript from the front, which cut its tail — the open turn holding the evidence the verdict rules ask for. It now collects lines backwards from the newest until the cap is reached, so an over-budget transcript loses its oldest lines instead. A single line wider than the whole cap still yields its head.
 - **The verdict cache is off by default as a consequence of the new `contextBudget` default**: `fingerprintFor` already refused to key a transcript-dependent verdict on `tool + arguments` alone, and that guard now fires with the shipped configuration. Set `contextBudget: { turns: 0 }` to trade the reviewer's transcript back for same-fingerprint verdict reuse.
 
+### Documentation
+
+- **The five READMEs now say where the config actually comes from** ([#21](https://github.com/PerryLink/dsh-auto-review/issues/21)). An `auto-review:` block in `~/.dsh/settings.yaml` has no effect and produces no warning — this plugin receives its `Config` from the row the loader mounts it with, the profile's cordis patch layer — and the failure looks identical to the reviewer simply denying. Some other DSH plugins additionally read the settings service, so the inconsistency is easy to trip over. The new "Where the config actually comes from" subsection states the one real source, warns that an id-targeted override replaces the WHOLE config row (dropping `toolsPolicy` returns `bash`/`write` to the schema default `human` and the reviewer stops running), and carries a complete working example.
+
 ## [0.8.0] - 2026-08-30
 
 ### Changed

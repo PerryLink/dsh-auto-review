@@ -124,6 +124,20 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
         circuitBreaker: { consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate }
 ```
 
+### कॉन्फ़िगरेशन असल में कहाँ से आता है
+
+**`~/.dsh/settings.yaml` इस प्लगइन के लिए कॉन्फ़िग स्रोत नहीं है।** वहाँ लिखा `auto-review:` ब्लॉक न कोई असर करता है और न कोई चेतावनी देता है: हर DSH फ़ंक्शन-प्लगइन की तरह `dsh-auto-review` अपना `Config` उसी पंक्ति से पाता है जिससे लोडर उसे माउंट करता है — यानी प्रोफ़ाइल की cordis patch परत से। (कुछ अन्य DSH प्लगइन settings सेवा भी पढ़ते हैं, इसलिए यह असंगति आसानी से फँसा देती है, और लक्षण "समीक्षक ने बस मना कर दिया" से अलग नहीं दिखता।)
+
+कॉन्फ़िगरेशन अपनी प्रोफ़ाइल के `cordis.patch.yml` में रखें। **id-लक्षित override पूरी config पंक्ति को बदल देता है**, इसलिए हर आवश्यक कुंजी दोबारा लिखें — `toolsPolicy` छोड़ने पर `bash`/`write` चुपचाप schema डिफ़ॉल्ट `human` पर लौट जाते हैं और समीक्षक चलना ही बंद कर देता है:
+
+```yaml
+- id: auto-review
+  config:
+    toolsPolicy:
+      overrides: { bash: ai, write: ai }
+    contextBudget: { turns: 4, maxChars: 8000 }
+```
+
 ## उपकरण और सतहें
 
 | सतह | प्रकार | नोट्स |
