@@ -1,10 +1,13 @@
 /**
- * Host-version watch for the pre-release peer pins. The peers pin
+ * Host-version watch for the pre-release pins. The peers pin
  * `@deepseek-ai/dsh-*` to the rc line they are built against (exact
  * `0.1.x-rc.N` or the `>=0.1.x-rc.N <0.2.0` range); when the umbrella
- * `@deepseek-ai/dsh` publishes a newer line (on `latest` or `next`), this
+ * `@deepseek-ai/dsh` publishes a newer rc line (on any dist-tag), this
  * script fails so the bump happens BEFORE a publish, not after a broken
- * install.
+ * install. The npm `alpha` release line (`0.1.x-alpha.N`) cannot be
+ * expressed by the rc peer ranges, so the exact dev-pinned alpha line is
+ * its coverage: a newer registry alpha also fails the check (bump the dev
+ * pins, or document a deliberate stay-behind).
  *
  * Network failure is not a failure here: an offline machine must not block
  * the gate, it only skips the check.
@@ -14,6 +17,7 @@ import { readFile } from 'node:fs/promises'
 
 const EXACT_PIN = /^0\.1\.(\d+)-rc\.(\d+)$/u
 const RANGE_PIN = /^>=0\.1\.(\d+)-rc\.(\d+) <0\.2\.0$/u
+const ALPHA_PIN = /^0\.1\.(\d+)-alpha\.(\d+)$/u
 
 const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
 const pinned = Object.entries(pkg.peerDependencies ?? {})
@@ -76,3 +80,35 @@ if (stale.length > 0) {
 }
 
 console.log(`check-host-versions: peers cover the newest @deepseek-ai/dsh rc line (0.1.${newest.minor}-rc.${newest.rc})`)
+
+// The alpha release line is covered by the exact dev pins (the rc peer
+// ranges cannot express `0.1.x-alpha.N`); fail when the registry alpha
+// line outruns them.
+const newestAlpha = Object.values(tags)
+  .map(tag => ALPHA_PIN.exec(String(tag)))
+  .filter(match => match !== null)
+  .map(match => ({ minor: Number(match[1]), alpha: Number(match[2]) }))
+  .sort((left, right) => (left.minor - right.minor) || (left.alpha - right.alpha))
+  .at(-1)
+
+const devAlpha = Object.entries(pkg.devDependencies ?? {})
+  .filter(([name]) => name.startsWith('@deepseek-ai/dsh'))
+  .map(([, version]) => ALPHA_PIN.exec(String(version)))
+  .filter(match => match !== null)
+  .map(match => ({ minor: Number(match[1]), alpha: Number(match[2]) }))
+  .sort((left, right) => (left.minor - right.minor) || (left.alpha - right.alpha))
+  .at(-1)
+
+if (newestAlpha !== undefined) {
+  const covered = devAlpha !== undefined
+    && (devAlpha.minor > newestAlpha.minor
+      || (devAlpha.minor === newestAlpha.minor && devAlpha.alpha >= newestAlpha.alpha))
+  if (!covered) {
+    console.error(
+      `check-host-versions: @deepseek-ai/dsh newest alpha line is 0.1.${newestAlpha.minor}-alpha.${newestAlpha.alpha}, but the dev pins cover ${devAlpha === undefined ? 'no alpha line' : `0.1.${devAlpha.minor}-alpha.${devAlpha.alpha}`}. `
+      + 'Bump the dev pins (or document a deliberate stay-behind) before publishing.',
+    )
+    process.exit(1)
+  }
+  console.log(`check-host-versions: dev pins cover the newest @deepseek-ai/dsh alpha line (0.1.${newestAlpha.minor}-alpha.${newestAlpha.alpha})`)
+}

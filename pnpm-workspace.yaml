@@ -16,3 +16,28 @@ allowBuilds:
   '@deepseek-ai/dsh-subprocess-local': true
   node-pty: true
   koffi: true
+# The dev pins run the `0.1.2-alpha.2` line while the eval `dependencies`
+# keep the published `0.1.1-rc.2` line; pnpm 11 merges the two prerelease
+# ranges for a shared transitive package into an unsatisfiable
+# `>=0.1.2 <0.2.0-0` (ERR_PNPM_NO_MATCHING_VERSION). Pin the alpha-side
+# ranges exactly so the two lines stay separate instances; the rc.2-side
+# `^0.1.1-rc.2` ranges are untouched.
+overrides:
+  '@deepseek-ai/dsh-agent-presets@^0.1.2-alpha.2': 0.1.2-alpha.2
+  '@deepseek-ai/dsh-attachment@^0.1.2-alpha.2': 0.1.2-alpha.2
+  '@deepseek-ai/dsh-code-runtime@^0.1.2-alpha.2': 0.1.2-alpha.2
+  '@deepseek-ai/dsh-credentials@^0.1.2-alpha.2': 0.1.2-alpha.2
+  '@deepseek-ai/dsh-deque@^0.1.2-alpha.2': 0.1.2-alpha.2
+  '@deepseek-ai/dsh-jobs@^0.1.2-alpha.2': 0.1.2-alpha.2
+  '@deepseek-ai/dsh-sandbox@^0.1.2-alpha.2': 0.1.2-alpha.2
+  '@deepseek-ai/dsh-sandbox-policy@^0.1.2-alpha.2': 0.1.2-alpha.2
+  '@deepseek-ai/dsh-scope@^0.1.2-alpha.2': 0.1.2-alpha.2
+  '@deepseek-ai/dsh-session-persistence@^0.1.2-alpha.2': 0.1.2-alpha.2
+  '@deepseek-ai/dsh-session-projection-cache@^0.1.2-alpha.2': 0.1.2-alpha.2
+  '@deepseek-ai/dsh-session-query@^0.1.2-alpha.2': 0.1.2-alpha.2
+  '@deepseek-ai/dsh-system-prompt@^0.1.2-alpha.2': 0.1.2-alpha.2
+  '@deepseek-ai/dsh-timeout@^0.1.2-alpha.2': 0.1.2-alpha.2
+  '@deepseek-ai/dsh-typert-protocol@^0.1.2-alpha.2': 0.1.2-alpha.2
+  '@deepseek-ai/dsh-util-crypto@^0.1.2-alpha.2': 0.1.2-alpha.2
+  '@deepseek-ai/dsh-util-time@^0.1.2-alpha.2': 0.1.2-alpha.2
+  '@deepseek-ai/dsh-util-values@^0.1.2-alpha.2': 0.1.2-alpha.2
