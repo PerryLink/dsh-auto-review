@@ -13,6 +13,12 @@
  * privileged operation is allowed, above a prompt that says "judge the call
  * from the evidence below ONLY".
  *
+ * This injection is NOT a property of the subagent provider: the same request
+ * under `fork` and under `spawn` was measured to produce byte-identical
+ * injected context, because these producers inject fresh into any new agent
+ * session. Choosing a non-seeding provider does not avoid them; this filter is
+ * what closes them, under either provider.
+ *
  * The subagent seam has no "bare child" construction: `SubagentStartRequest`
  * scopes the child's TOOLS (`toolFilter`) and its persona, not the messages
  * that enter its steps. `agent/pre-step` is the documented seam for exactly
