@@ -9,7 +9,7 @@
 
 import { z } from 'zod'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
-import type { SessionEvent, SessionEventMap } from '@deepseek-ai/dsh-session'
+import type { SessionEvent, SessionEventMap, SessionHeader } from '@deepseek-ai/dsh-session'
 import type { AutoReviewDenyView, AutoReviewProjection, AutoReviewProjectionState, AutoReviewVerdictView } from './projection-types.ts'
 
 /** How many verdict rows the panel carries. */
@@ -228,7 +228,7 @@ export function makeAutoReviewProjection(enabledByDefault: boolean): AutoReviewP
     // zod v4's `.optional()` output carries `| undefined`, which exact-optional
     // property types reject; the runtime validation is what matters on the wire.
     stateSchema: AUTO_REVIEW_STATE_SCHEMA as unknown as ProjectionDefinition<'autoReview', AutoReviewProjectionState>['stateSchema'],
-    init: () => initAutoReviewProjection(enabledByDefault),
+    init: (_header: SessionHeader) => initAutoReviewProjection(enabledByDefault),
     apply: applyAutoReview,
     wire: {
       viewSchema: AUTO_REVIEW_PROJECTION_SCHEMA as unknown as NonNullable<ProjectionDefinition<'autoReview', AutoReviewProjectionState>['wire']>['viewSchema'],
