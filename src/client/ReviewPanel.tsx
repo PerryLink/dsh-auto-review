@@ -28,6 +28,11 @@ export type ReviewPanelProps =
   PropsRuntime<'conversation.session.header.actions'>
   & PropsLocale<typeof NS>
   & InjectFace<ReviewPanelInjected>
+  // The projection seat is structural: the host removed the client-runtime
+  // merge that used to type it, and the seat differs across harness lines
+  // (alpha.2 serves useConversation/useInput standard props), so the panel
+  // reads it as an optional seat and casts at the single call site.
+  & { readonly useProjection?: unknown }
 
 /** Compact verdict-row badge label for the panel. */
 function verdictBadge(
@@ -57,7 +62,8 @@ function verdictBadge(
  * @returns the header button with its popover.
  */
 export function ReviewPanel({ useProjection, approve, setEnabled, t }: ReviewPanelProps): ReactNode {
-  const value = useProjection('autoReview')
+  const readProjection = useProjection as unknown as (unit: 'autoReview') => AutoReviewProjection | undefined
+  const value = readProjection('autoReview')
   const [open, setOpen] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const anchor = useRef<HTMLDivElement | null>(null)

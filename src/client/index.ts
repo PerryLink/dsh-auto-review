@@ -45,7 +45,7 @@ export const inject = ['slots', 'locale', 'remote', 'remote.commands']
  * contract is what this client depends on.
  */
 interface SlotsLike {
-  inject(key: string, callback: () => () => void): () => void
+  inject(key: string, callback: () => unknown): unknown
   register(options: object, component: unknown): unknown
 }
 
