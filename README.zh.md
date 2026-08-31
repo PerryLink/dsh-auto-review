@@ -310,6 +310,7 @@ Claude Desktop（`claude_desktop_config.json`）配置示例：
 - **审查器是模型。** 其裁决是建议性策略，不是安全内核；对不可逆操作优先使用 `human`/`never` 规则。
 - **失败关闭。** 每条异常路径（provider 缺失、能力缺口、启动拒绝、超时、非 `completed` 停止原因、缺失/畸形裁决、审计关联失败）都经由 `fallbackPolicy` 处理，默认 `rejected` —— 且拒绝会向模型反馈一条可审计的理由。`allow-once` 是无条件放行；它只用于接受该风险的无值守部署。
 - **只读审查器。** 审查器的 `toolFilter` 白名单（`read`/`glob`/`grep`）无法写入、编辑、运行 bash、访问网络或委派（`maxDepth` = 自身深度）。其会话日志被持久化且可审计。
+- **上下文隔离的审查器。** 审查器子代理的每一步都在官方 `agent/pre-step` 接缝上被过滤：只有它自己的提示词与它自己的只读工具结果能够进入。工作区指令文件（`AGENTS.md` / `CLAUDE.md`）、宿主运行时上下文快照，以及任何注入上下文的插件，都会在循环追加它们之前被丢弃，因此仓库可控的文本永远不会抵达决定是否放行调用的组件。白名单按消息来源判定，所以声明了新来源类型的插件同样会被丢弃。
 - **敏感参数会被脱敏**（按键名匹配：`token`、`password`、`api_key`、`Authorization`、凭据、私钥……）后才进入审查器提示词；该插件绝不会执行被审查的参数。脱敏是按键名而非内容 —— 不要把参数值经不起展示给模型的工具交给 AI 审查。
 - **硬禁用会自我解释。** `never` 工具或风险规则确定性拒绝，并记录一条仅日志的 `autoReview/rejection` 事件，然后把 `[auto-review-never]` 标记注入被拒绝的工具结果 —— 模型学会该操作已被硬禁用，而不是重试（invariant 校验：标记 ⟺ 事件）。
 - **拒绝熔断器。** 一轮内连续拒绝会触发熔断（`consecutiveDenies` / 窗口内的 `windowDenies`），记录为仅日志的 `autoReview/circuit` 事件；后续请求按其 `action`（`delegate` / `reject` / `abort-turn`）处理。
@@ -318,6 +319,7 @@ Claude Desktop（`claude_desktop_config.json`）配置示例：
 
 ## 已知限制
 
+- **种子 provider 不受过滤。** 默认的 `reviewerProvider: fork` 会以委派会话已完成回合的副本启动审查器，而该副本携带了父代理曾获得的全部上下文——包括工作区指令文件。pre-step 防火墙无法移除已经成为子会话种子的历史；审查器提示词把自身之外的一切都声明为不可信记录，这是缓解而非隔离。若需要完全不继承上下文的审查器，请设置 `reviewerProvider: spawn`（零父上下文），并改用 `contextBudget` 提供证据。
 - 审查器需要可用的 LLM 路由（默认继承）；没有路由时，每次审查都会按 `fallbackPolicy` 回退 —— 绝不会静默放行。
 - `reviewerTools` 中的名称必须是 profile 中已存在的全局工具；未知名称会使审查器子代理在最早点大声失败并回退。
 - 风险规则按各自的 `field` 匹配请求的 `reason`、`toolName` 或脱敏后的调用 `arguments`；其他条件应放入 `toolsPolicy.overrides`。

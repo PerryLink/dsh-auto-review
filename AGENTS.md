@@ -8,6 +8,7 @@ Standalone DeepSeek Harness plugin repository (`dsh-auto-review`). Development f
 - `src/config.ts` — Schemastery schema + explicit `resolveConfig` (no hidden `?? default` in `run()` paths).
 - `src/runtime.ts` — `approval/request` answerer, `tools/post-execute` deny-reason injection, `/auto-review` command.
 - `src/review.ts` — reviewer subagent orchestration, prompt, sanitization, verdict parsing.
+- `src/isolation.ts` — the reviewer child's context firewall: the `ReviewerChildren` registry (prompt announcement before `subagents.start`, id latch afterwards — the child's first step races the start's resolution) and the `agent/pre-step` allow-list over message SOURCES that keeps injected context (workspace instruction files, the loop's runtime-context snapshot, third-party injections) out of the reviewer's steps.
 - `src/events.ts` — `autoReview/state` + `autoReview/verdict` + `autoReview/circuit` + `autoReview/override` + `autoReview/rejection` SessionEventMap members (declaration merging), pure folds, the `StateAppend`/`VerdictAppend`/`CircuitAppend`/`OverrideAppend`/`RejectionAppend` surfaces that request the envelope's `ignorable: true` marker, and the marker-free `plain*ResultText` builders for audit-disabled hosts.
 - `src/audit.ts` — host `ignorable`-marker capability detection (`isMarkedAuditEvent`, `isUnmarkedHostVersion`, `peerSessionVersion`), the shared seam every audit append gates on.
 - `src/messages.ts` — `/auto-review` command strings in `en`/`zh` (the `language` config selects the table).

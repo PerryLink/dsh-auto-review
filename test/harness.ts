@@ -31,6 +31,12 @@ export interface ScriptedReview {
   readonly failStartOnAbort?: boolean
   /** Reject the run result with an AbortError when the run signal aborts (abort surfaced as a rejection). */
   readonly rejectOnAbort?: boolean
+  /**
+   * Ran inside `start`, BEFORE it resolves the run (and therefore before the
+   * caller learns the child's session id) — the window the real in-process
+   * driver uses to wake the child's loop. Reviewer-child races belong here.
+   */
+  readonly onStart?: (request: SubagentStartRequest) => Promise<void>
 }
 
 /** Mock `ctx.subagents` service recording every start request. */
@@ -94,6 +100,7 @@ export function makeSubagents(script: () => ScriptedReview, capabilities?: objec
         }
       })()
       await started
+      if (behavior.onStart !== undefined) await behavior.onStart(request)
       const result = (async () => {
         if (behavior.rejectOnAbort === true) {
           await new Promise<never>((_, reject) => {

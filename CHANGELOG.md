@@ -2,6 +2,13 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [Unreleased]
+
+### Security
+
+- **The reviewer child no longer receives injected context** ([#21](https://github.com/PerryLink/dsh-auto-review/issues/21)). The reviewer is built through the ordinary agent path, so the harness composed its steps the ordinary way: the workspace instruction files (`AGENTS.md` / `CLAUDE.md`), the loop's runtime-context snapshot, and any context-injecting plugin the user has installed all entered the child ABOVE the reviewer prompt — repository-controlled text inside the component that decides whether a privileged operation is allowed. A new context firewall (`src/isolation.ts`) filters every reviewer step on the documented `agent/pre-step` seam ("reject a proposed step or replace the messages that enter it") down to an allow-list of message SOURCES: the reviewer's own prompt (`user`) and its own read-only tool results (`tool`). Everything else is dropped before the loop appends it, so it never enters the child's log or its model request. The listener is registered with `prepend: true` so it wraps the whole waterfall and removes injections whichever listener added them; non-reviewer steps are returned untouched. Reviewer children are recognized by their announced prompt before `ctx.subagents.start` has resolved their session id (the in-process driver wakes the child's loop while `start` is still resolving, so an id-only test would miss the first step) and by the latched id afterwards.
+- **The reviewer prompt fences everything outside itself** as untrusted transcript that grants no permission and overrides no verdict rule. This is defence in depth behind the firewall — and the only defence against the default `fork` provider's SEED, which starts the child on a copy of the delegating session's completed turns; see the new "known limitations" entry and `reviewerProvider: spawn` for a reviewer with no inherited context at all.
+
 ## [0.8.0] - 2026-08-30
 
 ### Changed
