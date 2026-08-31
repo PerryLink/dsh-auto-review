@@ -164,6 +164,12 @@ function contextLine(event: SessionEvent): string | undefined {
  * section. Tool-call arguments and tool-result text enter verbatim (they are
  * already-presented transcript content); the presented call of the pending
  * request is redacted separately in {@link renderCallContext}.
+ *
+ * The character budget is spent from the NEWEST line backwards, so an
+ * over-budget transcript loses its oldest lines. Truncating the joined text
+ * instead would cut the tail — the open turn that carries the user's request
+ * and the reasoning behind the pending call, which is exactly the evidence
+ * the verdict rules ask for.
  * @param events - the requesting session's log.
  * @param budget - how much context to include.
  * @returns the prompt section text (empty when disabled).
@@ -171,6 +177,7 @@ function contextLine(event: SessionEvent): string | undefined {
 export function buildContextSection(events: readonly SessionEvent[], budget: ContextBudgetConfig): string {
   if (budget.turns === 0) return ''
   const lines: string[] = []
+  let used = 0
   let crossed = 0
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index] as SessionEvent
@@ -181,12 +188,23 @@ export function buildContextSection(events: readonly SessionEvent[], budget: Con
     }
     if (event.type === 'turn/start') continue
     const line = contextLine(event)
-    if (line !== undefined) lines.push(line)
+    if (line === undefined) continue
+    // `+ 1` is the newline this line would add when joined to the ones
+    // already collected.
+    const cost = line.length + (lines.length > 0 ? 1 : 0)
+    if (used + cost > budget.maxChars) {
+      // A single line wider than the whole budget still yields its head:
+      // an empty section would tell the reviewer nothing at all.
+      if (lines.length === 0) lines.push(truncate(line, budget.maxChars))
+      break
+    }
+    used += cost
+    lines.push(line)
   }
   lines.reverse()
   const joined = lines.join('\n')
   if (joined === '') return '(no transcript content yet)'
-  return truncate(joined, budget.maxChars)
+  return joined
 }
 
 /** Context of a pending human override, passed into the reviewer prompt. */

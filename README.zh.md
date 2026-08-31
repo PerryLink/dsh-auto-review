@@ -94,11 +94,11 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 | `reviewerGuidance` | *(无)* | 追加到审查器提示词的可选指导性说明 |
 | `reviewerPolicyText` | *(无)* | 注入审查器提示词的 Markdown 裁决策略（Codex 风格） |
 | `denyGuidance` | *(反规避文本)* | 追加到每一条注入的拒绝理由之后的指导 |
-| `contextBudget` | `{turns: 0, maxChars: 4000}` | 审查器提示词的紧凑记录预算；`turns: 0` 表示禁用 |
+| `contextBudget` | `{turns: 2, maxChars: 4000}` | 审查器提示词的紧凑记录预算（当前回合加上一回合）；`turns: 0` 表示禁用该段落——没有记录的审查器会拒绝用户已授权的操作，因此当 0 与 `ai` 策略同时出现时运行时会发出警告。字符预算优先用于最近的行 |
 | `riskPolicy` | `{maxAutoAllow: high, onHighRisk: delegate}` | 超过 `maxAutoAllow` 的 `allow` 裁决委派或拒绝 |
 | `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate}` | 拒绝熔断器 |
 | `overrideTtlMs` | `300000` | `/auto-review approve` 覆盖的有效时长 |
-| `verdictCacheTtlMs` | `60000` | 对相同 `工具 + 参数` 指纹复用近期裁决的时长；`0` 关闭缓存 |
+| `verdictCacheTtlMs` | `60000` | 对相同 `工具 + 参数` 指纹复用近期裁决的时长；`0` 关闭缓存。仅在 `contextBudget.turns: 0` 时生效——依赖会话记录的裁决无法仅凭 `工具 + 参数` 重放 |
 | `verdictCacheMaxEntries` | `256` | 缓存指纹上限，超出后淘汰最旧条目 |
 | `language` | `en` | `/auto-review` 命令输出的界面语言（`en` \| `zh`） |
 | `allowUnmarkedAudit` | `false` | 强制在丢弃 `ignorable` 标记的宿主上写入会话审计（危险：未标记事件会让会话在其他宿主上无法恢复）；默认自动探测并降级 |

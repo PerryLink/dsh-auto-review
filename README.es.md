@@ -94,11 +94,11 @@ Todas las opciones son campos Schemastery `Config` (modificables desde cordis.ym
 | `reviewerGuidance` | *(ninguna)* | Orientación opcional añadida al prompt del revisor |
 | `reviewerPolicyText` | *(ninguna)* | Política de decisión en Markdown inyectada en el prompt del revisor (estilo Codex) |
 | `denyGuidance` | *(texto anti-elusión)* | Orientación añadida a cada razón de denegación inyectada |
-| `contextBudget` | `{turns: 0, maxChars: 4000}` | Presupuesto de transcripción compacta para el prompt del revisor; `turns: 0` lo desactiva |
+| `contextBudget` | `{turns: 2, maxChars: 4000}` | Presupuesto de transcripción compacta para el prompt del revisor (el turno abierto y el anterior); `turns: 0` desactiva la sección — y un revisor ciego deniega acciones autorizadas por el usuario, así que el runtime avisa cuando 0 coincide con una política `ai`. El presupuesto de caracteres se gasta en las líneas más recientes |
 | `riskPolicy` | `{maxAutoAllow: high, onHighRisk: delegate}` | Los veredictos `allow` por encima de `maxAutoAllow` delegan o deniegan |
 | `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate}` | Disyuntor de rechazos |
 | `overrideTtlMs` | `300000` | Cuánto dura una anulación de `/auto-review approve` |
-| `verdictCacheTtlMs` | `60000` | Reutiliza un veredicto reciente para una huella `herramienta + argumentos` idéntica; `0` desactiva la caché |
+| `verdictCacheTtlMs` | `60000` | Reutiliza un veredicto reciente para una huella `herramienta + argumentos` idéntica; `0` desactiva la caché. Solo se aplica con `contextBudget.turns: 0` — un veredicto que depende de la transcripción no es reproducible solo desde `herramienta + argumentos` |
 | `verdictCacheMaxEntries` | `256` | Máximo de huellas en caché antes de desalojar la más antigua |
 | `language` | `en` | Idioma de la UI de la salida del comando `/auto-review` (`en` \| `zh`) |
 | `allowUnmarkedAudit` | `false` | Fuerza la auditoría del registro de sesión en hosts que descartan el marcador `ignorable` (peligroso: los eventos sin marcar hacen las sesiones irrecuperables en otros hosts); por defecto se detecta y se degrada |

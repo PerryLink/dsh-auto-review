@@ -96,11 +96,11 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 | `reviewerGuidance` | *(none)* | Optional advisory guidance appended to the reviewer prompt |
 | `reviewerPolicyText` | *(none)* | Markdown ruling policy injected into the reviewer prompt (Codex-style) |
 | `denyGuidance` | *(anti-circumvention text)* | Guidance appended to every injected deny reason |
-| `contextBudget` | `{turns: 0, maxChars: 4000}` | Compact transcript budget for the reviewer prompt; `turns: 0` disables |
+| `contextBudget` | `{turns: 2, maxChars: 4000}` | Compact transcript budget for the reviewer prompt (the open turn plus the one before it); `turns: 0` disables the section — and a blind reviewer denies user-authorized actions, so the runtime warns when 0 meets an `ai` policy. The character budget is spent on the most recent lines |
 | `riskPolicy` | `{maxAutoAllow: high, onHighRisk: delegate}` | `allow` verdicts above `maxAutoAllow` delegate or deny |
 | `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate}` | Rejection circuit breaker |
 | `overrideTtlMs` | `300000` | How long a `/auto-review approve` override stays usable |
-| `verdictCacheTtlMs` | `60000` | Reuse a recent verdict for an identical `tool + arguments` fingerprint; `0` disables the cache |
+| `verdictCacheTtlMs` | `60000` | Reuse a recent verdict for an identical `tool + arguments` fingerprint; `0` disables the cache. Only applies with `contextBudget.turns: 0` — a transcript-dependent verdict is not replayable from `tool + arguments` alone |
 | `verdictCacheMaxEntries` | `256` | Maximum cached fingerprints before oldest-eviction |
 | `language` | `en` | UI language of the `/auto-review` command output (`en` \| `zh`) |
 | `allowUnmarkedAudit` | `false` | Force session-log audit on hosts that drop the `ignorable` marker or fail-closed on unknown event types (host `0.1.2-alpha.1`+) (dangerous: unmarked events make sessions unresumable elsewhere); default is detect-and-degrade |

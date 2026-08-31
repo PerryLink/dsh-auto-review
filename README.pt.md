@@ -94,11 +94,11 @@ Todos os ajustes são campos Schemastery `Config` (alteráveis no cordis.yml). U
 | `reviewerGuidance` | *(nenhuma)* | Orientação opcional anexada ao prompt do revisor |
 | `reviewerPolicyText` | *(nenhuma)* | Política de decisão em Markdown injetada no prompt do revisor (estilo Codex) |
 | `denyGuidance` | *(texto anti-elusão)* | Orientação anexada a cada razão de negação injetada |
-| `contextBudget` | `{turns: 0, maxChars: 4000}` | Orçamento de transcrição compacta para o prompt do revisor; `turns: 0` desativa |
+| `contextBudget` | `{turns: 2, maxChars: 4000}` | Orçamento de transcrição compacta para o prompt do revisor (o turno aberto mais o anterior); `turns: 0` desativa a seção — e um revisor cego nega ações autorizadas pelo usuário, então o runtime avisa quando 0 encontra uma política `ai`. O orçamento de caracteres é gasto nas linhas mais recentes |
 | `riskPolicy` | `{maxAutoAllow: high, onHighRisk: delegate}` | Vereditos `allow` acima de `maxAutoAllow` delegam ou negam |
 | `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate}` | Disjuntor de rejeições |
 | `overrideTtlMs` | `300000` | Quanto tempo dura uma anulação de `/auto-review approve` |
-| `verdictCacheTtlMs` | `60000` | Reutiliza um veredito recente para uma impressão `ferramenta + argumentos` idêntica; `0` desativa o cache |
+| `verdictCacheTtlMs` | `60000` | Reutiliza um veredito recente para uma impressão `ferramenta + argumentos` idêntica; `0` desativa o cache. Só se aplica com `contextBudget.turns: 0` — um veredito que depende da transcrição não é reproduzível apenas a partir de `ferramenta + argumentos` |
 | `verdictCacheMaxEntries` | `256` | Máximo de impressões em cache antes de despejar a mais antiga |
 | `language` | `en` | Idioma da UI da saída do comando `/auto-review` (`en` \| `zh`) |
 | `allowUnmarkedAudit` | `false` | Força a auditoria do registro de sessão em hosts que descartam o marcador `ignorable` (perigoso: eventos sem marcador tornam sessões irrecuperáveis em outros hosts); o padrão é detectar e degradar |

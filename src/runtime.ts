@@ -21,7 +21,7 @@ import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import { isMarkedAuditEvent, isUnmarkedHostVersion, peerSessionVersion, type AuditSupport } from './audit.ts'
 import { fingerprint, VerdictCache } from './cache.ts'
-import { resolveConfig, riskExceeds } from './config.ts'
+import { hasAiPolicy, resolveConfig, riskExceeds } from './config.ts'
 import type { Config, ResolvedConfig, ToolReviewPolicy } from './config.ts'
 import { guardReviewerContext, ReviewerChildren } from './isolation.ts'
 import { messages } from './messages.ts'
@@ -927,6 +927,16 @@ export class AutoReviewRuntime {
  */
 export function apply(ctx: Context, config: Config): void {
   const resolved = resolveConfig(config)
+  // `turns: 0` is a legitimate opt-out (see ContextBudgetConfig), but combined
+  // with any `ai` policy it is the deny-everything configuration: the reviewer
+  // never sees the request, judges the evidence insufficient, and its own
+  // verdict rule turns that into a denial of every user-authorized action.
+  // Say so once at mount instead of letting it read as a broken reviewer.
+  if (resolved.contextBudget.turns === 0 && hasAiPolicy(resolved)) {
+    ctx.logger.warn(
+      'auto-review: contextBudget.turns is 0 while at least one tool or risk-rule policy is "ai", so the reviewer is asked to decide without any transcript — it cannot see the user\'s request and its own rule ("when unsure, DENY") will reject user-authorized actions. Set contextBudget.turns to a small non-zero value (the default is 2), or route those tools to "human" instead.',
+    )
+  }
   const runtime = new AutoReviewRuntime(ctx, resolved)
   // Unloading the plugin clears any pending circuit-breaker abort-turn timer.
   ctx.effect(() => () => runtime.dispose(), 'dsh-auto-review: runtime teardown')

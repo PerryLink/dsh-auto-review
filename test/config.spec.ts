@@ -7,8 +7,9 @@
 
 import { describe, expect, it } from 'vitest'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
-import { Config as ConfigSchema, resolveConfig } from '../src/index.ts'
+import { Config as ConfigSchema, DEFAULT_CONTEXT_TURNS, hasAiPolicy, resolveConfig } from '../src/index.ts'
 import * as plugin from '../src/index.ts'
+import { mountHarness } from './harness.ts'
 
 describe('config resolution', () => {
   it('applies conservative defaults', () => {
@@ -43,12 +44,42 @@ describe('config resolution', () => {
   it('defaults the Phase B tunables conservatively', () => {
     const resolved = resolveConfig()
     expect(resolved.denyGuidance).toContain('Do not attempt')
-    expect(resolved.contextBudget).toEqual({ turns: 0, maxChars: 4000 })
+    expect(resolved.contextBudget).toEqual({ turns: DEFAULT_CONTEXT_TURNS, maxChars: 4000 })
     expect(resolved.riskPolicy).toEqual({ maxAutoAllow: 'high', onHighRisk: 'delegate' })
     expect(resolved.circuitBreaker).toEqual({ consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: 'delegate' })
     expect(resolved.overrideTtlMs).toBe(5 * 60_000)
     expect(resolved.reviewerPolicyText).toBeUndefined()
     expect(resolved.language).toBe('en')
+  })
+
+  it('gives the reviewer a transcript by default, so it can see the request it is judging', () => {
+    // turns: 0 leaves the reviewer with no evidence but the calling agent's
+    // self-report, and its own verdict rule ("when unsure, DENY") then denies
+    // every user-authorized action. The default must be non-zero.
+    expect(DEFAULT_CONTEXT_TURNS).toBeGreaterThan(0)
+    expect(resolveConfig().contextBudget.turns).toBe(DEFAULT_CONTEXT_TURNS)
+    expect(ConfigSchema({}).contextBudget?.turns).toBe(DEFAULT_CONTEXT_TURNS)
+    // An explicit 0 is still honored — it is a documented opt-out, and the
+    // runtime warns about it at mount time rather than silently denying.
+    expect(resolveConfig({ contextBudget: { turns: 0 } }).contextBudget.turns).toBe(0)
+  })
+
+  it('warns at mount when an ai policy is combined with an empty context budget', async () => {
+    const blind = await mountHarness({ toolsPolicy: { overrides: { bash: 'ai' } }, contextBudget: { turns: 0 } })
+    expect(blind.warnings.join('\n')).toContain('contextBudget.turns is 0')
+    // Neither half alone is the deny-everything configuration.
+    const noAi = await mountHarness({ contextBudget: { turns: 0 } })
+    expect(noAi.warnings.join('\n')).not.toContain('contextBudget.turns is 0')
+    const withTranscript = await mountHarness({ toolsPolicy: { overrides: { bash: 'ai' } } })
+    expect(withTranscript.warnings.join('\n')).not.toContain('contextBudget.turns is 0')
+  })
+
+  it('recognizes the configurations that can reach the AI reviewer', () => {
+    expect(hasAiPolicy(resolveConfig())).toBe(false)
+    expect(hasAiPolicy(resolveConfig({ toolsPolicy: { default: 'ai' } }))).toBe(true)
+    expect(hasAiPolicy(resolveConfig({ toolsPolicy: { overrides: { bash: 'ai' } } }))).toBe(true)
+    expect(hasAiPolicy(resolveConfig({ riskRules: [{ pattern: 'rm', policy: 'ai' }] }))).toBe(true)
+    expect(hasAiPolicy(resolveConfig({ toolsPolicy: { overrides: { bash: 'never' } } }))).toBe(false)
   })
 
   it('defaults the verdict cache and accepts 0 as off', () => {
