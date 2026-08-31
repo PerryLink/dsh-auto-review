@@ -5,12 +5,16 @@
  * marker on host builds that expose the surface (post-rc.6
  * `@deepseek-ai/dsh-session`); the `0.1.0-rc.6` line silently drops the
  * options bag, so audit events land unmarked and stricter hosts refuse to
- * resume those sessions (`SessionFormatUnsupportedError`). The runtime
- * detects the host before polluting a log: the installed peer version is
- * checked against the known-unmarked lines first, and an unknown
- * (unresolvable) version is verified by probing the FIRST appended
- * event's returned envelope. The same discipline lives in
- * `dsh-permission-rules` (its `AuditAppend` / `isMarkedAuditEvent` pair).
+ * resume those sessions (`SessionFormatUnsupportedError`). Host master
+ * `0.1.2-alpha.2` keeps the `ignorable` field on the event envelope but
+ * offers no append option to write it — the third parameter is
+ * `SurfaceIntent`, accepted only for surface event types — so `append`
+ * never stamps the marker there either. The runtime detects the host
+ * before polluting a log: the installed peer version is checked against
+ * the known-unmarked lines first, and an unknown (unresolvable) version is
+ * verified by probing the FIRST appended event's returned envelope. The
+ * same discipline lives in `dsh-permission-rules` (its `AuditAppend` /
+ * `isMarkedAuditEvent` pair).
  * @module dsh-auto-review/audit
  */
 
@@ -35,18 +39,20 @@ export function isMarkedAuditEvent(result: unknown): boolean {
 /**
  * Whether a `@deepseek-ai/dsh-session` version line lacks a safe audit
  * write path: every released rc line through `0.1.1-rc.2` silently drops
- * the marker from `Session.append` options (the stamping fix exists on
- * harness master only — no release carries it), and host master
- * (`0.1.2-alpha.1`+, 42dc2a46c2) removed the ignorable envelope entirely
- * and fail-closes on unknown event types (`autoReview/*` is not in
+ * the marker from `Session.append` options (no release ever stamps it),
+ * and host master `0.1.2-alpha.2` keeps the `ignorable` field on the
+ * event envelope but has no append option that writes it (the third
+ * parameter is `SurfaceIntent` for surface event types only), so writing
+ * on those lines still lands an unmarked event. The persistence read path
+ * fails closed on unmarked unknown event types (`autoReview/*` is not in
  * `KNOWN_SESSION_EVENT_TYPES`), so writing there makes sessions
- * unresumable. Extend the bound when a new rc line ships that still drops
- * the marker. Non-matching (later rc, stable 0.2+, or unresolvable)
+ * unresumable. Extend the bound when a new line ships that still cannot
+ * stamp the marker. Non-matching (later rc, stable 0.2+, or unresolvable)
  * versions are treated as possibly-marker-aware and verified by the append
  * probe.
  * @param version - the installed peer version string.
  * @returns true for the known-unmarked `0.1.0-rc.1–rc.8`, `0.1.1-rc.1–rc.2`,
- *   and `0.1.2-alpha.1`+ fail-closed lines.
+ *   and `0.1.2-alpha.1`+ non-stamping lines.
  */
 export function isUnmarkedHostVersion(version: string): boolean {
   const v = version.trim()
