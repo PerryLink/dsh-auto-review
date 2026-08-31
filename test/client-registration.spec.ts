@@ -27,22 +27,25 @@ describe('client plugin registration', () => {
       value: { result: { kind: 'success', text: 'ok' } },
     }))
     const dispose = (): void => undefined
+    const fakeSlots = {
+      inject(key: string, callback: () => unknown): () => void {
+        expect(key).toBe('conversation.session.header.actions')
+        callback()
+        return dispose
+      },
+      register(options: unknown, _component: unknown): () => void {
+        registered.push({ options: options as Registered['options'] })
+        return dispose
+      },
+    }
     const fakeCtx = {
       effect(callback: () => unknown, _label: string): () => void {
         const result = callback()
         if (typeof result === 'function') return result as () => void
         return dispose
       },
-      slots: {
-        inject(key: string, callback: () => unknown): () => void {
-          expect(key).toBe('conversation.session.header.actions')
-          callback()
-          return dispose
-        },
-        register(options: unknown, _component: unknown): () => void {
-          registered.push({ options: options as Registered['options'] })
-          return dispose
-        },
+      get(key: string): unknown {
+        return key === 'slots' ? fakeSlots : undefined
       },
       locale: { register: registerLocale },
       remote: { commands: { execute } },
@@ -67,18 +70,21 @@ describe('client plugin registration', () => {
   it('surfaces command failures as errors', async () => {
     const registered: Registered[] = []
     const execute = vi.fn(async () => ({ ok: false, error: { code: 'boom', message: 'bad', details: null } }))
+    const fakeSlots = {
+      inject(_key: string, callback: () => unknown): () => void { callback(); return () => undefined },
+      register(options: unknown, _component: unknown): () => void {
+        registered.push({ options: options as Registered['options'] })
+        return () => undefined
+      },
+    }
     const fakeCtx = {
       effect(callback: () => unknown, _label: string): () => void {
         const result = callback()
         if (typeof result === 'function') return result as () => void
         return () => undefined
       },
-      slots: {
-        inject(_key: string, callback: () => unknown): () => void { callback(); return () => undefined },
-        register(options: unknown, _component: unknown): () => void {
-          registered.push({ options: options as Registered['options'] })
-          return () => undefined
-        },
+      get(key: string): unknown {
+        return key === 'slots' ? fakeSlots : undefined
       },
       locale: { register: () => undefined },
       remote: { commands: { execute } },
