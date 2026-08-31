@@ -8,7 +8,8 @@
  * @module dsh-auto-review/client
  */
 
-import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the 'conversation.session.header.actions' SlotMap
 // declaration into this program so the registration typechecks.
@@ -38,6 +39,17 @@ export const name = 'dsh-auto-review'
 export const inject = ['slots', 'locale', 'remote', 'remote.commands']
 
 /**
+ * The slots registry face (structural; the real `ctx.slots` satisfies it).
+ * Pinned locally because the host removed `@deepseek-ai/dsh-client-runtime`,
+ * whose `/client` types used to merge `slots` onto the Context — the runtime
+ * contract is what this client depends on.
+ */
+interface SlotsLike {
+  inject(key: string, callback: () => () => void): () => void
+  register(options: object, component: unknown): unknown
+}
+
+/**
  * The structural shape of the api-remotes `commands` Remote namespace the
  * panel needs. Declared locally because the ambient namespace merge onto
  * `TypertClientRemote` is assembled from several generated modules and can
@@ -64,9 +76,11 @@ interface CommandsRemote {
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-auto-review: dictionaries')
   ctx.effect(() => installPanelStyles(), 'dsh-auto-review: stylesheet')
-  ctx.slots.inject(
+  const slots = ctx.get('slots') as SlotsLike | undefined
+  if (slots === undefined) return
+  slots.inject(
     'conversation.session.header.actions',
-    () => ctx.slots.register({
+    () => slots.register({
       name: 'conversation.session.header.actions',
       id: 'auto-review',
       order: 40,

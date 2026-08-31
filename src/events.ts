@@ -12,7 +12,7 @@
  */
 
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { CallId } from '@deepseek-ai/dsh-llm'
+import type { CallId } from './call-id.ts'
 import type { SessionEvent, SessionEventMap, SessionId } from '@deepseek-ai/dsh-session'
 import type { ApprovalOutcome, ApprovalRequestId } from '@deepseek-ai/dsh-user-approval'
 import type { CircuitAction, RiskLevel } from './config.ts'

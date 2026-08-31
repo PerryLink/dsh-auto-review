@@ -30,6 +30,7 @@ declare module '@deepseek-ai/cordis' {
 export { apply }
 export { AutoReviewRuntime } from './runtime.ts'
 export * from './cache.ts'
+export * from './call-id.ts'
 export * from './config.ts'
 export * from './events.ts'
 export * from './review.ts'

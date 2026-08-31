@@ -9,7 +9,8 @@
 
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
-import type { CallId, ContentBlock } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import type { CallId } from './call-id.ts'
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import type { ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-subagent'
