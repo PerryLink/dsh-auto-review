@@ -26,7 +26,7 @@
 
 | Superfície | Status |
 |---|---|
-| Harness | DeepSeek Harness `0.1.1-rc.2` (dependências fixadas em `0.1.1-rc.2`; peers `>=0.1.0-rc.8 <0.2.0`) |
+| Harness | DeepSeek Harness `0.1.1-rc.2` (dependências fixadas em `0.1.1-rc.2`; peers `>=0.1.0-rc.8 <0.2.0`) 0.1.2-alpha.2 (adaptado em 2026-08-31): o envelope de sessão mantém seu campo ignorable apenas para compatibilidade de leitura de logs armazenados - o Session.append ainda não consegue estampá-lo, então o comportamento da porta não muda. |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | Plataformas | Todas (answerer de host; painel web opcional via capacidade de projeção de sessão) |
 | Modelo | Qualquer (o revisor herda a rota do agente da sessão; `reviewerModel` sobrescreve) |

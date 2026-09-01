@@ -103,7 +103,7 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 | `verdictCacheTtlMs` | `60000` | Reuse a recent verdict for an identical `tool + arguments` fingerprint; `0` disables the cache. Only applies with `contextBudget.turns: 0` — a transcript-dependent verdict is not replayable from `tool + arguments` alone |
 | `verdictCacheMaxEntries` | `256` | Maximum cached fingerprints before oldest-eviction |
 | `language` | `en` | UI language of the `/auto-review` command output (`en` \| `zh`) |
-| `allowUnmarkedAudit` | `false` | Force session-log audit on hosts that drop the `ignorable` marker or fail-closed on unknown event types (host `0.1.2-alpha.1`+) (dangerous: unmarked events make sessions unresumable elsewhere); default is detect-and-degrade |
+| `allowUnmarkedAudit` | `false` | Force session-log audit on hosts that drop the `ignorable` marker or fail-closed on unknown event types (host `0.1.2-alpha.2`+) (dangerous: unmarked events make sessions unresumable elsewhere); default is detect-and-degrade 0.1.2-alpha.2 (adapted 2026-08-31): the session envelope keeps its ignorable field for stored-log read compatibility only - Session.append still cannot stamp it, so audit-gate behavior is unchanged. |
 
 Example (annotated full form: `fixtures/config/config-full.yaml`):
 
