@@ -48,13 +48,30 @@ export type FallbackPolicy = 'rejected' | 'delegate' | 'allow-once'
  * How much of the session transcript the reviewer receives as compact
  * context (the calling session's recent user/assistant messages and tool
  * results, redacted and truncated). `turns: 0` disables the section.
+ *
+ * The default is {@link DEFAULT_CONTEXT_TURNS}, not 0: without a transcript
+ * the reviewer never sees the user's request, so the only evidence for a
+ * user-authorized action is the calling agent's own self-report — and the
+ * verdict rules say to DENY when the evidence is insufficient. A blind
+ * reviewer therefore denies every user-authorized escalation, which is
+ * indistinguishable from a broken plugin.
  */
 export interface ContextBudgetConfig {
   /** How many completed turns (plus the current one) of transcript to include; 0 disables. */
   readonly turns: number
-  /** Character cap applied to the whole context section. */
+  /** Character cap applied to the whole context section, spent newest-line first. */
   readonly maxChars: number
 }
+
+/**
+ * Default {@link ContextBudgetConfig.turns}: the open turn (which carries the
+ * pending call and, usually, the request that authorized it) plus the one
+ * before it, which is where an authorization stated a moment earlier lives.
+ * One turn is the bare minimum and leaves no slack; a larger window costs
+ * prompt tokens and widens what a non-default `reviewerModel` is shown, and
+ * `maxChars` bounds it either way.
+ */
+export const DEFAULT_CONTEXT_TURNS = 2
 
 /** What a tripped rejection circuit breaker does to later ai-policy requests in the turn. */
 export type CircuitAction = 'delegate' | 'reject' | 'abort-turn'
@@ -250,9 +267,9 @@ export const Config: z<Config> = z.object({
   reviewerPolicyText: z.string(),
   denyGuidance: z.string().default(DEFAULT_DENY_GUIDANCE),
   contextBudget: z.object({
-    turns: z.number().default(0),
+    turns: z.number().default(DEFAULT_CONTEXT_TURNS),
     maxChars: z.number().default(4000),
-  }).default({ turns: 0, maxChars: 4000 }),
+  }).default({ turns: DEFAULT_CONTEXT_TURNS, maxChars: 4000 }),
   riskPolicy: z.object({
     maxAutoAllow: RISK.default('high'),
     onHighRisk: z.union(['delegate', 'deny'] as const).default('delegate'),
@@ -273,6 +290,20 @@ export const Config: z<Config> = z.object({
   language: z.union(['en', 'zh'] as const).default('en'),
   allowUnmarkedAudit: z.boolean().default(false),
 })
+
+/**
+ * Whether any resolved policy can route a request to the AI reviewer — the
+ * table default, one per-tool override, or one risk rule. Combined with
+ * `contextBudget.turns: 0` this is the deny-everything configuration the
+ * runtime warns about at mount time.
+ * @param config - the resolved config.
+ * @returns true when at least one policy is `ai`.
+ */
+export function hasAiPolicy(config: ResolvedConfig): boolean {
+  if (config.toolsPolicy.default === 'ai') return true
+  if (Object.values(config.toolsPolicy.overrides).includes('ai')) return true
+  return config.riskRules.some(rule => rule.policy === 'ai')
+}
 
 /** Whether `level` ranks strictly above `cap` in {@link RISK_ORDER}. */
 export function riskExceeds(level: RiskLevel, cap: RiskLevel): boolean {
@@ -301,7 +332,7 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
   if (!Number.isSafeInteger(config.reasonMaxChars ?? 2000) || (config.reasonMaxChars ?? 2000) <= 0) {
     throw new TypeError(`reasonMaxChars must be a positive safe integer, got ${String(config.reasonMaxChars)}`)
   }
-  const turns = config.contextBudget?.turns ?? 0
+  const turns = config.contextBudget?.turns ?? DEFAULT_CONTEXT_TURNS
   if (!Number.isSafeInteger(turns) || turns < 0) {
     throw new TypeError(`contextBudget.turns must be a non-negative safe integer, got ${String(turns)}`)
   }

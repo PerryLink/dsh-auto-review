@@ -14,12 +14,18 @@ import { dispatchAskedApproval, mountHarness, type Harness } from './harness.ts'
 
 const next: () => Promise<ApprovalOutcome> = () => Promise.resolve('allowed-once')
 
-/** Mount with the unmarked-audit opt-in so verdict events reach the log. */
+/**
+ * Mount with the unmarked-audit opt-in so verdict events reach the log, and
+ * with the reviewer transcript OFF: a verdict that depends on session context
+ * is not replayable from `tool + arguments` alone, so `fingerprintFor` refuses
+ * to key the cache while `contextBudget.turns > 0` (the shipped default is 2).
+ * The cache tests state that precondition instead of inheriting it.
+ */
 function auditHarness(
   config: Record<string, unknown> = {},
   script?: Parameters<typeof mountHarness>[1],
 ): ReturnType<typeof mountHarness> {
-  return mountHarness({ allowUnmarkedAudit: true, ...config }, script)
+  return mountHarness({ allowUnmarkedAudit: true, contextBudget: { turns: 0 }, ...config }, script)
 }
 
 /** Append a presented `tool/call` event so the fingerprint can read the raw arguments. */

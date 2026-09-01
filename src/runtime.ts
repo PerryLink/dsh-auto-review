@@ -12,15 +12,18 @@ import type { Context } from '@deepseek-ai/cordis'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { CallId } from '@deepseek-ai/dsh-llm'
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
-import type { Session, SessionEventMap, SessionId } from '@deepseek-ai/dsh-session'
+import type { Session, SessionEventMap } from '@deepseek-ai/dsh-session'
 import type { ApprovalOutcome, ApprovalRequest, ApprovalRequestId } from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-subagent'
 import type { PostToolDecision, ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
+import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import { isMarkedAuditEvent, isUnmarkedHostVersion, peerSessionVersion, type AuditSupport } from './audit.ts'
 import { fingerprint, VerdictCache } from './cache.ts'
-import { resolveConfig, riskExceeds } from './config.ts'
+import { hasAiPolicy, resolveConfig, riskExceeds } from './config.ts'
 import type { Config, ResolvedConfig, ToolReviewPolicy } from './config.ts'
+import { guardReviewerContext, ReviewerChildren } from './isolation.ts'
 import { messages } from './messages.ts'
 import { makeAutoReviewProjection } from './projection.ts'
 import {
@@ -173,8 +176,12 @@ function policyFor(config: ResolvedConfig, request: ApprovalRequest, argumentsTe
  * teardown effect that clears the pending circuit-breaker timers.
  */
 export class AutoReviewRuntime {
-  /** Live reviewer child sessions — their approval asks never re-enter AI review. */
-  private readonly reviewerSessions = new Set<SessionId>()
+  /**
+   * Live reviewer children — their approval asks never re-enter AI review,
+   * and their steps are stripped of injected context by
+   * {@link AutoReviewRuntime.guardReviewerContext}.
+   */
+  private readonly reviewerSessions = new ReviewerChildren()
 
   /** Feedback texts keyed by call id, consumed (and deleted) by the post-execute listener. */
   private readonly feedback = new Map<CallId, FeedbackEntry>()
@@ -884,6 +891,23 @@ export class AutoReviewRuntime {
     }
   }
 
+  /**
+   * The `agent/pre-step` context firewall: for a reviewer child only, drop
+   * every message the step would carry that is not the reviewer's own prompt
+   * or one of its read-only tool results. See `./isolation.ts` for why the
+   * reviewer must not read workspace instructions, the runtime-context
+   * snapshot, or third-party context injections.
+   * @param payload - the proposed step.
+   * @param next - the rest of the pre-step waterfall.
+   * @returns the decision, with injected context removed for reviewer children.
+   */
+  guardReviewerContext(
+    payload: { agent: Agent; messages: UserMessage[] },
+    next: () => Promise<PreStepDecision>,
+  ): Promise<PreStepDecision> {
+    return guardReviewerContext(this.reviewerSessions, payload, next)
+  }
+
   /** Clear every pending circuit-breaker abort-turn timer; called by the plugin fiber's teardown effect. */
   dispose(): void {
     for (const timer of this.pendingAborts) clearTimeout(timer)
@@ -892,8 +916,9 @@ export class AutoReviewRuntime {
 }
 
 /**
- * Mount the plugin: resolve config, register the answerer and the
- * post-execute listener as effects, register the slash command, and register
+ * Mount the plugin: resolve config, register the answerer, the post-execute
+ * listener and the reviewer context firewall as effects, register the slash
+ * command, and register
  * the `autoReview` session projection (when the host provides the
  * session-projection capability — the web profile does; bare test mounts and
  * minimal compositions may not, and the answerer must not depend on it).
@@ -902,6 +927,16 @@ export class AutoReviewRuntime {
  */
 export function apply(ctx: Context, config: Config): void {
   const resolved = resolveConfig(config)
+  // `turns: 0` is a legitimate opt-out (see ContextBudgetConfig), but combined
+  // with any `ai` policy it is the deny-everything configuration: the reviewer
+  // never sees the request, judges the evidence insufficient, and its own
+  // verdict rule turns that into a denial of every user-authorized action.
+  // Say so once at mount instead of letting it read as a broken reviewer.
+  if (resolved.contextBudget.turns === 0 && hasAiPolicy(resolved)) {
+    ctx.logger.warn(
+      'auto-review: contextBudget.turns is 0 while at least one tool or risk-rule policy is "ai", so the reviewer is asked to decide without any transcript — it cannot see the user\'s request and its own rule ("when unsure, DENY") will reject user-authorized actions. Set contextBudget.turns to a small non-zero value (the default is 2), or route those tools to "human" instead.',
+    )
+  }
   const runtime = new AutoReviewRuntime(ctx, resolved)
   // Unloading the plugin clears any pending circuit-breaker abort-turn timer.
   ctx.effect(() => () => runtime.dispose(), 'dsh-auto-review: runtime teardown')
@@ -911,6 +946,11 @@ export function apply(ctx: Context, config: Config): void {
   ctx.provide('autoReviewRuntime', runtime)
   ctx.on('approval/request', (request, next) => runtime.answer(request, next))
   ctx.on('tools/post-execute', (exec, result, next) => runtime.injectDenyReason(exec, result, next))
+  // `prepend: true` puts the firewall OUTSIDE every pre-step listener already
+  // registered, so it sees the final message list and removes injected
+  // context whoever added it — the loop's own runtime-context snapshot
+  // included. Non-reviewer steps pass through untouched.
+  ctx.on('agent/pre-step', (payload, next) => runtime.guardReviewerContext(payload, next), { prepend: true })
   ctx.commands.register({
     name: 'auto-review',
     description: messages(resolved.language).description,

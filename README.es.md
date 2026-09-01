@@ -94,11 +94,11 @@ Todas las opciones son campos Schemastery `Config` (modificables desde cordis.ym
 | `reviewerGuidance` | *(ninguna)* | Orientación opcional añadida al prompt del revisor |
 | `reviewerPolicyText` | *(ninguna)* | Política de decisión en Markdown inyectada en el prompt del revisor (estilo Codex) |
 | `denyGuidance` | *(texto anti-elusión)* | Orientación añadida a cada razón de denegación inyectada |
-| `contextBudget` | `{turns: 0, maxChars: 4000}` | Presupuesto de transcripción compacta para el prompt del revisor; `turns: 0` lo desactiva |
+| `contextBudget` | `{turns: 2, maxChars: 4000}` | Presupuesto de transcripción compacta para el prompt del revisor (el turno abierto y el anterior); `turns: 0` desactiva la sección — y un revisor ciego deniega acciones autorizadas por el usuario, así que el runtime avisa cuando 0 coincide con una política `ai`. El presupuesto de caracteres se gasta en las líneas más recientes |
 | `riskPolicy` | `{maxAutoAllow: high, onHighRisk: delegate}` | Los veredictos `allow` por encima de `maxAutoAllow` delegan o deniegan |
 | `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate}` | Disyuntor de rechazos |
 | `overrideTtlMs` | `300000` | Cuánto dura una anulación de `/auto-review approve` |
-| `verdictCacheTtlMs` | `60000` | Reutiliza un veredicto reciente para una huella `herramienta + argumentos` idéntica; `0` desactiva la caché |
+| `verdictCacheTtlMs` | `60000` | Reutiliza un veredicto reciente para una huella `herramienta + argumentos` idéntica; `0` desactiva la caché. Solo se aplica con `contextBudget.turns: 0` — un veredicto que depende de la transcripción no es reproducible solo desde `herramienta + argumentos` |
 | `verdictCacheMaxEntries` | `256` | Máximo de huellas en caché antes de desalojar la más antigua |
 | `language` | `en` | Idioma de la UI de la salida del comando `/auto-review` (`en` \| `zh`) |
 | `allowUnmarkedAudit` | `false` | Fuerza la auditoría del registro de sesión en hosts que descartan el marcador `ignorable` (peligroso: los eventos sin marcar hacen las sesiones irrecuperables en otros hosts); por defecto se detecta y se degrada |
@@ -122,6 +122,20 @@ Ejemplo (forma completa anotada: `fixtures/config/config-full.yaml`):
         fallbackPolicy: delegate
         riskPolicy: { maxAutoAllow: medium, onHighRisk: delegate }
         circuitBreaker: { consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate }
+```
+
+### De dónde sale realmente la configuración
+
+**`~/.dsh/settings.yaml` NO es una fuente de configuración para este plugin.** Un bloque `auto-review:` allí no tiene efecto ni produce aviso alguno: como todo plugin-función de DSH, `dsh-auto-review` recibe su `Config` de la fila con la que el loader lo monta — la capa de parches cordis del perfil. (Algunos otros plugins de DSH sí leen además el servicio de settings, así que la inconsistencia es fácil de sufrir y el síntoma es indistinguible de que el revisor simplemente deniegue.)
+
+Pon la configuración en el `cordis.patch.yml` de tu perfil. Una **anulación dirigida por id reemplaza la fila de config entera**, así que reafirma cada clave que necesites — omitir `toolsPolicy` devuelve `bash`/`write` al valor por defecto del esquema, `human`, y el revisor deja de ejecutarse por completo:
+
+```yaml
+- id: auto-review
+  config:
+    toolsPolicy:
+      overrides: { bash: ai, write: ai }
+    contextBudget: { turns: 4, maxChars: 8000 }
 ```
 
 ## Herramientas y superficies
@@ -310,6 +324,7 @@ El servidor es de solo lectura y determinista: sin red, sin modelo, sin escritur
 - **El revisor es un modelo.** Sus veredictos son política consultiva, no un núcleo de seguridad; prefiere reglas `human`/`never` para operaciones irreversibles.
 - **Cierre en fallo.** Cada camino anómalo (proveedor ausente, carencias de capacidad, rechazo al iniciar, timeout, razón de parada no `completed`, veredicto ausente/malformado, fallo de correlación de auditoría) se resuelve con `fallbackPolicy`, por defecto `rejected` — y el rechazo devuelve una razón auditable al modelo. `allow-once` concede incondicionalmente; existe solo para despliegues desatendidos cuyo administrador acepta ese riesgo.
 - **Revisor de solo lectura.** La lista blanca `toolFilter` del revisor (`read`/`glob`/`grep`) no puede escribir, editar, ejecutar bash, acceder a la red ni delegar (`maxDepth` = su propia profundidad). Su registro de sesión se persiste y es auditable.
+- **Revisor aislado del contexto.** Los pasos del hijo revisor se filtran en la costura oficial `agent/pre-step`: solo entran su propio prompt y los resultados de sus propias herramientas de solo lectura. Los archivos de instrucciones del espacio de trabajo (`AGENTS.md` / `CLAUDE.md`), la instantánea de contexto de ejecución del harness y cualquier plugin que inyecte contexto se descartan antes de que el bucle los añada, de modo que el texto controlado por el repositorio nunca llega al componente que decide si se permite una llamada. Esto vale con CUALQUIERA de los proveedores de subagente — esos productores inyectan de nuevo en cada sesión de agente, así que lo que los cierra es el filtro y no la elección de proveedor. La lista blanca es por ORIGEN del mensaje, así que un plugin que declare un origen nuevo también se descarta.
 - **Los argumentos sensibles se redactan** (coincidencia por nombre de clave: `token`, `password`, `api_key`, `Authorization`, credenciales, claves privadas …) antes de entrar en el prompt del revisor; el plugin nunca ejecuta los argumentos revisados. La redacción se basa en claves, no en contenido — no revises con IA herramientas cuyos valores de argumento no te puedas permitir mostrar a un modelo.
 - **Las desactivaciones duras se explican a sí mismas.** Una herramienta o regla de riesgo `never` rechaza de forma determinista Y registra un evento solo-registro `autoReview/rejection`, y luego inyecta un marcador `[auto-review-never]` en el resultado de la herramienta denegada — el modelo aprende que la acción está duramente desactivada en lugar de reintentarla (verificado por invariant: marcador ⟺ evento).
 - **Disyuntor de rechazos.** Una racha de denegaciones en un turno dispara el disyuntor (`consecutiveDenies` / `windowDenies` dentro de `windowSize`), registrada como un evento solo-registro `autoReview/circuit`; las solicitudes posteriores siguen su `action` (`delegate` / `reject` / `abort-turn`).
@@ -318,6 +333,7 @@ El servidor es de solo lectura y determinista: sin red, sin modelo, sin escritur
 
 ## Limitaciones conocidas
 
+- **Dos exposiciones distintas, dos respuestas distintas — ninguna sustituye a la otra.** El contexto *inyectado* (archivos de instrucciones del espacio de trabajo, la instantánea de contexto de ejecución, inyecciones de plugins de terceros) se inyecta de nuevo en cada sesión de agente, así que llega al revisor de forma idéntica con `reviewerProvider: fork` y con `reviewerProvider: spawn` — medido byte a byte idéntico en ambos con la misma petición. El filtro por origen de `agent/pre-step` es lo que lo cierra, con cualquiera de los dos proveedores; **`spawn` por sí solo NO impide que las instrucciones del espacio de trabajo lleguen al revisor.** Aparte, `fork` siembra al hijo con los turnos completados de la sesión delegante: ese historial ya es el propio registro del hijo y no un mensaje que entra en un paso, así que el filtro no puede tocarlo y solo `spawn` lo evita, con la valla de transcripción no confiable del prompt del revisor como mitigación intermedia. En las dos trazas anteriores la siembra no produjo mensajes adicionales, por lo que su impacto práctico está sin cuantificar.
 - El revisor necesita una ruta LLM funcional (heredada por defecto); sin ella, cada revisión cae según `fallbackPolicy` — nunca una concesión silenciosa.
 - Los nombres de `reviewerTools` deben existir como herramientas globales en el perfil; un nombre desconocido hace fallar al hijo revisor en voz alta en el punto más temprano y cae en fallback.
 - Las reglas de riesgo emparejan el `reason` de la solicitud, el `toolName` o los `arguments` redactados de la llamada según su `field`; otras condiciones van en `toolsPolicy.overrides`.

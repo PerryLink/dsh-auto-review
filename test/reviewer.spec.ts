@@ -388,6 +388,21 @@ describe('compact transcript context', () => {
     expect(buildContextSection(session.events, { turns: 0, maxChars: 1000 })).toBe('')
     expect(buildContextSection(session.events, { turns: 1, maxChars: 20 })).toMatch(/…$/u)
   })
+
+  it('spends the character budget on the most recent lines, not the oldest', () => {
+    // The pending call and the request that authorized it live at the END of
+    // the transcript; a budget spent from the front would hand the reviewer
+    // the ancient history and cut exactly the evidence it needs.
+    const session = sessionWithEvents([
+      { type: 'turn/start', data: { turn: 1 } },
+      { type: 'user/message', data: { content: [{ type: 'text', text: 'ancient history nobody needs' }] } },
+      { type: 'user/message', data: { content: [{ type: 'text', text: 'create hello.txt in my home directory' }] } },
+    ])
+    const section = buildContextSection(session.events, { turns: 1, maxChars: 60 })
+    expect(section).toContain('create hello.txt in my home directory')
+    expect(section).not.toContain('ancient history')
+    expect(section.length).toBeLessThanOrEqual(60)
+  })
 })
 
 describe('provider capability precheck', () => {

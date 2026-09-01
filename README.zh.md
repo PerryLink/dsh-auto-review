@@ -94,11 +94,11 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 | `reviewerGuidance` | *(无)* | 追加到审查器提示词的可选指导性说明 |
 | `reviewerPolicyText` | *(无)* | 注入审查器提示词的 Markdown 裁决策略（Codex 风格） |
 | `denyGuidance` | *(反规避文本)* | 追加到每一条注入的拒绝理由之后的指导 |
-| `contextBudget` | `{turns: 0, maxChars: 4000}` | 审查器提示词的紧凑记录预算；`turns: 0` 表示禁用 |
+| `contextBudget` | `{turns: 2, maxChars: 4000}` | 审查器提示词的紧凑记录预算（当前回合加上一回合）；`turns: 0` 表示禁用该段落——没有记录的审查器会拒绝用户已授权的操作，因此当 0 与 `ai` 策略同时出现时运行时会发出警告。字符预算优先用于最近的行 |
 | `riskPolicy` | `{maxAutoAllow: high, onHighRisk: delegate}` | 超过 `maxAutoAllow` 的 `allow` 裁决委派或拒绝 |
 | `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate}` | 拒绝熔断器 |
 | `overrideTtlMs` | `300000` | `/auto-review approve` 覆盖的有效时长 |
-| `verdictCacheTtlMs` | `60000` | 对相同 `工具 + 参数` 指纹复用近期裁决的时长；`0` 关闭缓存 |
+| `verdictCacheTtlMs` | `60000` | 对相同 `工具 + 参数` 指纹复用近期裁决的时长；`0` 关闭缓存。仅在 `contextBudget.turns: 0` 时生效——依赖会话记录的裁决无法仅凭 `工具 + 参数` 重放 |
 | `verdictCacheMaxEntries` | `256` | 缓存指纹上限，超出后淘汰最旧条目 |
 | `language` | `en` | `/auto-review` 命令输出的界面语言（`en` \| `zh`） |
 | `allowUnmarkedAudit` | `false` | 强制在丢弃 `ignorable` 标记的宿主上写入会话审计（危险：未标记事件会让会话在其他宿主上无法恢复）；默认自动探测并降级 |
@@ -122,6 +122,20 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
         fallbackPolicy: delegate
         riskPolicy: { maxAutoAllow: medium, onHighRisk: delegate }
         circuitBreaker: { consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate }
+```
+
+### 配置究竟从哪里来
+
+**`~/.dsh/settings.yaml` 不是本插件的配置来源。** 在其中写 `auto-review:` 块不会生效，也不会有任何警告：与每个 DSH 函数插件一样，`dsh-auto-review` 的 `Config` 来自 Loader 挂载它的那一行——也就是 profile 的 cordis patch 层。（部分其他 DSH 插件还会读取 settings 服务，因此这种不一致很容易踩坑，而且其症状与“审查器就是拒绝了”完全无法区分。）
+
+请把配置写进 profile 的 `cordis.patch.yml`。**按 id 定向的 override 会替换整行 config**，因此需要重述你所需的每一个键——省略 `toolsPolicy` 会让 `bash`/`write` 悄悄回落到 schema 默认值 `human`，审查器随即完全不再运行：
+
+```yaml
+- id: auto-review
+  config:
+    toolsPolicy:
+      overrides: { bash: ai, write: ai }
+    contextBudget: { turns: 4, maxChars: 8000 }
 ```
 
 ## 工具与界面
@@ -310,6 +324,7 @@ Claude Desktop（`claude_desktop_config.json`）配置示例：
 - **审查器是模型。** 其裁决是建议性策略，不是安全内核；对不可逆操作优先使用 `human`/`never` 规则。
 - **失败关闭。** 每条异常路径（provider 缺失、能力缺口、启动拒绝、超时、非 `completed` 停止原因、缺失/畸形裁决、审计关联失败）都经由 `fallbackPolicy` 处理，默认 `rejected` —— 且拒绝会向模型反馈一条可审计的理由。`allow-once` 是无条件放行；它只用于接受该风险的无值守部署。
 - **只读审查器。** 审查器的 `toolFilter` 白名单（`read`/`glob`/`grep`）无法写入、编辑、运行 bash、访问网络或委派（`maxDepth` = 自身深度）。其会话日志被持久化且可审计。
+- **上下文隔离的审查器。** 审查器子代理的每一步都在官方 `agent/pre-step` 接缝上被过滤：只有它自己的提示词与它自己的只读工具结果能够进入。工作区指令文件（`AGENTS.md` / `CLAUDE.md`）、宿主运行时上下文快照，以及任何注入上下文的插件，都会在循环追加它们之前被丢弃，因此仓库可控的文本永远不会抵达决定是否放行调用的组件。这在任一 subagent provider 下都成立——这些注入方会向任何新建的 agent 会话重新注入，因此关闭它们的是这道过滤，而不是 provider 的选择。白名单按消息来源判定，所以声明了新来源类型的插件同样会被丢弃。
 - **敏感参数会被脱敏**（按键名匹配：`token`、`password`、`api_key`、`Authorization`、凭据、私钥……）后才进入审查器提示词；该插件绝不会执行被审查的参数。脱敏是按键名而非内容 —— 不要把参数值经不起展示给模型的工具交给 AI 审查。
 - **硬禁用会自我解释。** `never` 工具或风险规则确定性拒绝，并记录一条仅日志的 `autoReview/rejection` 事件，然后把 `[auto-review-never]` 标记注入被拒绝的工具结果 —— 模型学会该操作已被硬禁用，而不是重试（invariant 校验：标记 ⟺ 事件）。
 - **拒绝熔断器。** 一轮内连续拒绝会触发熔断（`consecutiveDenies` / 窗口内的 `windowDenies`），记录为仅日志的 `autoReview/circuit` 事件；后续请求按其 `action`（`delegate` / `reject` / `abort-turn`）处理。
@@ -318,6 +333,7 @@ Claude Desktop（`claude_desktop_config.json`）配置示例：
 
 ## 已知限制
 
+- **两种不同的暴露面，两种不同的解法——彼此不能互相替代。** *注入式*上下文（工作区指令文件、运行时上下文快照、第三方插件注入）会被重新注入到任何新建的 agent 会话中，因此在 `reviewerProvider: fork` 与 `reviewerProvider: spawn` 下抵达审查器的内容完全相同——同一请求下实测逐字节一致。关闭它的是 `agent/pre-step` 来源过滤，且在两种 provider 下都有效；**仅切换到 `spawn` 并不能阻止工作区指令进入审查器。** 另一方面，`fork` 会用委派会话已完成的回合为子会话播种：那段历史已经是子会话自己的日志，而不是进入某一步的消息，因此过滤无法触及，只有 `spawn` 能避免，两者之间由审查器提示词的“不可信记录”围栏作为缓解。在上述两次追踪中，播种并未产生额外消息，因此其实际影响尚未量化。
 - 审查器需要可用的 LLM 路由（默认继承）；没有路由时，每次审查都会按 `fallbackPolicy` 回退 —— 绝不会静默放行。
 - `reviewerTools` 中的名称必须是 profile 中已存在的全局工具；未知名称会使审查器子代理在最早点大声失败并回退。
 - 风险规则按各自的 `field` 匹配请求的 `reason`、`toolName` 或脱敏后的调用 `arguments`；其他条件应放入 `toolsPolicy.overrides`。
