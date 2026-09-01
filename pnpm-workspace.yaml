@@ -41,3 +41,4 @@ overrides:
   '@deepseek-ai/dsh-util-crypto@^0.1.2-alpha.2': 0.1.2-alpha.2
   '@deepseek-ai/dsh-util-time@^0.1.2-alpha.2': 0.1.2-alpha.2
   '@deepseek-ai/dsh-util-values@^0.1.2-alpha.2': 0.1.2-alpha.2
+verifyDepsBeforeRun: false
