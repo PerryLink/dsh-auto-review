@@ -96,11 +96,11 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 | `reviewerGuidance` | *(none)* | Optional advisory guidance appended to the reviewer prompt |
 | `reviewerPolicyText` | *(none)* | Markdown ruling policy injected into the reviewer prompt (Codex-style) |
 | `denyGuidance` | *(anti-circumvention text)* | Guidance appended to every injected deny reason |
-| `contextBudget` | `{turns: 0, maxChars: 4000}` | Compact transcript budget for the reviewer prompt; `turns: 0` disables |
+| `contextBudget` | `{turns: 2, maxChars: 4000}` | Compact transcript budget for the reviewer prompt (the open turn plus the one before it); `turns: 0` disables the section — and a blind reviewer denies user-authorized actions, so the runtime warns when 0 meets an `ai` policy. The character budget is spent on the most recent lines |
 | `riskPolicy` | `{maxAutoAllow: high, onHighRisk: delegate}` | `allow` verdicts above `maxAutoAllow` delegate or deny |
 | `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate}` | Rejection circuit breaker |
 | `overrideTtlMs` | `300000` | How long a `/auto-review approve` override stays usable |
-| `verdictCacheTtlMs` | `60000` | Reuse a recent verdict for an identical `tool + arguments` fingerprint; `0` disables the cache |
+| `verdictCacheTtlMs` | `60000` | Reuse a recent verdict for an identical `tool + arguments` fingerprint; `0` disables the cache. Only applies with `contextBudget.turns: 0` — a transcript-dependent verdict is not replayable from `tool + arguments` alone |
 | `verdictCacheMaxEntries` | `256` | Maximum cached fingerprints before oldest-eviction |
 | `language` | `en` | UI language of the `/auto-review` command output (`en` \| `zh`) |
 | `allowUnmarkedAudit` | `false` | Force session-log audit on hosts that drop the `ignorable` marker or fail-closed on unknown event types (host `0.1.2-alpha.1`+) (dangerous: unmarked events make sessions unresumable elsewhere); default is detect-and-degrade |
@@ -124,6 +124,20 @@ Example (annotated full form: `fixtures/config/config-full.yaml`):
         fallbackPolicy: delegate
         riskPolicy: { maxAutoAllow: medium, onHighRisk: delegate }
         circuitBreaker: { consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate }
+```
+
+### Where the config actually comes from
+
+**`~/.dsh/settings.yaml` is NOT a config source for this plugin.** An `auto-review:` block there has no effect and produces no warning: like every DSH function plugin, `dsh-auto-review` receives its `Config` from the row the loader mounts it with — the profile's cordis patch layer. (Some other DSH plugins additionally read the settings service, so the inconsistency is easy to trip over, and the symptom is indistinguishable from the reviewer simply denying.)
+
+Put the configuration in your profile's `cordis.patch.yml`. An **id-targeted override replaces the whole config row**, so restate every key you need — dropping `toolsPolicy` silently returns `bash`/`write` to the schema default `human` and the reviewer stops running at all:
+
+```yaml
+- id: auto-review
+  config:
+    toolsPolicy:
+      overrides: { bash: ai, write: ai }
+    contextBudget: { turns: 4, maxChars: 8000 }
 ```
 
 ## Tools & surfaces
@@ -312,6 +326,7 @@ The server is read-only and deterministic: no network, no model, no writes.
 - **The reviewer is a model.** Its verdicts are advisory policy, not a security kernel; prefer `human`/`never` rules for irreversible operations.
 - **Fail closed.** Every abnormal path (provider missing, capability gaps, start rejection, timeout, non-`completed` stop reason, missing/malformed verdict, audit-correlation failure) resolves through `fallbackPolicy`, default `rejected` — and the rejection feeds an auditable reason back to the model. `allow-once` grants unconditionally; it exists only for unattended deployments whose admin accepts that risk.
 - **Read-only reviewer.** The reviewer's `toolFilter` allow-list (`read`/`glob`/`grep`) cannot write, edit, run bash, fetch the network, or delegate (`maxDepth` = its own depth). Its session log is persisted and auditable.
+- **Context-isolated reviewer.** The reviewer child's steps are filtered on the documented `agent/pre-step` seam: only its own prompt and its own read-only tool results enter them. Workspace instruction files (`AGENTS.md` / `CLAUDE.md`), the harness runtime-context snapshot, and any context-injecting plugin are dropped before the loop appends them, so repository-controlled text never reaches the component that decides whether a call is allowed. This holds under EITHER subagent provider — those producers inject fresh into any new agent session, so the filter, not the provider choice, is what closes them. The filter is an allow-list over message SOURCES, so a plugin that declares a new source kind is dropped too.
 - **Sensitive arguments are redacted** (key-name matching: `token`, `password`, `api_key`, `Authorization`, credentials, private keys …) before entering the reviewer prompt; the plugin never executes the reviewed arguments. Redaction is key-based, not content-based — do not AI-review tools whose argument values you cannot afford to show a model.
 - **Hard disables explain themselves.** A `never` tool or risk rule rejects deterministically AND records a log-only `autoReview/rejection` event, then injects a `[auto-review-never]` marker into the denied tool result — the model learns the action is hard-disabled instead of retrying it (invariant-checked: marker ⟺ event).
 - **Rejection circuit breaker.** A run of denials in one turn trips the breaker (`consecutiveDenies` / `windowDenies` inside `windowSize`), recorded as a log-only `autoReview/circuit` event; later requests follow its `action` (`delegate` / `reject` / `abort-turn`).
@@ -320,6 +335,7 @@ The server is read-only and deterministic: no network, no model, no writes.
 
 ## Known limitations
 
+- **Two different exposures, two different answers — neither substitutes for the other.** *Injected* context (workspace instruction files, the runtime-context snapshot, third-party plugin injections) is injected fresh into any new agent session, so it reaches the reviewer identically under `reviewerProvider: fork` and `reviewerProvider: spawn` — measured byte-identical across both on the same request. The `agent/pre-step` source filter is what closes it, under either provider; **`spawn` alone does NOT keep workspace instructions out of the reviewer.** Separately, `fork` seeds the child with the delegating session's completed turns: that history is already the child's own log rather than a message entering a step, so the filter cannot touch it and only `spawn` avoids it, with the reviewer prompt's untrusted-transcript fence as the mitigation in between. In the two traces above the seeding produced no additional messages, so its practical impact is unquantified.
 - The reviewer needs a working LLM route (inherited by default); without one every review falls back per `fallbackPolicy` — never a silent grant.
 - `reviewerTools` names must exist as global tools in the profile; an unknown name fails the reviewer child loudly at the earliest point and falls back.
 - Risk rules match the request `reason`, the `toolName`, or the redacted call `arguments` per their `field`; other conditions belong in `toolsPolicy.overrides`.

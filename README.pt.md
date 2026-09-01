@@ -94,11 +94,11 @@ Todos os ajustes são campos Schemastery `Config` (alteráveis no cordis.yml). U
 | `reviewerGuidance` | *(nenhuma)* | Orientação opcional anexada ao prompt do revisor |
 | `reviewerPolicyText` | *(nenhuma)* | Política de decisão em Markdown injetada no prompt do revisor (estilo Codex) |
 | `denyGuidance` | *(texto anti-elusão)* | Orientação anexada a cada razão de negação injetada |
-| `contextBudget` | `{turns: 0, maxChars: 4000}` | Orçamento de transcrição compacta para o prompt do revisor; `turns: 0` desativa |
+| `contextBudget` | `{turns: 2, maxChars: 4000}` | Orçamento de transcrição compacta para o prompt do revisor (o turno aberto mais o anterior); `turns: 0` desativa a seção — e um revisor cego nega ações autorizadas pelo usuário, então o runtime avisa quando 0 encontra uma política `ai`. O orçamento de caracteres é gasto nas linhas mais recentes |
 | `riskPolicy` | `{maxAutoAllow: high, onHighRisk: delegate}` | Vereditos `allow` acima de `maxAutoAllow` delegam ou negam |
 | `circuitBreaker` | `{consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate}` | Disjuntor de rejeições |
 | `overrideTtlMs` | `300000` | Quanto tempo dura uma anulação de `/auto-review approve` |
-| `verdictCacheTtlMs` | `60000` | Reutiliza um veredito recente para uma impressão `ferramenta + argumentos` idêntica; `0` desativa o cache |
+| `verdictCacheTtlMs` | `60000` | Reutiliza um veredito recente para uma impressão `ferramenta + argumentos` idêntica; `0` desativa o cache. Só se aplica com `contextBudget.turns: 0` — um veredito que depende da transcrição não é reproduzível apenas a partir de `ferramenta + argumentos` |
 | `verdictCacheMaxEntries` | `256` | Máximo de impressões em cache antes de despejar a mais antiga |
 | `language` | `en` | Idioma da UI da saída do comando `/auto-review` (`en` \| `zh`) |
 | `allowUnmarkedAudit` | `false` | Força a auditoria do registro de sessão em hosts que descartam o marcador `ignorable` (perigoso: eventos sem marcador tornam sessões irrecuperáveis em outros hosts); o padrão é detectar e degradar |
@@ -122,6 +122,20 @@ Exemplo (forma completa anotada: `fixtures/config/config-full.yaml`):
         fallbackPolicy: delegate
         riskPolicy: { maxAutoAllow: medium, onHighRisk: delegate }
         circuitBreaker: { consecutiveDenies: 3, windowDenies: 6, windowSize: 10, action: delegate }
+```
+
+### De onde a configuração realmente vem
+
+**`~/.dsh/settings.yaml` NÃO é uma fonte de configuração para este plugin.** Um bloco `auto-review:` ali não tem efeito nem gera aviso: como todo plugin-função do DSH, `dsh-auto-review` recebe seu `Config` da linha com que o loader o monta — a camada de patch cordis do perfil. (Alguns outros plugins do DSH também leem o serviço de settings, então a inconsistência é fácil de encontrar e o sintoma é indistinguível de o revisor simplesmente negar.)
+
+Coloque a configuração no `cordis.patch.yml` do seu perfil. Uma **substituição direcionada por id troca a linha de config inteira**, então repita cada chave necessária — omitir `toolsPolicy` devolve `bash`/`write` ao padrão do schema, `human`, e o revisor para de rodar por completo:
+
+```yaml
+- id: auto-review
+  config:
+    toolsPolicy:
+      overrides: { bash: ai, write: ai }
+    contextBudget: { turns: 4, maxChars: 8000 }
 ```
 
 ## Ferramentas e superfícies
@@ -310,6 +324,7 @@ O servidor é somente-leitura e determinista: sem rede, sem modelo, sem gravaç�
 - **O revisor é um modelo.** Seus vereditos são política consultiva, não um núcleo de segurança; prefira regras `human`/`never` para operações irreversíveis.
 - **Falha fechada.** Todo caminho anômalo (provedor ausente, lacunas de capacidade, rejeição ao iniciar, timeout, razão de parada não `completed`, veredito ausente/malformado, falha de correlação de auditoria) se resolve via `fallbackPolicy`, padrão `rejected` — e a rejeição devolve uma razão auditável ao modelo. `allow-once` concede incondicionalmente; existe apenas para implantações desatendidas cujo administrador aceita esse risco.
 - **Revisor somente leitura.** A lista de permissões `toolFilter` do revisor (`read`/`glob`/`grep`) não pode escrever, editar, executar bash, acessar a rede nem delegar (`maxDepth` = sua própria profundidade). Seu log de sessão é persistido e auditável.
+- **Revisor isolado do contexto.** Os passos do filho revisor são filtrados na costura oficial `agent/pre-step`: apenas o seu próprio prompt e os resultados das suas próprias ferramentas somente leitura entram. Arquivos de instruções do workspace (`AGENTS.md` / `CLAUDE.md`), o instantâneo de contexto de execução do harness e qualquer plugin que injete contexto são descartados antes de o laço anexá-los, de modo que texto controlado pelo repositório nunca chega ao componente que decide se uma chamada é permitida. Isso vale sob QUALQUER provedor de subagente — esses produtores injetam de novo em cada sessão de agente, então o que os fecha é o filtro, não a escolha do provedor. A lista de permissões é por ORIGEM da mensagem, então um plugin que declare uma origem nova também é descartado.
 - **Argumentos sensíveis são redigidos** (correspondência por nome de chave: `token`, `password`, `api_key`, `Authorization`, credenciais, chaves privadas …) antes de entrar no prompt do revisor; o plugin nunca executa os argumentos revisados. A redação é baseada em chave, não em conteúdo — não revise com IA ferramentas cujos valores de argumento você não pode se dar ao luxo de mostrar a um modelo.
 - **Desativações duras se explicam.** Uma ferramenta ou regra de risco `never` rejeita de forma determinística E registra um evento somente-log `autoReview/rejection`, e então injeta um marcador `[auto-review-never]` no resultado da ferramenta negada — o modelo aprende que a ação está duramente desativada em vez de tentar novamente (verificado por invariant: marcador ⟺ evento).
 - **Disjuntor de rejeições.** Uma sequência de negações em um turno dispara o disjuntor (`consecutiveDenies` / `windowDenies` dentro de `windowSize`), registrada como um evento somente-log `autoReview/circuit`; solicitações posteriores seguem sua `action` (`delegate` / `reject` / `abort-turn`).
@@ -318,6 +333,7 @@ O servidor é somente-leitura e determinista: sem rede, sem modelo, sem gravaç�
 
 ## Limitações conhecidas
 
+- **Duas exposições diferentes, duas respostas diferentes — nenhuma substitui a outra.** O contexto *injetado* (arquivos de instruções do workspace, o instantâneo de contexto de execução, injeções de plugins de terceiros) é injetado de novo em cada sessão de agente, então chega ao revisor de forma idêntica com `reviewerProvider: fork` e com `reviewerProvider: spawn` — medido byte a byte idêntico em ambos na mesma requisição. O filtro por origem de `agent/pre-step` é o que o fecha, sob qualquer um dos provedores; **`spawn` sozinho NÃO impede que as instruções do workspace cheguem ao revisor.** À parte, `fork` semeia o filho com os turnos concluídos da sessão delegante: esse histórico já é o log do próprio filho, não uma mensagem entrando em um passo, então o filtro não o alcança e só `spawn` o evita, com a cerca de transcrição não confiável do prompt do revisor como mitigação intermediária. Nos dois traços acima a semeadura não produziu mensagens adicionais, então seu impacto prático não está quantificado.
 - O revisor precisa de uma rota LLM funcional (herdada por padrão); sem ela, cada revisão cai conforme `fallbackPolicy` — nunca uma concessão silenciosa.
 - Os nomes em `reviewerTools` devem existir como ferramentas globais no perfil; um nome desconhecido faz o filho revisor falhar em voz alta no ponto mais cedo e cai em fallback.
 - Regras de risco emparelham o `reason` da solicitação, o `toolName` ou os `arguments` redigidos da chamada conforme seu `field`; outras condições pertencem a `toolsPolicy.overrides`.

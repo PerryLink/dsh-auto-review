@@ -4,6 +4,7 @@
  * @module dsh-auto-review/test/harness
  */
 
+import { vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CommandDefinition } from '@deepseek-ai/dsh-commands'
@@ -31,6 +32,12 @@ export interface ScriptedReview {
   readonly failStartOnAbort?: boolean
   /** Reject the run result with an AbortError when the run signal aborts (abort surfaced as a rejection). */
   readonly rejectOnAbort?: boolean
+  /**
+   * Ran inside `start`, BEFORE it resolves the run (and therefore before the
+   * caller learns the child's session id) — the window the real in-process
+   * driver uses to wake the child's loop. Reviewer-child races belong here.
+   */
+  readonly onStart?: (request: SubagentStartRequest) => Promise<void>
 }
 
 /** Mock `ctx.subagents` service recording every start request. */
@@ -94,6 +101,7 @@ export function makeSubagents(script: () => ScriptedReview, capabilities?: objec
         }
       })()
       await started
+      if (behavior.onStart !== undefined) await behavior.onStart(request)
       const result = (async () => {
         if (behavior.rejectOnAbort === true) {
           await new Promise<never>((_, reject) => {
@@ -138,6 +146,8 @@ export interface Harness {
   readonly injected: UserMessage[]
   readonly subagents: MockSubagents
   readonly commands: MockCommands
+  /** Everything the mount logged through `ctx.logger.warn`, in order. */
+  readonly warnings: string[]
 }
 
 /** Mount our plugin with real approval service, real session, scripted reviewer. */
@@ -148,6 +158,12 @@ export async function mountHarness(
   providerCapabilities?: object,
 ): Promise<Harness> {
   const ctx = new Context()
+  // Captured (and silenced) from before the mount: the config warnings this
+  // plugin emits are emitted inside `apply`.
+  const warnings: string[] = []
+  vi.spyOn(ctx.logger, 'warn').mockImplementation((...args: unknown[]) => {
+    warnings.push(args.map(argument => String(argument)).join(' '))
+  })
   await ctx.plugin(SessionStore)
   const session = ctx.sessions.create(SessionId('harness-session'))
   session.append('turn/start', { turn: 1 })
@@ -164,7 +180,7 @@ export async function mountHarness(
   })
   const injected: UserMessage[] = []
   const agent = makeAgent(session, injected)
-  return { ctx, session, agent, injected, subagents, commands }
+  return { ctx, session, agent, injected, subagents, commands, warnings }
 }
 
 /** Dispatch the `approval/request` waterfall with a downstream answerer. */
