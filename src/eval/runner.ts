@@ -186,7 +186,7 @@ export function sessionHeaderLine(header: SessionHeader): Record<string, unknown
     createdAt: header.createdAt,
     ...(header.cwd !== undefined ? { cwd: header.cwd } : {}),
     ...(header.parentSession !== undefined ? { parentSession: header.parentSession } : {}),
-    ...(header.seedLength !== undefined ? { seedLength: header.seedLength } : {}),
+    ...(header.inheritedEventCount !== undefined ? { seedLength: header.inheritedEventCount } : {}),
     ...(header.origin !== undefined ? { origin: header.origin } : {}),
     delegationDepth: header.delegationDepth ?? 0,
     ...(header.agentPreset !== undefined ? { agentPreset: header.agentPreset } : {}),
