@@ -51,6 +51,7 @@ function childAgent(id: string) {
     parentSession: SessionId('harness-session'),
     origin: 'subagent',
     delegationDepth: 1,
+    isSeeded: false,
   }))
 }
 

@@ -129,9 +129,9 @@ describe('autoReview projection fold', () => {
     const disabled = makeAutoReviewProjection(false)
     expect(enabled.key).toBe('autoReview')
     expect(disabled.key).toBe('autoReview')
-    const header = { version: 0, id: 'test-session', createdAt: 0 } as never
-    expect(viewAutoReview(enabled.init(header)).enabled).toBe(true)
-    expect(viewAutoReview(disabled.init(header)).enabled).toBe(false)
+    const header = { version: 0, id: 'test-session', createdAt: 0, isSeeded: false } as never
+    expect(viewAutoReview(enabled.init(header, 0 as never)).enabled).toBe(true)
+    expect(viewAutoReview(disabled.init(header, 0 as never)).enabled).toBe(false)
   })
 
   it('bumps stateVersion with the enabled-default change', () => {

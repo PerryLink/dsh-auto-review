@@ -34,6 +34,7 @@ function sessionWithEvents(events: { type: string; data: unknown }[]): Session {
     id: SessionId(`ctx-${events.length}`),
     createdAt: 0,
     cwd: WORKSPACE,
+    isSeeded: false,
   })
   const surface = new Set(['user/message', 'assistant/message', 'tool/result'])
   const append = session.append as unknown as (type: string, data: unknown, options?: { surfaceOp: 'append' }) => unknown
@@ -79,6 +80,7 @@ describe('reviewer prompt', () => {
       id: SessionId('prompt-session'),
       createdAt: 0,
       cwd: WORKSPACE,
+      isSeeded: false,
     })
     const prompt = buildReviewPrompt({
       agent: makeAgent(session),
@@ -122,6 +124,7 @@ describe('reviewer prompt', () => {
       id: SessionId('prompt-trunc'),
       createdAt: 0,
       cwd: WORKSPACE,
+      isSeeded: false,
     })
     const prompt = buildReviewPrompt({
       agent: makeAgent(session),
@@ -334,6 +337,7 @@ describe('Phase B prompt sections', () => {
       id: SessionId('prompt-phaseb'),
       createdAt: 0,
       cwd: WORKSPACE,
+      isSeeded: false,
     })
     const prompt = buildReviewPrompt({
       agent: makeAgent(session),
@@ -356,6 +360,7 @@ describe('Phase B prompt sections', () => {
       id: SessionId('prompt-phaseb-plain'),
       createdAt: 0,
       cwd: WORKSPACE,
+      isSeeded: false,
     })
     const prompt = buildReviewPrompt({ agent: makeAgent(session), toolName: 'bash' }, promptConfig())
     expect(prompt).not.toContain('HUMAN OVERRIDE')
