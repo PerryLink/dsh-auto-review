@@ -19,6 +19,7 @@ export type SessionEventsSource = Session | { events?: readonly SessionEvent[] }
  */
 export function sessionEvents(session: SessionEventsSource | null | undefined): readonly SessionEvent[] {
   if (session === null || session === undefined) return []
-  if (typeof (session as Session).snapshotEvents === 'function') return (session as Session).snapshotEvents()
+  const probe = session as { snapshotEvents?: () => readonly SessionEvent[] }
+  if (typeof probe.snapshotEvents === 'function') return probe.snapshotEvents()
   return (session as { events?: readonly SessionEvent[] }).events ?? []
 }
