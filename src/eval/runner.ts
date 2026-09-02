@@ -26,6 +26,7 @@ import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId, packChunkRuns } from '@deepseek-ai/dsh-session'
 import type { SessionHeader, SessionEvent } from '@deepseek-ai/dsh-session'
+import { sessionEvents } from '../session-events.ts'
 import type { ResolvedConfig } from '../config.ts'
 import { runAssertions, validateExpectations } from './assert.ts'
 import type { AssertionResult } from './assert.ts'
@@ -434,8 +435,8 @@ export class EvalEngine {
       }))
       const outcome = await this.awaitIdle(agent, timeoutMs, options.signal)
       await this.flushSession(agent)
-      const trace = collectTrace(agent.session.id, agent.session.events, firstSeq)
-      const artifacts = await this.writeTraceArtifacts(options, caze, agent.session.header, agent.session.events, trace)
+      const trace = collectTrace(agent.session.id, sessionEvents(agent.session), firstSeq)
+      const artifacts = await this.writeTraceArtifacts(options, caze, agent.session.header, sessionEvents(agent.session), trace)
       const assertionResults = runAssertions(caze, trace, promptBaselines)
       let review: CaseReviewRecord | undefined
       if (caze.review !== undefined && !options.signal.aborted) {

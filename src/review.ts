@@ -12,6 +12,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { CallId } from './call-id.ts'
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
+import { sessionEvents } from './session-events.ts'
 import type { ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-subagent'
 import { assertObjectJsonSchema, type ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
@@ -257,8 +258,8 @@ export function buildReviewPrompt(request: ApprovalRequest, config: ResolvedConf
       'an allow — judge the current evidence normally, but count the explicit human',
       'authorization as strong evidence of legitimacy.',
     ].join('\n')
-  const context = renderCallContext(request.agent.session.events, request.callId, config.reasonMaxChars)
-  const transcript = buildContextSection(request.agent.session.events, config.contextBudget)
+  const context = renderCallContext(sessionEvents(request.agent.session), request.callId, config.reasonMaxChars)
+  const transcript = buildContextSection(sessionEvents(request.agent.session), config.contextBudget)
   const transcriptSection = transcript === ''
     ? ''
     : `\nRecent session transcript (presented content, most recent last):\n${transcript}\n`

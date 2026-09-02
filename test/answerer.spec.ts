@@ -60,7 +60,7 @@ describe('auto-review answerer', () => {
     }, next)
     expect(outcome).toBe('allowed-once')
     expect(harness.subagents.starts).toHaveLength(1)
-    const verdict = lastEvent(harness.session.events, 'autoReview/verdict')
+    const verdict = lastEvent(harness.session.snapshotEvents(), 'autoReview/verdict')
     expect(verdict).toBeDefined()
     expect(verdict?.data).toMatchObject({
       approvalId: askedId,
@@ -100,7 +100,7 @@ describe('auto-review answerer', () => {
     expect(outcome).toBe('rejected')
     expect(downstreamCalled).toBe(true)
     expect(harness.subagents.starts).toHaveLength(0)
-    expect(lastEvent(harness.session.events, 'autoReview/verdict')).toBeUndefined()
+    expect(lastEvent(harness.session.snapshotEvents(), 'autoReview/verdict')).toBeUndefined()
   })
 
   it('delegates everything when the session has auto-review switched off', async () => {
@@ -150,7 +150,7 @@ describe('auto-review answerer', () => {
     expect(harness.subagents.starts).toHaveLength(0)
     // The hard-disable is audited: log-only rejection event with the
     // provenance and the correlated approval id.
-    const rejection = lastEvent(harness.session.events, 'autoReview/rejection')
+    const rejection = lastEvent(harness.session.snapshotEvents(), 'autoReview/rejection')
     expect(dataOf(rejection)).toMatchObject({
       approvalId: askedId,
       toolName: 'bash',
@@ -182,7 +182,7 @@ describe('auto-review answerer', () => {
       toolName: 'bash',
       reason: 'killall cleanup',
     }, next)
-    const rejection = lastEvent(harness.session.events, 'autoReview/rejection')
+    const rejection = lastEvent(harness.session.snapshotEvents(), 'autoReview/rejection')
     expect(dataOf(rejection)).toMatchObject({
       toolName: 'bash',
       reason: 'risk rule /killall/ (reason)',
@@ -197,8 +197,8 @@ describe('auto-review answerer', () => {
       toolName: 'bash',
     }, next)
     expect(outcome).toBe('rejected')
-    expect(autoReviewsInOpenTurn(harness.session.events)).toBe(0)
-    expect(autoReviewFailuresInOpenTurn(harness.session.events)).toBe(0)
+    expect(autoReviewsInOpenTurn(harness.session.snapshotEvents())).toBe(0)
+    expect(autoReviewFailuresInOpenTurn(harness.session.snapshotEvents())).toBe(0)
   })
 
   it('lets risk rules win over tool overrides', async () => {
@@ -267,7 +267,7 @@ describe('auto-review answerer', () => {
     })
     expect(outcome).toBe('rejected')
     expect(downstreamCalled).toBe(false)
-    const verdict = lastEvent(harness.session.events, 'autoReview/verdict')
+    const verdict = lastEvent(harness.session.snapshotEvents(), 'autoReview/verdict')
     expect(verdict?.data).toMatchObject({ fallback: 'unavailable', outcome: 'rejected' })
     expect(verdict?.data).not.toHaveProperty('decision')
   })
@@ -287,7 +287,7 @@ describe('auto-review answerer', () => {
     })
     expect(outcome).toBe('rejected')
     expect(downstreamCalled).toBe(true)
-    const verdict = lastEvent(harness.session.events, 'autoReview/verdict')
+    const verdict = lastEvent(harness.session.snapshotEvents(), 'autoReview/verdict')
     expect(verdict?.data).toMatchObject({ fallback: 'unavailable' })
     expect(verdict?.data).not.toHaveProperty('outcome')
   })
@@ -302,7 +302,7 @@ describe('auto-review answerer', () => {
       toolName: 'bash',
     }, next)
     expect(outcome).toBe('allowed-once')
-    expect(lastEvent(harness.session.events, 'autoReview/verdict')?.data).toMatchObject({
+    expect(lastEvent(harness.session.snapshotEvents(), 'autoReview/verdict')?.data).toMatchObject({
       fallback: 'unavailable',
       outcome: 'allowed-once',
     })
@@ -318,7 +318,7 @@ describe('auto-review answerer', () => {
       toolName: 'bash',
     }, next)
     expect(outcome).toBe('rejected')
-    expect(lastEvent(harness.session.events, 'autoReview/verdict')?.data).toMatchObject({
+    expect(lastEvent(harness.session.snapshotEvents(), 'autoReview/verdict')?.data).toMatchObject({
       fallback: 'timeout',
       outcome: 'rejected',
     })
@@ -337,7 +337,7 @@ describe('auto-review answerer', () => {
       signal: controller.signal,
     }, next)
     expect(outcome).toBe('cancelled')
-    expect(lastEvent(harness.session.events, 'autoReview/verdict')?.data).toMatchObject({
+    expect(lastEvent(harness.session.snapshotEvents(), 'autoReview/verdict')?.data).toMatchObject({
       fallback: 'cancelled',
       outcome: 'cancelled',
     })
@@ -353,7 +353,7 @@ describe('auto-review answerer', () => {
       toolName: 'bash',
     }, next)
     expect(outcome).toBe('rejected')
-    expect(lastEvent(harness.session.events, 'autoReview/verdict')?.data).toMatchObject({
+    expect(lastEvent(harness.session.snapshotEvents(), 'autoReview/verdict')?.data).toMatchObject({
       fallback: 'schema',
     })
   })
@@ -365,7 +365,7 @@ describe('auto-review answerer', () => {
       toolName: 'bash',
     }, next)
     expect(outcome).toBe('rejected')
-    expect(lastEvent(harness.session.events, 'autoReview/verdict')?.data).toMatchObject({
+    expect(lastEvent(harness.session.snapshotEvents(), 'autoReview/verdict')?.data).toMatchObject({
       fallback: 'unavailable',
     })
   })
@@ -401,11 +401,11 @@ describe('auto-review answerer', () => {
       reason: 'escalate sandbox',
     })
     expect(outcome).toBe('allowed-once')
-    const types = harness.session.events.map(event => event.type)
+    const types = harness.session.snapshotEvents().map(event => event.type)
     expect(types).toEqual(expect.arrayContaining(['approval/asked', 'autoReview/verdict', 'approval/decided']))
-    const asked = harness.session.events.find(event => event.type === 'approval/asked')
-    const verdict = harness.session.events.find(event => event.type === 'autoReview/verdict')
-    const decided = harness.session.events.find(event => event.type === 'approval/decided')
+    const asked = harness.session.snapshotEvents().find(event => event.type === 'approval/asked')
+    const verdict = harness.session.snapshotEvents().find(event => event.type === 'autoReview/verdict')
+    const decided = harness.session.snapshotEvents().find(event => event.type === 'approval/decided')
     expect(dataOf(verdict).approvalId).toBe(dataOf(asked).id)
     expect(dataOf(decided).id).toBe(dataOf(asked).id)
     expect(dataOf(decided).outcome).toBe('allowed-once')
@@ -424,7 +424,7 @@ describe('auto-review answerer', () => {
     })
     expect(outcome).toBe('rejected')
     expect(harness.subagents.starts).toHaveLength(0)
-    expect(lastEvent(harness.session.events, 'autoReview/verdict')).toBeUndefined()
+    expect(lastEvent(harness.session.snapshotEvents(), 'autoReview/verdict')).toBeUndefined()
   })
 
   it('denies with the reviewer reason when the verdict says deny', async () => {
@@ -438,7 +438,7 @@ describe('auto-review answerer', () => {
       callId: CallId('call-deny'),
     }, next)
     expect(outcome).toBe('rejected')
-    expect(lastEvent(harness.session.events, 'autoReview/verdict')?.data).toMatchObject({
+    expect(lastEvent(harness.session.snapshotEvents(), 'autoReview/verdict')?.data).toMatchObject({
       decision: 'deny',
       reason: 'destructive and irreversible',
       riskLevel: 'high',
@@ -456,7 +456,7 @@ describe('auto-review answerer', () => {
       toolName: 'bash',
     }, next)
     expect(outcome).toBe('rejected')
-    expect(lastEvent(harness.session.events, 'autoReview/verdict')?.data).toMatchObject({
+    expect(lastEvent(harness.session.snapshotEvents(), 'autoReview/verdict')?.data).toMatchObject({
       fallback: 'timeout',
       outcome: 'rejected',
     })
@@ -475,7 +475,7 @@ describe('auto-review answerer', () => {
       signal: controller.signal,
     }, next)
     expect(outcome).toBe('cancelled')
-    expect(lastEvent(harness.session.events, 'autoReview/verdict')?.data).toMatchObject({
+    expect(lastEvent(harness.session.snapshotEvents(), 'autoReview/verdict')?.data).toMatchObject({
       fallback: 'cancelled',
       outcome: 'cancelled',
     })
@@ -627,7 +627,7 @@ describe('auto-review answerer', () => {
     })
     expect(outcome).toBe('rejected')
     expect(downstreamCalled).toBe(true)
-    const verdict = lastEvent(harness.session.events, 'autoReview/verdict')
+    const verdict = lastEvent(harness.session.snapshotEvents(), 'autoReview/verdict')
     expect(verdict?.data).toMatchObject({ decision: 'allow', riskLevel: 'high', escalation: 'risk-policy' })
     expect(verdict?.data).not.toHaveProperty('outcome')
   })
@@ -647,7 +647,7 @@ describe('auto-review answerer', () => {
       callId,
     }, next)
     expect(outcome).toBe('rejected')
-    expect(lastEvent(harness.session.events, 'autoReview/verdict')?.data).toMatchObject({
+    expect(lastEvent(harness.session.snapshotEvents(), 'autoReview/verdict')?.data).toMatchObject({
       decision: 'allow',
       escalation: 'risk-policy',
       outcome: 'rejected',
@@ -694,7 +694,7 @@ describe('auto-review answerer', () => {
       toolName: 'bash',
     }, next)
     expect(second.outcome).toBe('rejected')
-    const circuit = harness.session.events.find(event => event.type === 'autoReview/circuit')
+    const circuit = harness.session.snapshotEvents().find(event => event.type === 'autoReview/circuit')
     expect(circuit?.data).toMatchObject({ action: 'delegate', trip: { kind: 'consecutive', count: 2 } })
     let downstreamCalled = false
     const third = await dispatchAskedApproval(harness.ctx, harness.session, {
@@ -752,7 +752,7 @@ describe('auto-review answerer', () => {
       toolName: 'bash',
     }, next)
     expect(outcome).toBe('rejected')
-    const circuit = harness.session.events.find(event => event.type === 'autoReview/circuit')
+    const circuit = harness.session.snapshotEvents().find(event => event.type === 'autoReview/circuit')
     expect(circuit?.data).toMatchObject({ action: 'abort-turn' })
     expect(harness.injected).toHaveLength(1)
     expect((harness.injected[0]!.content[0] as { text: string }).text).toContain('circuit breaker tripped')
@@ -771,7 +771,7 @@ describe('auto-review answerer', () => {
       toolName: 'bash',
     }, next)
     expect(first.outcome).toBe('rejected')
-    const denyVerdict = lastEvent(harness.session.events, 'autoReview/verdict')
+    const denyVerdict = lastEvent(harness.session.snapshotEvents(), 'autoReview/verdict')
     const reviewId = (denyVerdict?.data as { reviewId: string }).reviewId
     ;(harness.session.append as unknown as (type: string, data: unknown) => unknown)('autoReview/override', {
       reviewId,

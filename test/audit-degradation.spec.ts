@@ -50,7 +50,7 @@ describe('audit-disabled degradation (rc.6 host)', () => {
       callId: CallId('call-clean'),
     }, next)
     expect(outcome).toBe('rejected')
-    expect(harness.session.events.some(event => event.type.startsWith('autoReview/'))).toBe(false)
+    expect(harness.session.snapshotEvents().some(event => event.type.startsWith('autoReview/'))).toBe(false)
   })
 
   it('injects a marker-free deny reason (the logged tool result is the audit)', async () => {
@@ -84,7 +84,7 @@ describe('audit-disabled degradation (rc.6 host)', () => {
     const harness = await mountHarness({ toolsPolicy: { overrides: { bash: 'ai' } } })
     const off = invoke(harness.commands.registered[0], harness, 'off')
     expect(off).toMatchObject({ kind: 'success' })
-    expect(harness.session.events.some(event => event.type === 'autoReview/state')).toBe(false)
+    expect(harness.session.snapshotEvents().some(event => event.type === 'autoReview/state')).toBe(false)
     const status = invoke(harness.commands.registered[0], harness, 'status')
     expect((status as { text: string }).text).toContain('Auto-review is OFF')
     // The in-memory override gates the answerer: nothing is reviewed, the chain delegates.
@@ -111,7 +111,7 @@ describe('audit-disabled degradation (rc.6 host)', () => {
     )
     await dispatchAskedApproval(harness.ctx, harness.session, { agent: harness.agent, toolName: 'bash' }, next)
     await dispatchAskedApproval(harness.ctx, harness.session, { agent: harness.agent, toolName: 'bash' }, next)
-    expect(harness.session.events.some(event => event.type === 'autoReview/circuit')).toBe(false)
+    expect(harness.session.snapshotEvents().some(event => event.type === 'autoReview/circuit')).toBe(false)
     const callId = CallId('call-circuit-memory')
     const third = await dispatchAskedApproval(harness.ctx, harness.session, {
       agent: harness.agent,
@@ -135,7 +135,7 @@ describe('audit-disabled degradation (rc.6 host)', () => {
     const approve = invoke(harness.commands.registered[0], harness, 'approve')
     expect(approve).toMatchObject({ kind: 'success' })
     expect((approve as { text: string }).text).toContain('Authorized ONE retry')
-    expect(harness.session.events.some(event => event.type === 'autoReview/override')).toBe(false)
+    expect(harness.session.snapshotEvents().some(event => event.type === 'autoReview/override')).toBe(false)
     // The next same-tool review carries the override as reviewer context.
     const second = await dispatchAskedApproval(harness.ctx, harness.session, { agent: harness.agent, toolName: 'bash' }, next)
     expect(second.outcome).toBe('rejected')
@@ -154,7 +154,7 @@ describe('fail-closed audit for unresolvable versions', () => {
     await dispatchAskedApproval(harness.ctx, harness.session, { agent: harness.agent, toolName: 'bash' }, next)
     // 0.1.2-alpha.1+ fail-closes on unknown event types, so an unresolvable
     // version must not be probed by writing a real event: nothing lands.
-    expect(harness.session.events.filter(event => event.type === 'autoReview/verdict')).toHaveLength(0)
+    expect(harness.session.snapshotEvents().filter(event => event.type === 'autoReview/verdict')).toHaveLength(0)
     vi.mocked(peerSessionVersion).mockReset()
   })
 })

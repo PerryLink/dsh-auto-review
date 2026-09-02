@@ -36,7 +36,7 @@ function presentCall(harness: Harness, callId: CallId, argumentsJson: string): v
 
 /** The session's `autoReview/verdict` payloads, oldest first. */
 function verdictData(harness: Harness): Record<string, unknown>[] {
-  return harness.session.events
+  return harness.session.snapshotEvents()
     .filter(event => event.type === 'autoReview/verdict')
     .map(event => (event.data ?? {}) as Record<string, unknown>)
 }
@@ -146,7 +146,7 @@ describe('verdict cache integration', () => {
     await review(harness, CallId('call-1'))
     await review(harness, CallId('call-2'))
     expect(harness.subagents.starts).toHaveLength(1)
-    const circuit = harness.session.events.find(event => event.type === 'autoReview/circuit')
+    const circuit = harness.session.snapshotEvents().find(event => event.type === 'autoReview/circuit')
     expect(circuit?.data).toMatchObject({ trip: { kind: 'consecutive', count: 2 } })
     // A third request is circuit-settled (reject) without another review or cache lookup.
     const third = await review(harness, CallId('call-3'))

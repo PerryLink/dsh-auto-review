@@ -12,6 +12,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
 import type { Session, SessionEventMap } from '@deepseek-ai/dsh-session'
+import { sessionEvents } from './session-events.ts'
 import type { ApprovalOutcome, ApprovalRequest, ApprovalRequestId } from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-subagent'
@@ -259,7 +260,7 @@ export class AutoReviewRuntime {
   /** The seq of the open turn/start, or undefined between turns (first-party events exist on every host). */
   private openTurnSeq(session: Session): number | undefined {
     let start: number | undefined
-    for (const event of session.events) {
+    for (const event of sessionEvents(session)) {
       if (event.type === 'turn/start') start = event.seq
       else if (event.type === 'turn/end') start = undefined
     }
@@ -308,20 +309,20 @@ export class AutoReviewRuntime {
 
   /** The per-turn metrics the caller should read: event folds on marker-aware hosts, the memory mirror otherwise. */
   private verdictsInOpenTurn(session: Session, memory: SessionMemory): number {
-    return this.auditMayAppend() ? autoReviewsInOpenTurn(session.events) : memory.verdicts.length
+    return this.auditMayAppend() ? autoReviewsInOpenTurn(sessionEvents(session)) : memory.verdicts.length
   }
 
   private failuresInOpenTurn(session: Session, memory: SessionMemory): number {
-    return this.auditMayAppend() ? autoReviewFailuresInOpenTurn(session.events) : memory.failures
+    return this.auditMayAppend() ? autoReviewFailuresInOpenTurn(sessionEvents(session)) : memory.failures
   }
 
   private circuitFor(session: Session, memory: SessionMemory): SessionEventMap['autoReview/circuit'] | undefined {
-    return this.auditMayAppend() ? circuitInOpenTurn(session.events) : memory.circuit
+    return this.auditMayAppend() ? circuitInOpenTurn(sessionEvents(session)) : memory.circuit
   }
 
   /** The pending one-shot override for a tool: the event fold on marker-aware hosts, the memory mirror otherwise. */
   private activeOverrideFor(session: Session, memory: SessionMemory, toolName: string, now: number): AutoReviewVerdictId | undefined {
-    if (this.auditMayAppend()) return activeOverride(session.events, toolName, this.config.overrideTtlMs, now)
+    if (this.auditMayAppend()) return activeOverride(sessionEvents(session), toolName, this.config.overrideTtlMs, now)
     const index = memory.overrides.findIndex(override =>
       override.toolName === toolName && now - override.at <= this.config.overrideTtlMs)
     if (index < 0) return undefined
@@ -366,11 +367,11 @@ export class AutoReviewRuntime {
     if (this.reviewerSessions.has(request.agent.id)) return next()
     const session = request.agent.session
     const memory = this.memoryFor(session)
-    const enabled = effectiveAutoReviewState(session.events) ?? memory.enabledOverride ?? this.config.enableByDefault
+    const enabled = effectiveAutoReviewState(sessionEvents(session)) ?? memory.enabledOverride ?? this.config.enableByDefault
     if (!enabled) return next()
     const needsArguments = this.config.riskRules.some(rule => rule.field === 'arguments')
     const argumentsText = needsArguments && request.callId !== undefined
-      ? sanitizedArgumentsText(session.events, request.callId)
+      ? sanitizedArgumentsText(sessionEvents(session), request.callId)
       : undefined
     const { policy, source } = policyFor(this.config, request, argumentsText)
     if (policy === 'never') return this.neverReject(request, source)
@@ -382,7 +383,7 @@ export class AutoReviewRuntime {
     if (this.failuresInOpenTurn(session, memory) >= this.config.maxFailuresPerTurn) return next()
     const circuit = this.circuitFor(session, memory)
     if (circuit !== undefined) return this.circuitSettle(request, circuit, next)
-    const approvalId = correlateApprovalId(session.events, request.toolName, request.callId)
+    const approvalId = correlateApprovalId(sessionEvents(session), request.toolName, request.callId)
     if (approvalId === undefined) {
       // The audit chain cannot be completed (verdict → approval/asked); treat
       // as an internal unavailability, never as a grant.
@@ -412,7 +413,7 @@ export class AutoReviewRuntime {
   private neverReject(request: ApprovalRequest, source: string): Promise<ApprovalOutcome> {
     const rejectionId = newRejectionId()
     const reason = truncate(source, this.config.reasonMaxChars)
-    const approvalId = correlateApprovalId(request.agent.session.events, request.toolName, request.callId)
+    const approvalId = correlateApprovalId(sessionEvents(request.agent.session), request.toolName, request.callId)
     const session = request.agent.session
     const memory = this.memoryFor(session)
     const auditOk = this.auditMayAppend()
@@ -453,7 +454,7 @@ export class AutoReviewRuntime {
     if (this.config.verdictCacheTtlMs <= 0) return undefined
     if (this.config.contextBudget.turns > 0) return undefined
     if (request.callId === undefined) return undefined
-    const raw = findPresentedCall(request.agent.session.events, request.callId)
+    const raw = findPresentedCall(sessionEvents(request.agent.session), request.callId)
     return fingerprint(request.toolName, raw)
   }
 
@@ -652,14 +653,14 @@ export class AutoReviewRuntime {
     const session = request.agent.session
     const memory = this.memoryFor(session)
     const auditOk = this.auditMayAppend()
-    if ((auditOk ? circuitInOpenTurn(session.events) : memory.circuit) !== undefined) return
+    if ((auditOk ? circuitInOpenTurn(sessionEvents(session)) : memory.circuit) !== undefined) return
     const { consecutiveDenies, windowDenies, windowSize, action } = this.config.circuitBreaker
-    const consecutive = auditOk ? consecutiveDeniesInOpenTurn(session.events) : AutoReviewRuntime.leadingDenials(memory.verdicts)
+    const consecutive = auditOk ? consecutiveDeniesInOpenTurn(sessionEvents(session)) : AutoReviewRuntime.leadingDenials(memory.verdicts)
     const trip = consecutive >= consecutiveDenies
       ? { kind: 'consecutive' as const, count: consecutive }
       : (() => {
         const window = auditOk
-          ? deniesInRecentVerdicts(session.events, windowSize)
+          ? deniesInRecentVerdicts(sessionEvents(session), windowSize)
           : memory.verdicts.slice(0, windowSize).filter(verdict => verdict.denial).length
         return window >= windowDenies ? { kind: 'window' as const, count: window } : undefined
       })()
@@ -786,11 +787,11 @@ export class AutoReviewRuntime {
     const t = messages(this.config.language)
     const input = invocation.rawInput.trim().toLowerCase()
     if (input.startsWith('approve')) return this.approveCommand(invocation)
-    const current = effectiveAutoReviewState(session.events) ?? memory.enabledOverride ?? this.config.enableByDefault
+    const current = effectiveAutoReviewState(sessionEvents(session)) ?? memory.enabledOverride ?? this.config.enableByDefault
     if (input === 'status' || input === '') {
       const auditOk = this.auditMayAppend()
-      const stats = auditOk ? reviewStats(session.events) : this.memoryStats(memory)
-      const circuit = auditOk ? circuitInOpenTurn(session.events) : memory.circuit
+      const stats = auditOk ? reviewStats(sessionEvents(session)) : this.memoryStats(memory)
+      const circuit = auditOk ? circuitInOpenTurn(sessionEvents(session)) : memory.circuit
       const recent = stats.recent.length === 0
         ? []
         : [t.recentLine(stats.recent.map(verdict => {
@@ -799,8 +800,8 @@ export class AutoReviewRuntime {
             : `fallback(${(verdict as { fallback?: string }).fallback ?? '?'})`
           return `${verdict.toolName}: ${label}`
         }).join(', '))]
-      const verdictsUsed = auditOk ? autoReviewsInOpenTurn(session.events) : memory.verdicts.length
-      const failuresUsed = auditOk ? autoReviewFailuresInOpenTurn(session.events) : memory.failures
+      const verdictsUsed = auditOk ? autoReviewsInOpenTurn(sessionEvents(session)) : memory.verdicts.length
+      const failuresUsed = auditOk ? autoReviewFailuresInOpenTurn(sessionEvents(session)) : memory.failures
       const auditOff = !auditOk && !this.config.allowUnmarkedAudit
       return {
         kind: 'success',
@@ -866,7 +867,7 @@ export class AutoReviewRuntime {
     }
     const auditOk = this.auditMayAppend()
     const denies = auditOk
-      ? lastDeniedVerdicts(session.events, index)
+      ? lastDeniedVerdicts(sessionEvents(session), index)
       : memory.denies.slice(0, index).map(denial => ({
         reviewId: denial.id as unknown as AutoReviewVerdictId,
         toolName: denial.toolName,

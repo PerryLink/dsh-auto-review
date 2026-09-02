@@ -50,12 +50,12 @@ describe('/auto-review command', () => {
     const harness = await auditHarness()
     const result = invoke(harness.commands.registered[0], harness, 'off')
     expect(result).toMatchObject({ kind: 'success' })
-    const state = harness.session.events.find(event => event.type === 'autoReview/state')
+    const state = harness.session.snapshotEvents().find(event => event.type === 'autoReview/state')
     expect(state?.data).toEqual({ enabled: false })
     expect(harness.injected).toHaveLength(1)
     expect(harness.injected[0]!.content[0]).toMatchObject({ type: 'text' })
     expect((harness.injected[0]!.content[0] as { text: string }).text).toContain('switched OFF')
-    expect(effectiveAutoReviewState(harness.session.events)).toBe(false)
+    expect(effectiveAutoReviewState(harness.session.snapshotEvents())).toBe(false)
   })
 
   it('switches back on and reports the change idempotently', async () => {
@@ -63,7 +63,7 @@ describe('/auto-review command', () => {
     invoke(harness.commands.registered[0], harness, 'off')
     const result = invoke(harness.commands.registered[0], harness, 'on')
     expect(result).toMatchObject({ kind: 'success' })
-    expect(effectiveAutoReviewState(harness.session.events)).toBe(true)
+    expect(effectiveAutoReviewState(harness.session.snapshotEvents())).toBe(true)
     const again = invoke(harness.commands.registered[0], harness, 'on')
     expect((again as { text: string }).text).toContain('already ON')
     expect(harness.injected).toHaveLength(2)
@@ -78,11 +78,11 @@ describe('/auto-review command', () => {
   it('survives restore: the state override folds from a replayed session log', async () => {
     const harness = await auditHarness()
     invoke(harness.commands.registered[0], harness, 'off')
-    const restored = Session.create(SessionId('restored'), harness.session.events)
-    expect(effectiveAutoReviewState(restored.events)).toBe(false)
+    const restored = Session.create(SessionId('restored'), harness.session.snapshotEvents())
+    expect(effectiveAutoReviewState(restored.snapshotEvents())).toBe(false)
     // A fresh session created from the same durable events delegates too.
     const agent = makeAgent(restored)
-    expect(agent.session.events.some(event => event.type === 'autoReview/state')).toBe(true)
+    expect(agent.session.snapshotEvents().some(event => event.type === 'autoReview/state')).toBe(true)
   })
 
   it('records a one-shot override for a recent denial', async () => {
@@ -102,7 +102,7 @@ describe('/auto-review command', () => {
     const result = invoke(harness.commands.registered[0], harness, 'approve')
     expect(result).toMatchObject({ kind: 'success' })
     expect((result as { text: string }).text).toContain('Authorized ONE retry')
-    const override = harness.session.events.find(event => event.type === 'autoReview/override')
+    const override = harness.session.snapshotEvents().find(event => event.type === 'autoReview/override')
     expect(override?.data).toEqual({ reviewId: 'r1', toolName: 'bash' })
   })
 

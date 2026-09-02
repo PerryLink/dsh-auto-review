@@ -17,6 +17,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
+import { sessionEvents } from './session-events.ts'
 import type { InvariantFailure, InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 import { AUTO_REVIEW_FALLBACKS, CIRCUIT_MARKER_PATTERN, DENY_MARKER_PATTERN, FALLBACK_MARKER_PATTERN, NEVER_MARKER_PATTERN } from './events.ts'
 
@@ -307,7 +308,7 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
     }
   }
   for (const session of ctx.sessions.list()) {
-    for (const event of session.events) validateEvent(session, event)
+    for (const event of sessionEvents(session)) validateEvent(session, event)
   }
   ctx.on('internal/dispatch', (_mode, eventName, args) => {
     if (eventName !== 'session/event') return

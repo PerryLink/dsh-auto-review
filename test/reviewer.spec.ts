@@ -373,7 +373,7 @@ describe('compact transcript context', () => {
       { type: 'tool/call', data: { turn: 1, step: 1, callId: 'c1', name: 'bash', arguments: '{"command":"pnpm test"}' } },
       { type: 'tool/result', data: { turn: 1, step: 1, message: { role: 'user', content: [{ type: 'tool-result', toolCallId: 'c1', content: [{ type: 'text', text: '76 passed' }], isError: false }] } } },
     ])
-    const section = buildContextSection(session.events, { turns: 1, maxChars: 1000 })
+    const section = buildContextSection(session.snapshotEvents(), { turns: 1, maxChars: 1000 })
     expect(section).toContain('[user] please fix the tests')
     expect(section).toContain('[agent] running tests now')
     expect(section).toContain('[tool call bash]')
@@ -385,8 +385,8 @@ describe('compact transcript context', () => {
       { type: 'turn/start', data: { turn: 1 } },
       { type: 'user/message', data: { content: [{ type: 'text', text: 'a long message to truncate' }] } },
     ])
-    expect(buildContextSection(session.events, { turns: 0, maxChars: 1000 })).toBe('')
-    expect(buildContextSection(session.events, { turns: 1, maxChars: 20 })).toMatch(/…$/u)
+    expect(buildContextSection(session.snapshotEvents(), { turns: 0, maxChars: 1000 })).toBe('')
+    expect(buildContextSection(session.snapshotEvents(), { turns: 1, maxChars: 20 })).toMatch(/…$/u)
   })
 
   it('spends the character budget on the most recent lines, not the oldest', () => {
@@ -398,7 +398,7 @@ describe('compact transcript context', () => {
       { type: 'user/message', data: { content: [{ type: 'text', text: 'ancient history nobody needs' }] } },
       { type: 'user/message', data: { content: [{ type: 'text', text: 'create hello.txt in my home directory' }] } },
     ])
-    const section = buildContextSection(session.events, { turns: 1, maxChars: 60 })
+    const section = buildContextSection(session.snapshotEvents(), { turns: 1, maxChars: 60 })
     expect(section).toContain('create hello.txt in my home directory')
     expect(section).not.toContain('ancient history')
     expect(section.length).toBeLessThanOrEqual(60)
@@ -418,7 +418,7 @@ describe('provider capability precheck', () => {
       toolName: 'bash',
     }, async () => 'allowed-once')
     expect(outcome).toBe('rejected')
-    const verdict = harness.session.events.find(event => event.type === 'autoReview/verdict')
+    const verdict = harness.session.snapshotEvents().find(event => event.type === 'autoReview/verdict')
     expect(verdict?.data).toMatchObject({ fallback: 'unavailable' })
     expect((verdict?.data as { error?: string }).error).toContain('outputSchema')
     expect(harness.subagents.starts).toHaveLength(0)
@@ -436,7 +436,7 @@ describe('provider capability precheck', () => {
       toolName: 'bash',
     }, async () => 'allowed-once')
     expect(outcome).toBe('rejected')
-    const verdict = harness.session.events.find(event => event.type === 'autoReview/verdict')
+    const verdict = harness.session.snapshotEvents().find(event => event.type === 'autoReview/verdict')
     expect((verdict?.data as { error?: string }).error).toContain('toolFilter')
   })
 })
