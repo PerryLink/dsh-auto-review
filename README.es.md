@@ -26,7 +26,7 @@
 
 | Superficie | Estado |
 |---|---|
-| Harness | DeepSeek Harness `0.1.1-rc.2` (dependencias fijadas a `0.1.1-rc.2`; peers `>=0.1.0-rc.8 <0.2.0`) 0.1.2-alpha.3 (adaptado el 2026-09-01): el sobre de sesión conserva su campo ignorable solo para compatibilidad de lectura de logs almacenados - Session.append aún no puede estamparlo, por lo que el comportamiento de la puerta no cambia. |
+| Harness | DeepSeek Harness `0.1.1-rc.2` (dependencias fijadas a `0.1.1-rc.2`; peers `>=0.1.0-rc.8 <0.2.0`) 0.1.2-alpha.5 (adaptado el 2026-09-02): el sobre de sesión conserva su campo ignorable solo para compatibilidad de lectura de logs almacenados - Session.append aún no puede estamparlo, por lo que el comportamiento de la puerta no cambia. |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | Plataformas | Todas (answerer de host; panel web opcional mediante la capacidad de proyección de sesión) |
 | Modelo | Cualquiera (el revisor hereda la ruta del agente de sesión; `reviewerModel` la reemplaza) |

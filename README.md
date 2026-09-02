@@ -103,7 +103,7 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 | `verdictCacheTtlMs` | `60000` | Reuse a recent verdict for an identical `tool + arguments` fingerprint; `0` disables the cache. Only applies with `contextBudget.turns: 0` — a transcript-dependent verdict is not replayable from `tool + arguments` alone |
 | `verdictCacheMaxEntries` | `256` | Maximum cached fingerprints before oldest-eviction |
 | `language` | `en` | UI language of the `/auto-review` command output (`en` \| `zh`) |
-| `allowUnmarkedAudit` | `false` | Force session-log audit on hosts that drop the `ignorable` marker or fail-closed on unknown event types (host `0.1.2-alpha.3`+) (dangerous: unmarked events make sessions unresumable elsewhere); default is detect-and-degrade 0.1.2-alpha.3 (adapted 2026-09-01): the session envelope keeps its ignorable field for stored-log read compatibility only - Session.append still cannot stamp it, so audit-gate behavior is unchanged. |
+| `allowUnmarkedAudit` | `false` | Force session-log audit on hosts that drop the `ignorable` marker or fail-closed on unknown event types (host `0.1.2-alpha.5`+) (dangerous: unmarked events make sessions unresumable elsewhere); default is detect-and-degrade 0.1.2-alpha.5 (adapted 2026-09-02): the session envelope keeps its ignorable field for stored-log read compatibility only - Session.append still cannot stamp it, so audit-gate behavior is unchanged. |
 
 Example (annotated full form: `fixtures/config/config-full.yaml`):
 
@@ -319,7 +319,7 @@ The server is read-only and deterministic: no network, no model, no writes.
 
 - **Permissions**: the workshop manifest declares `session:append`, `approval:answer`, `subagent:spawn`, `command:register`, and `tools:observe`.
 - **Data**: nothing is stored on disk; the report ring buffer is in-memory and bounded. No network requests of its own.
-- **Session log**: `autoReview/*` events carry reviewer identity, verdict, reason, risk, and duration — appended with the envelope's `ignorable: true` marker so any build loads the log. Hosts whose `Session.append` predates the marker (every released rc line through `0.1.1-rc.2` — no release stamps it yet) are detected before the first append (peer-version pre-check); host `0.1.2-alpha.3` keeps the `ignorable` field on the envelope but `Session.append` offers no way to stamp it (its third parameter is `SurfaceIntent` for surface events only), and the persistence read path refuses unmarked unknown event types, so those lines — and unresolvable versions — also fail closed before any append. Audit then degrades to an in-memory mirror with marker-free feedback, so sessions stay loadable everywhere.
+- **Session log**: `autoReview/*` events carry reviewer identity, verdict, reason, risk, and duration — appended with the envelope's `ignorable: true` marker so any build loads the log. Hosts whose `Session.append` predates the marker (every released rc line through `0.1.1-rc.2` — no release stamps it yet) are detected before the first append (peer-version pre-check); host `0.1.2-alpha.5` keeps the `ignorable` field on the envelope but `Session.append` offers no way to stamp it (its third parameter is `SurfaceIntent` for surface events only), and the persistence read path refuses unmarked unknown event types, so those lines — and unresolvable versions — also fail closed before any append. Audit then degrades to an in-memory mirror with marker-free feedback, so sessions stay loadable everywhere.
 
 ## Security boundaries
 
