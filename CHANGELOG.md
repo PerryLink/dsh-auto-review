@@ -2,6 +2,12 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [0.10.1] - 2026-09-02
+
+### Docs
+
+- Sync the five-language READMEs to the 0.1.2-alpha.5 facts; no behavior change.
+
 ## [0.10.0] - 2026-09-02
 
 ### Changed
