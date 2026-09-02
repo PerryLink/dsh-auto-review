@@ -178,7 +178,7 @@ export async function resolvePromptBaselines(suite: EvalSuite, suiteDir?: string
 }
 
 /** Serialize one session header as the persistence-backend header line. */
-export function sessionHeaderLine(header: SessionHeader): Record<string, unknown> {
+export function sessionHeaderLine(header: SessionHeader, inheritedEventCount?: unknown): Record<string, unknown> {
   return {
     type: 'session',
     version: header.version,
@@ -186,7 +186,7 @@ export function sessionHeaderLine(header: SessionHeader): Record<string, unknown
     createdAt: header.createdAt,
     ...(header.cwd !== undefined ? { cwd: header.cwd } : {}),
     ...(header.parentSession !== undefined ? { parentSession: header.parentSession } : {}),
-    ...(header.inheritedEventCount !== undefined ? { seedLength: header.inheritedEventCount } : {}),
+    ...(inheritedEventCount !== undefined ? { seedLength: inheritedEventCount } : {}),
     ...(header.origin !== undefined ? { origin: header.origin } : {}),
     delegationDepth: header.delegationDepth ?? 0,
     ...(header.agentPreset !== undefined ? { agentPreset: header.agentPreset } : {}),
@@ -201,9 +201,9 @@ export function sessionHeaderLine(header: SessionHeader): Record<string, unknown
  * @param events - the full session log.
  * @returns the artifact text.
  */
-export function renderSessionArtifact(header: SessionHeader, events: readonly SessionEvent[]): string {
+export function renderSessionArtifact(header: SessionHeader, events: readonly SessionEvent[], inheritedEventCount?: unknown): string {
   const records = [
-    JSON.stringify(sessionHeaderLine(header)),
+    JSON.stringify(sessionHeaderLine(header, inheritedEventCount)),
     ...packChunkRuns(events).map(record => JSON.stringify(record)),
   ]
   return `${records.join('\n')}\n`
@@ -436,7 +436,8 @@ export class EvalEngine {
       const outcome = await this.awaitIdle(agent, timeoutMs, options.signal)
       await this.flushSession(agent)
       const trace = collectTrace(agent.session.id, sessionEvents(agent.session), firstSeq)
-      const artifacts = await this.writeTraceArtifacts(options, caze, agent.session.header, sessionEvents(agent.session), trace)
+      const inheritedCount = (agent.session as unknown as { inheritedEventCount?: unknown }).inheritedEventCount
+      const artifacts = await this.writeTraceArtifacts(options, caze, agent.session.header, sessionEvents(agent.session), trace, inheritedCount)
       const assertionResults = runAssertions(caze, trace, promptBaselines)
       let review: CaseReviewRecord | undefined
       if (caze.review !== undefined && !options.signal.aborted) {
@@ -532,6 +533,7 @@ export class EvalEngine {
     header: SessionHeader,
     events: readonly SessionEvent[],
     trace: CaseTrace,
+    inheritedEventCount?: unknown,
   ): Promise<{ tracePath?: string; sessionLogPath?: string }> {
     if (options.traceDir === undefined) return {}
     await mkdir(options.traceDir, { recursive: true })
@@ -542,7 +544,7 @@ export class EvalEngine {
       this.ctx.logger?.warn(`dsh-eval: cannot write trace JSON for "${caze.id}": ${String(error)}`)
     }
     try {
-      await writeFile(join(options.traceDir, `${base}.session.jsonl`), renderSessionArtifact(header, events))
+      await writeFile(join(options.traceDir, `${base}.session.jsonl`), renderSessionArtifact(header, events, inheritedEventCount))
     } catch (error: unknown) {
       this.ctx.logger?.warn(`dsh-eval: cannot write session artifact for "${caze.id}": ${String(error)}`)
     }
