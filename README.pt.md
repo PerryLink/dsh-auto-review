@@ -410,6 +410,10 @@ Este projeto é um dos [33 plugins de DeepSeek Harness](https://github.com/Perry
 | **[dsh-dsh-test-drive](https://github.com/PerryLink/dsh-dsh-test-drive)** | Test drives isolados de instalação e smoke para plugins de DeepSeek Harness. | |
 | **[dsh-dsh-translate](https://github.com/PerryLink/dsh-dsh-translate)** | Tradução de parâmetros entre fornecedores e reparo determinístico de JSON para DeepSeek Harness. | |
 
+### Instalar a partir do mercado do DSH Desktop
+
+Todos os plugins PerryLink podem ser explorados no mercado integrado do DSH Desktop: **Market → Sources → add source → colar** `https://perrylink-dsh-catalog.perrylink.workers.dev/catalog-source.json` **→ selecionar**. A instalação continua passando pela verificação de identidade npm do mercado e pela sua confirmação.
+
 ## Licença
 
 [Apache License 2.0](LICENSE) © 2026 dsh-auto-review contributors
