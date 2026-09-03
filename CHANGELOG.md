@@ -2,6 +2,14 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [0.10.2] - 2026-09-03
+
+### Changed
+
+- Runtime `dependencies` moved from the `0.1.1-rc.2` line to the published `0.1.2-alpha.5` line (15 packages); `@deepseek-ai/dsh-agent-spine-demo` (removed from the alpha.5 line) moved to devDependencies at `0.1.1-rc.2` — it is used only by the eval profile (`eval/cordis.yml`).
+- Dev pins `@deepseek-ai/cordis-plugin-loader ^1.0.3` / `@deepseek-ai/cordis-plugin-include ^1.0.7` aligned with the `cordis 4.0.2` peer ranges.
+- Five-language READMEs: the harness table row now states `dependencies pinned to 0.1.2-alpha.5`.
+
 ## [0.10.1] - 2026-09-02
 
 ### Docs
