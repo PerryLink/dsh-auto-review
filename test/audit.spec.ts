@@ -9,13 +9,13 @@ import { isMarkedAuditEvent, isUnmarkedHostVersion, peerSessionVersion } from '.
 
 describe('isUnmarkedHostVersion', () => {
   it('flags the known-unmarked rc lines and the fail-closed master line', () => {
-    for (const version of ['0.1.0-rc.1', '0.1.0-rc.2', '0.1.0-rc.5', '0.1.0-rc.6', '0.1.0-rc.7', '0.1.0-rc.8', ' 0.1.0-rc.8 ', '0.1.1-rc.1', '0.1.1-rc.2', '0.1.2-alpha.1', '0.1.2', '0.1.3-beta.1']) {
+    for (const version of ['0.1.0-rc.1', '0.1.0-rc.2', '0.1.0-rc.5', '0.1.0-rc.6', '0.1.0-rc.7', '0.1.0-rc.8', ' 0.1.0-rc.8 ', '0.1.1-rc.1', '0.1.1-rc.2', '0.1.2-alpha.1', '0.1.2', '0.1.3-beta.1', '0.1.2-rc.1']) {
       expect(isUnmarkedHostVersion(version)).toBe(true)
     }
   })
 
   it('treats later and non-rc versions as possibly-marker-aware (verified by the probe)', () => {
-    for (const version of ['0.1.0-rc.9', '0.1.1-rc.3', '0.1.2-rc.1', '0.2.0', '0.1.0', '1.0.0', '0.1.0-rc.8-nightly']) {
+    for (const version of ['0.1.0-rc.9', '0.1.1-rc.3', '0.2.0', '0.1.0', '1.0.0', '0.1.0-rc.8-nightly']) {
       expect(isUnmarkedHostVersion(version)).toBe(false)
     }
   })

@@ -60,7 +60,10 @@ export function isUnmarkedHostVersion(version: string): boolean {
   if (rc !== null) {
     const minor = Number(rc[1])
     const patch = Number(rc[2])
-    return (minor === 0 && patch <= 8) || (minor === 1 && patch <= 2)
+    // `0.1.2-rc.1` ships the alpha.5 surface: the third append parameter is
+    // `SurfaceIntent` for surface event types only, so no rc line in the
+    // 0.1.2 minor stamps the marker either.
+    return (minor === 0 && patch <= 8) || (minor === 1 && patch <= 2) || minor >= 2
   }
   const line = /^0\.1\.(\d+)(?:-.*)?$/.exec(v)
   if (line !== null) return Number(line[1]) >= 2
