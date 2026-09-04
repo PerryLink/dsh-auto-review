@@ -2,6 +2,15 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [0.10.3] - 2026-09-04
+
+### Changed
+
+- All `@deepseek-ai/dsh-*` runtime `dependencies` and dev pins moved from the published `0.1.2-alpha.5` line to `0.1.2-rc.1`; `@deepseek-ai/dsh-agent-spine-demo` stays on `0.1.1-rc.2` (no newer spine line is published).
+- `src/audit.ts`: `isUnmarkedHostVersion` now classifies the `0.1.2-rc.x` line as non-stamping (it ships the alpha.5 surface: the third append parameter is `SurfaceIntent` for surface event types only). Previously `0.1.2-rc.1` fell through the rc bound and was probed as marker-aware, which re-enabled session-log audit, broke the per-turn budget fold, and risked appending unmarked verdict events.
+- `scripts/check-host-versions.mjs`: a dev pin on the rc line now counts as covering the npm alpha line (rc outranks alpha within the same minor), keeping the host-compat job green after the bump.
+- Five-language READMEs: the harness table row now states `0.1.2-rc.1`.
+
 ## [0.10.2] - 2026-09-03
 
 ### Changed

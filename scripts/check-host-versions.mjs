@@ -83,7 +83,9 @@ console.log(`check-host-versions: peers cover the newest @deepseek-ai/dsh rc lin
 
 // The alpha release line is covered by the exact dev pins (the rc peer
 // ranges cannot express `0.1.x-alpha.N`); fail when the registry alpha
-// line outruns them.
+// line outruns them. Dev pins may now sit on the rc line instead of the
+// alpha line; within the same minor an rc pin outruns every alpha
+// (semver precedence), so it counts as covering the alpha line.
 const newestAlpha = Object.values(tags)
   .map(tag => ALPHA_PIN.exec(String(tag)))
   .filter(match => match !== null)
@@ -91,21 +93,29 @@ const newestAlpha = Object.values(tags)
   .sort((left, right) => (left.minor - right.minor) || (left.alpha - right.alpha))
   .at(-1)
 
-const devAlpha = Object.entries(pkg.devDependencies ?? {})
+const RANK_ORDER = { alpha: 0, rc: 1 }
+const devLine = Object.entries(pkg.devDependencies ?? {})
   .filter(([name]) => name.startsWith('@deepseek-ai/dsh'))
-  .map(([, version]) => ALPHA_PIN.exec(String(version)))
-  .filter(match => match !== null)
-  .map(match => ({ minor: Number(match[1]), alpha: Number(match[2]) }))
-  .sort((left, right) => (left.minor - right.minor) || (left.alpha - right.alpha))
+  .map(([, version]) => {
+    const alpha = ALPHA_PIN.exec(String(version))
+    if (alpha !== null) return { minor: Number(alpha[1]), rank: 'alpha', n: Number(alpha[2]) }
+    const rc = EXACT_PIN.exec(String(version))
+    if (rc !== null) return { minor: Number(rc[1]), rank: 'rc', n: Number(rc[2]) }
+    return null
+  })
+  .filter(pin => pin !== null)
+  .sort((left, right) =>
+    (left.minor - right.minor) || (RANK_ORDER[right.rank] - RANK_ORDER[left.rank]) || (left.n - right.n))
   .at(-1)
 
 if (newestAlpha !== undefined) {
-  const covered = devAlpha !== undefined
-    && (devAlpha.minor > newestAlpha.minor
-      || (devAlpha.minor === newestAlpha.minor && devAlpha.alpha >= newestAlpha.alpha))
+  const covered = devLine !== undefined
+    && (devLine.minor > newestAlpha.minor
+      || (devLine.minor === newestAlpha.minor
+        && (RANK_ORDER[devLine.rank] > 0 || devLine.n >= newestAlpha.alpha)))
   if (!covered) {
     console.error(
-      `check-host-versions: @deepseek-ai/dsh newest alpha line is 0.1.${newestAlpha.minor}-alpha.${newestAlpha.alpha}, but the dev pins cover ${devAlpha === undefined ? 'no alpha line' : `0.1.${devAlpha.minor}-alpha.${devAlpha.alpha}`}. `
+      `check-host-versions: @deepseek-ai/dsh newest alpha line is 0.1.${newestAlpha.minor}-alpha.${newestAlpha.alpha}, but the dev pins cover ${devLine === undefined ? 'no alpha line' : `0.1.${devLine.minor}-${devLine.rank}.${devLine.n}`}. `
       + 'Bump the dev pins (or document a deliberate stay-behind) before publishing.',
     )
     process.exit(1)
