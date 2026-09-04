@@ -317,7 +317,7 @@ Claude Desktop（`claude_desktop_config.json`）配置示例：
 
 - **权限**：workshop 清单声明 `session:append`、`approval:answer`、`subagent:spawn`、`command:register` 与 `tools:observe`。
 - **数据**：不向磁盘写入任何内容；报告环形缓冲在内存中且有界。自身不发起网络请求。
-- **会话日志**：`autoReview/*` 事件携带审查器身份、裁决、理由、风险与耗时 —— 以信封 `ignorable: true` 标记追加，任何构建都能加载日志。`Session.append` 早于该标记的宿主（迄今发布的所有 rc 版本，至 `0.1.1-rc.2`——任何发布版都还未盖标记）会在首次追加前被探测出来（peer 版本预检 + 返回信封探测），审计降级为内存镜像 + 无标记反馈，会话日志始终保持可加载。
+- **会话日志**：`autoReview/*` 事件携带审查器身份、裁决、理由、风险与耗时 —— 以信封 `ignorable: true` 标记追加，任何构建都能加载日志。`Session.append` 早于该标记的宿主（迄今发布的所有 rc 版本，至 `0.1.1-rc.2`——任何发布版都还未盖标记）会在首次追加前被探测出来（peer 版本预检 + 返回信封探测）；宿主 `0.1.2-rc.1` 在信封上保留 `ignorable` 字段，但 `Session.append` 没有任何方式为其盖章（其第三参数是仅用于 surface 事件的 `SurfaceIntent`），且持久化读取路径拒绝未标记的未知事件类型，因此这些版本线——以及无法解析的版本——同样在首次追加前 fail closed。审计降级为内存镜像 + 无标记反馈，会话日志始终保持可加载。
 
 ## 安全边界
 
