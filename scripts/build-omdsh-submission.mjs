@@ -9,6 +9,18 @@ const pkg = JSON.parse(readFileSync(path.join(repo, 'package.json'), 'utf8'))
 const ref = process.argv[2] ?? process.env.PINNED_REF
 const updatedAt = new Date().toISOString()
 
+// Hub intake rule (scripts/intake-lib.mjs): for hot-reload/immediate activations
+// restartRequired MUST be false; for restart-* activations it MUST be true. A
+// single derivation from the repo's own dshWorkshop declaration satisfies both:
+// restartRequired === /^restart-/.test(activation). Invalid activation values
+// fail loudly here instead of being rejected by the hub preflight.
+const VALID_ACTIVATIONS = new Set(['immediate', 'hot-reload', 'restart-plugin', 'restart-profile', 'restart-host'])
+const activation = pkg.dshWorkshop?.lifecycle?.activation ?? ''
+if (!VALID_ACTIVATIONS.has(activation)) {
+  throw new Error(`dshWorkshop.lifecycle.activation "${activation}" is not a supported omdsh value (${[...VALID_ACTIVATIONS].join('|')})`)
+}
+const restartRequired = /^restart-/.test(activation)
+
 const submission = {
   schema: 'omdsh-workshop-submission/v2',
   operation: 'create-project',
@@ -30,9 +42,9 @@ const submission = {
     ref,
     updatedAt,
     channel: 'stable',
-    compatibility: '0.1.1-rc.2',
+    compatibility: pkg.dshWorkshop?.compatibility?.dshVersions?.[0] ?? '',
     changelog: '0.4.1 adds the omdsh-workshop-package/v1 dshWorkshop intake manifest plus author-run install/remove evidence; runtime behavior is unchanged from 0.4.0.',
-    capabilities: { requiresFabric: false, deepHook: false, restartRequired: true },
+    capabilities: { requiresFabric: false, deepHook: false, restartRequired },
     profileBundle: { packageName: 'dsh-auto-review', spec: pkg.version },
     updateFrom: null,
   },
