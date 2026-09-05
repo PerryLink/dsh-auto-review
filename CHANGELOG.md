@@ -2,6 +2,12 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [0.10.4] - 2026-09-05
+
+### Fixed
+
+- `peerDependencies`: all 14 `@deepseek-ai/dsh-*` peer ranges moved from `>=0.1.0-rc.8 <0.2.0` to `>=0.1.2-rc.1 <0.2.0`. The old range matched only the `0.1.0-rc.8` line under bare (registry-driven) resolution while the `0.1.2-rc.1` production dependency wave demands `^0.1.2-rc.1` peers, so `pnpm install` of the packed tarball failed with `ERR_PNPM_NO_MATCHING_VERSION` (npm fell back to an ERESOLVE override). The range now resolves the `0.1.2-rc.1` line that the package actually ships against.
+
 ## [0.10.3] - 2026-09-04
 
 ### Changed
