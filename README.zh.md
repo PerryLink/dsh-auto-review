@@ -26,7 +26,7 @@
 
 | 方面 | 状态 |
 |---|---|
-| Harness | DeepSeek Harness `0.1.2-rc.1`（依赖锁定在 `0.1.2-rc.1`；peer 范围 `>=0.1.2-rc.1 <0.2.0`） 0.1.2-rc.1（2026-09-02 已适配）：会话信封保留 ignorable 字段但仅用于存量日志读取兼容——Session.append 仍无法盖章，门控行为不变。 2026-09-06 已针对 `dsh-v0.1.3-alpha.1` master 检出核验（完整门禁链 + profile 安装冒烟）。 |
+| Harness | DeepSeek Harness `dsh-v0.1.3-alpha.1`（GitHub tag，2026-09-06 已核验；npm 依赖锁定 `0.1.2-rc.1`，peer 范围 `>=0.1.2-rc.1 <0.2.0`） 0.1.2-rc.1（2026-09-02 已适配）：会话信封保留 ignorable 字段但仅用于存量日志读取兼容——Session.append 仍无法盖章，门控行为不变。 2026-09-06 已针对 `dsh-v0.1.3-alpha.1` master 检出核验（完整门禁链 + profile 安装冒烟）。 |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | 平台 | 全部（宿主 answerer；可选 Web 审查面板，依赖会话投影能力） |
 | 模型 | 任意（审查器默认继承会话代理的路由；`reviewerModel` 可覆盖） |

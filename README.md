@@ -27,7 +27,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `0.1.2-rc.1` (dependencies pinned to `0.1.2-rc.1`; peers `>=0.1.2-rc.1 <0.2.0`). Verified 2026-09-06 against the `dsh-v0.1.3-alpha.1` master checkout (full gate chain + profile install smoke). |
+| Harness | DeepSeek Harness `dsh-v0.1.3-alpha.1` (GitHub tag, verified 2026-09-06; npm dependencies pinned `0.1.2-rc.1`, peers `>=0.1.2-rc.1 <0.2.0`). Verified 2026-09-06 against the `dsh-v0.1.3-alpha.1` master checkout (full gate chain + profile install smoke). |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | Platforms | All (host answerer; optional Web review panel via the session-projection capability) |
 | Model | Any (the reviewer inherits the session agent's route; `reviewerModel` overrides) |
