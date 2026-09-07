@@ -17,7 +17,12 @@
 import { apply } from './runtime.ts'
 import type { AutoReviewRuntime } from './runtime.ts'
 
+// Service Definition — the plugin contract: `name` / `inject` / `apply` declare
+// the auto-review answerer surface mounted on the `approval/request` waterfall.
 export const name = 'auto-review'
+
+// Consumer — the runtime consumes the harness services declared below (approval,
+// subagents, commands, tools) to run the one-shot read-only reviewer subagent.
 export const inject = ['approval', 'subagents', 'commands', 'tools']
 
 declare module '@deepseek-ai/cordis' {
@@ -27,6 +32,8 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
+// Service Provider — `apply` (src/runtime.ts) registers the `approval/request`
+// answerer and the `tools/post-execute` deny-reason listener on the context.
 export { apply }
 export { AutoReviewRuntime } from './runtime.ts'
 export * from './cache.ts'
