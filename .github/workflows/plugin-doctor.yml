@@ -1,0 +1,30 @@
+name: plugin-doctor
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  doctor:
+    name: dsh-plugin-doctor (static R/K)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: |
+          if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile
+          elif [ -f package-lock.json ]; then npm ci
+          else npm install --no-audit --no-fund
+          fi
+      - name: Build (if present)
+        run: npm run build --if-present || true
+      - name: Run dsh-plugin-doctor
+        run: 'npx --yes @perrylink/dsh-plugin-doctor@0.1.3 --repo . --no-smoke --only "闈欐€伮峰寘缁撴瀯,闈欐€伮穋ordis 濂戠害鎵弿"'
