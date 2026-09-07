@@ -24,7 +24,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { SessionId, packChunkRuns } from '@deepseek-ai/dsh-session'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionHeader, SessionEvent } from '@deepseek-ai/dsh-session'
 import { sessionEvents } from '../session-events.ts'
 import type { ResolvedConfig } from '../config.ts'
@@ -36,6 +36,15 @@ import { collectTrace } from './trace.ts'
 import type { CaseTrace } from './trace.ts'
 import { isEvalReviewFailure, runEvalReview } from './review.ts'
 import type { EvalReviewConfig } from './review.ts'
+
+// Dual-line session-persistence vocabulary: the 0.1.2 log packs chunk runs
+// into the canonical v1 JSONL rows, while the 0.1.3 line dropped the chunk
+// events entirely (its v2 catalog stores raw events). Feature-detect the
+// 0.1.2-only export at load so the artifact renderer works on either line.
+const sessionModule = await import('@deepseek-ai/dsh-session') as unknown as {
+  packChunkRuns?: (events: readonly SessionEvent[]) => readonly unknown[]
+}
+const packChunkRuns = sessionModule.packChunkRuns
 
 /** One case's terminal status. */
 export type CaseStatus = 'pass' | 'fail' | 'error' | 'cancelled'
@@ -202,9 +211,10 @@ export function sessionHeaderLine(header: SessionHeader, inheritedEventCount?: u
  * @returns the artifact text.
  */
 export function renderSessionArtifact(header: SessionHeader, events: readonly SessionEvent[], inheritedEventCount?: unknown): string {
+  const rows = packChunkRuns === undefined ? events : packChunkRuns(events)
   const records = [
     JSON.stringify(sessionHeaderLine(header, inheritedEventCount)),
-    ...packChunkRuns(events).map(record => JSON.stringify(record)),
+    ...rows.map(record => JSON.stringify(record)),
   ]
   return `${records.join('\n')}\n`
 }

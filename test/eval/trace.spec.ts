@@ -115,6 +115,39 @@ describe('collectTrace', () => {
     expect(step?.outputTokens).toBe(9)
   })
 
+  it('derives per-step timing from the 0.1.3 timed message stream', () => {
+    const events = [
+      event(5, 'step/start', { turn: 1, step: 1 }),
+      event(6, 'assistant/message', {
+        turn: 1,
+        step: 1,
+        message: { role: 'assistant', content: [] },
+        stream: [
+          { type: 'text-chunks', time0: 6100, index: 0, dt: [50], texts: ['hi'] },
+          { type: 'text-chunks', time0: 6250, index: 1, dt: [75], texts: [' there'] },
+        ],
+      }),
+      event(7, 'step/end', { turn: 1, step: 1 }),
+    ]
+    const trace = collectTrace(SessionId('s1'), events, 5)
+    const step = trace.steps?.[0]
+    expect(step?.firstTokenMs).toBe(6100)
+    expect(step?.lastTokenMs).toBe(6325)
+    expect(step?.endMs).toBe(7000)
+  })
+
+  it('ignores 0.1.3 assistant/attempt records for timing (settled attempts carry no stream timing)', () => {
+    const events = [
+      event(5, 'step/start', { turn: 1, step: 1 }),
+      event(6, 'assistant/attempt', { turn: 1, step: 1, stream: [] }),
+      event(7, 'step/end', { turn: 1, step: 1 }),
+    ]
+    const trace = collectTrace(SessionId('s1'), events, 5)
+    const step = trace.steps?.[0]
+    expect(step?.firstTokenMs).toBeUndefined()
+    expect(step?.lastTokenMs).toBeUndefined()
+  })
+
   it('renderToolCall compacts a call to one line', () => {
     const trace: CaseTrace = {
       sessionId: 's1', firstSeq: 0, lastSeq: 9, finalOutput: '',

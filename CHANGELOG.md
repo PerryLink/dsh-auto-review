@@ -4,6 +4,11 @@ All notable changes to `dsh-auto-review` are documented here. The repo is pre-re
 
 ## [0.10.6] - 2026-09-07
 
+### Fixed
+
+- Dual-line session-log compatibility for dsh-eval: the trace folds derive per-step stream timing from `assistant/chunk` (0.1.2 line) or the message's timed `stream` records (0.1.3 line), and the session-artifact renderer feature-detects the 0.1.2-only `packChunkRuns` export; both published host lines keep their existing behavior.
+- The host-version gate now carries a documented stay-behind for `@deepseek-ai/dsh@0.1.3-alpha.2` (whose session vocabulary dropped `assistant/chunk`/`packChunkRuns`) until the dev pins migrate; the shipped pins stay on the published rc line.
+
 ### Docs
 
 - Fix the DSH plugin badge URL: shields.io rejects the four-segment static badge form with "404 badge not found"; the label now uses the documented double-dash form (`dsh--plugin`), rendering identically; no behavior change.

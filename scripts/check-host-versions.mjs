@@ -109,16 +109,28 @@ const devLine = Object.entries(pkg.devDependencies ?? {})
   .at(-1)
 
 if (newestAlpha !== undefined) {
-  const covered = devLine !== undefined
-    && (devLine.minor > newestAlpha.minor
-      || (devLine.minor === newestAlpha.minor
-        && (RANK_ORDER[devLine.rank] > 0 || devLine.n >= newestAlpha.alpha)))
-  if (!covered) {
-    console.error(
-      `check-host-versions: @deepseek-ai/dsh newest alpha line is 0.1.${newestAlpha.minor}-alpha.${newestAlpha.alpha}, but the dev pins cover ${devLine === undefined ? 'no alpha line' : `0.1.${devLine.minor}-${devLine.rank}.${devLine.n}`}. `
-      + 'Bump the dev pins (or document a deliberate stay-behind) before publishing.',
-    )
-    process.exit(1)
+  // Deliberate stay-behind (documented): the 0.1.3-alpha.2 line removed
+  // session-log vocabulary (`assistant/chunk`, `packChunkRuns`) that this
+  // package's eval trace/artifact folds still read on 0.1.2 hosts; the
+  // runtime handles both lines (feature-detected) and the dev pins stay on
+  // the published rc line until the 0.1.3 migration lands. Remove the entry
+  // when the pins move.
+  const STAY_BEHIND_ALPHA = new Set(['0.1.3-alpha.2'])
+  const stay = STAY_BEHIND_ALPHA.has(`0.1.${newestAlpha.minor}-alpha.${newestAlpha.alpha}`)
+  if (stay) {
+    console.warn(`check-host-versions: newest alpha 0.1.${newestAlpha.minor}-alpha.${newestAlpha.alpha} is on the documented stay-behind list; skipping the alpha coverage check`)
+  } else {
+    const covered = devLine !== undefined
+      && (devLine.minor > newestAlpha.minor
+        || (devLine.minor === newestAlpha.minor
+          && (RANK_ORDER[devLine.rank] > 0 || devLine.n >= newestAlpha.alpha)))
+    if (!covered) {
+      console.error(
+        `check-host-versions: @deepseek-ai/dsh newest alpha line is 0.1.${newestAlpha.minor}-alpha.${newestAlpha.alpha}, but the dev pins cover ${devLine === undefined ? 'no alpha line' : `0.1.${devLine.minor}-${devLine.rank}.${devLine.n}`}. `
+        + 'Bump the dev pins (or document a deliberate stay-behind) before publishing.',
+      )
+      process.exit(1)
+    }
+    console.log(`check-host-versions: dev pins cover the newest @deepseek-ai/dsh alpha line (0.1.${newestAlpha.minor}-alpha.${newestAlpha.alpha})`)
   }
-  console.log(`check-host-versions: dev pins cover the newest @deepseek-ai/dsh alpha line (0.1.${newestAlpha.minor}-alpha.${newestAlpha.alpha})`)
 }
