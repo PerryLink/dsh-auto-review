@@ -2,6 +2,13 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [0.10.6] - 2026-09-07
+
+### Docs
+
+- Fix the DSH plugin badge URL: shields.io rejects the four-segment static badge form with "404 badge not found"; the label now uses the documented double-dash form (`dsh--plugin`), rendering identically; no behavior change.
+
+
 ## [0.10.5] - 2026-09-07
 
 ### Docs
