@@ -15,14 +15,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        if: hashFiles('pnpm-lock.yaml') != ''
+        if: hashFiles('pnpm-lock.yaml') != '' && hashFiles('package-lock.json') == ''
+        with:
+          version: 11.7.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Install
         run: |
-          if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile
-          elif [ -f package-lock.json ]; then npm ci
+          if [ -f package-lock.json ]; then npm ci
+          elif [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile
           else npm install --no-audit --no-fund
           fi
       - name: Build (if present)
