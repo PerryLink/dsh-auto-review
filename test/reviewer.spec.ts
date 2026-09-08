@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest'
 import path from 'node:path'
-import { Session } from '@deepseek-ai/dsh-session'
+import { Session, SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { CallId } from './call-id.ts'
 import {
@@ -30,7 +30,7 @@ const WORKSPACE = path.resolve('work')
 /** A session seeded with raw-typed events (append casts keep the fixtures compact). */
 function sessionWithEvents(events: { type: string; data: unknown }[]): Session {
   const session = Session.create(SessionId(`ctx-${events.length}`), undefined, {
-    version: 0,
+    version: SESSION_FORMAT_VERSION,
     id: SessionId(`ctx-${events.length}`),
     createdAt: 0,
     cwd: WORKSPACE,
@@ -76,7 +76,7 @@ function promptConfig(overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {
 describe('reviewer prompt', () => {
   it('names the tool, the reason, the workspace, and the risk rules', () => {
     const session = Session.create(SessionId('prompt-session'), undefined, {
-      version: 0,
+      version: SESSION_FORMAT_VERSION,
       id: SessionId('prompt-session'),
       createdAt: 0,
       cwd: WORKSPACE,
@@ -120,7 +120,7 @@ describe('reviewer prompt', () => {
 
   it('truncates the request reason to the shared budget', () => {
     const session = Session.create(SessionId('prompt-trunc'), undefined, {
-      version: 0,
+      version: SESSION_FORMAT_VERSION,
       id: SessionId('prompt-trunc'),
       createdAt: 0,
       cwd: WORKSPACE,
@@ -333,7 +333,7 @@ describe('deny marker text', () => {
 describe('Phase B prompt sections', () => {
   it('includes the ruling policy text, the override context, and field-scoped risk rules', () => {
     const session = Session.create(SessionId('prompt-phaseb'), undefined, {
-      version: 0,
+      version: SESSION_FORMAT_VERSION,
       id: SessionId('prompt-phaseb'),
       createdAt: 0,
       cwd: WORKSPACE,
@@ -356,7 +356,7 @@ describe('Phase B prompt sections', () => {
 
   it('omits the override and policy sections when not configured', () => {
     const session = Session.create(SessionId('prompt-phaseb-plain'), undefined, {
-      version: 0,
+      version: SESSION_FORMAT_VERSION,
       id: SessionId('prompt-phaseb-plain'),
       createdAt: 0,
       cwd: WORKSPACE,

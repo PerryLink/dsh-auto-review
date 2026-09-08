@@ -27,7 +27,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.1.3-alpha.1` (GitHub tag, verified 2026-09-06; npm dependencies pinned `0.1.2-rc.1`, peers `>=0.1.2-rc.1 <0.2.0`). Verified 2026-09-06 against the `dsh-v0.1.3-alpha.1` master checkout (full gate chain + profile install smoke). |
+| Harness | DeepSeek Harness `dsh-v0.1.3-alpha.1` (GitHub tag, verified 2026-09-06). Dual-line npm support (migrated 2026-09-08): dev pins `0.1.3-alpha.2`, runtime deps `0.1.2-rc.1`, peers `>=0.1.2-rc.1 <0.2.0` — the runtime handles both published host lines (feature-detected), and each line runs the full gate chain. |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | Platforms | All (host answerer; optional Web review panel via the session-projection capability) |
 | Model | Any (the reviewer inherits the session agent's route; `reviewerModel` overrides) |
@@ -319,7 +319,7 @@ The server is read-only and deterministic: no network, no model, no writes.
 
 - **Permissions**: the workshop manifest declares `session:append`, `approval:answer`, `subagent:spawn`, `command:register`, and `tools:observe`.
 - **Data**: nothing is stored on disk; the report ring buffer is in-memory and bounded. No network requests of its own.
-- **Session log**: `autoReview/*` events carry reviewer identity, verdict, reason, risk, and duration — appended with the envelope's `ignorable: true` marker so any build loads the log. Hosts whose `Session.append` predates the marker (every released rc line through `0.1.1-rc.2` — no release stamps it yet) are detected before the first append (peer-version pre-check); host `0.1.2-rc.1` keeps the `ignorable` field on the envelope but `Session.append` offers no way to stamp it (its third parameter is `SurfaceIntent` for surface events only), and the persistence read path refuses unmarked unknown event types, so those lines — and unresolvable versions — also fail closed before any append. Audit then degrades to an in-memory mirror with marker-free feedback, so sessions stay loadable everywhere.
+- **Session log**: `autoReview/*` events carry reviewer identity, verdict, reason, risk, and duration — appended with the envelope's `ignorable: true` marker so any build loads the log. Hosts whose `Session.append` predates the marker (every released rc line through `0.1.1-rc.2` — no release stamps it yet) are detected before the first append (peer-version pre-check); hosts `0.1.2-rc.1` and `0.1.3-alpha.2` keep the `ignorable` field on the envelope but `Session.append` offers no way to stamp it (its third parameter is `SurfaceIntent` for surface events only), and the persistence read path refuses unmarked unknown event types, so those lines — and unresolvable versions — also fail closed before any append. Audit then degrades to an in-memory mirror with marker-free feedback, so sessions stay loadable everywhere.
 
 ## Security boundaries
 

@@ -26,7 +26,7 @@
 
 | Superfície | Status |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.1.3-alpha.1` (tag do GitHub, verificado em 2026-09-06; dependências npm fixadas em `0.1.2-rc.1`, peers `>=0.1.2-rc.1 <0.2.0`) 0.1.2-rc.1 (adaptado em 2026-09-02): o envelope de sessão mantém seu campo ignorable apenas para compatibilidade de leitura de logs armazenados - o Session.append ainda não consegue estampá-lo, então o comportamento da porta não muda. Verificado em 2026-09-06 contra o checkout master `dsh-v0.1.3-alpha.1` (cadeia completa de gates + instalação de perfil e smoke). |
+| Harness | DeepSeek Harness `dsh-v0.1.3-alpha.1` (tag do GitHub, verificado em 2026-09-06). Suporte npm de linha dupla (migrado em 2026-09-08): pins de desenvolvimento `0.1.3-alpha.2`, dependências de runtime `0.1.2-rc.1`, peers `>=0.1.2-rc.1 <0.2.0` — o runtime lida com ambas as linhas de host publicadas (detecção de recursos), e cada linha executa a cadeia completa de gates. |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | Plataformas | Todas (answerer de host; painel web opcional via capacidade de projeção de sessão) |
 | Modelo | Qualquer (o revisor herda a rota do agente da sessão; `reviewerModel` sobrescreve) |
@@ -317,7 +317,7 @@ O servidor é somente-leitura e determinista: sem rede, sem modelo, sem gravaç�
 
 - **Permissões**: o manifesto do workshop declara `session:append`, `approval:answer`, `subagent:spawn`, `command:register` e `tools:observe`.
 - **Dados**: nada é gravado em disco; o buffer circular de relatórios fica em memória e é limitado. Sem requisições de rede próprias.
-- **Log de sessão**: os eventos `autoReview/*` carregam identidade do revisor, veredito, razão, risco e duração — anexados com o marcador de envelope `ignorable: true` para que qualquer build carregue o log. Hosts cujo `Session.append` é anterior ao marcador (todas as linhas rc publicadas até `0.1.1-rc.2` — nenhuma versão o estampa ainda) são detectados antes do primeiro append (pré-checagem da versão do peer e, em seguida, sondagem do envelope retornado); o host `0.1.2-rc.1` mantém o campo `ignorable` no envelope, mas o `Session.append` não oferece nenhuma forma de estampá-lo (seu terceiro parâmetro é `SurfaceIntent`, apenas para eventos de superfície), e o caminho de leitura da persistência recusa tipos de evento desconhecidos sem marcação, então essas linhas — e versões irresolvíveis — também falham fechadas antes de qualquer append. A auditoria degrada para um espelho em memória com feedback sem marcador, mantendo as sessões carregáveis em qualquer lugar.
+- **Log de sessão**: os eventos `autoReview/*` carregam identidade do revisor, veredito, razão, risco e duração — anexados com o marcador de envelope `ignorable: true` para que qualquer build carregue o log. Hosts cujo `Session.append` é anterior ao marcador (todas as linhas rc publicadas até `0.1.1-rc.2` — nenhuma versão o estampa ainda) são detectados antes do primeiro append (pré-checagem da versão do peer e, em seguida, sondagem do envelope retornado); os hosts `0.1.2-rc.1` e `0.1.3-alpha.2` mantêm o campo `ignorable` no envelope, mas o `Session.append` não oferece nenhuma forma de estampá-lo (seu terceiro parâmetro é `SurfaceIntent`, apenas para eventos de superfície), e o caminho de leitura da persistência recusa tipos de evento desconhecidos sem marcação, então essas linhas — e versões irresolvíveis — também falham fechadas antes de qualquer append. A auditoria degrada para um espelho em memória com feedback sem marcador, mantendo as sessões carregáveis em qualquer lugar.
 
 ## Limites de segurança
 

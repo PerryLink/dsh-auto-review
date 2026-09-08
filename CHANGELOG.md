@@ -2,6 +2,16 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [Unreleased]
+
+### Changed
+
+- Migrate the dev pins from `@deepseek-ai/dsh@0.1.2-rc.1` to `@deepseek-ai/dsh@0.1.3-alpha.2` (all 15 `@deepseek-ai/dsh-*` devDependencies; `@deepseek-ai/dsh-agent-spine-demo` stays on `0.1.1-rc.2`). Dual-line runtime compatibility is preserved: the runtime `dependencies` and the `>=0.1.2-rc.1 <0.2.0` peer range stay on the published rc line, the trace fold reads stream timing from `assistant/chunk` (0.1.2) or the message's timed `stream` (0.1.3, including the new `assistant/attempt` settlement records), and the session-artifact renderer feature-detects the removed `packChunkRuns` export.
+- Test fixtures now stamp headers with the host line's `SESSION_FORMAT_VERSION` (0 on 0.1.2, 2 on 0.1.3) instead of the literal `0`, and the fake-session header carries `isSeeded`; the reviewer/isolation suites pass on both published lines (278/278 each).
+- `src/audit.ts`: `0.1.3-alpha.2` joins the known-unmarked host lines (its `Session.append` still assembles the envelope without the `ignorable` marker, and `autoReview/*` is still absent from `KNOWN_SESSION_EVENT_TYPES` — verified against the published tarball), so session-log audit stays fail-closed on the alpha line; unit tests cover both lines.
+- `scripts/check-host-versions.mjs`: the `0.1.3-alpha.2` stay-behind exemption is removed — the migrated dev pins now cover the newest alpha line natively.
+- `dshWorkshop.compatibility.dshVersions` and the five-language READMEs now state both supported host lines (`0.1.2-rc.1` and `0.1.3-alpha.2`).
+
 ## [0.10.6] - 2026-09-07
 
 ### Fixed

@@ -26,7 +26,7 @@
 
 | 方面 | 状态 |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.1.3-alpha.1`（GitHub tag，2026-09-06 已核验；npm 依赖锁定 `0.1.2-rc.1`，peer 范围 `>=0.1.2-rc.1 <0.2.0`） 0.1.2-rc.1（2026-09-02 已适配）：会话信封保留 ignorable 字段但仅用于存量日志读取兼容——Session.append 仍无法盖章，门控行为不变。 2026-09-06 已针对 `dsh-v0.1.3-alpha.1` master 检出核验（完整门禁链 + profile 安装冒烟）。 |
+| Harness | DeepSeek Harness `dsh-v0.1.3-alpha.1`（GitHub tag，2026-09-06 已核验）。双线 npm 支持（2026-09-08 迁移）：dev 钉号 `0.1.3-alpha.2`、运行时依赖 `0.1.2-rc.1`、peer 范围 `>=0.1.2-rc.1 <0.2.0` —— 运行时兼容两条已发布宿主线（特性探测），两线均跑完整门禁链。 |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | 平台 | 全部（宿主 answerer；可选 Web 审查面板，依赖会话投影能力） |
 | 模型 | 任意（审查器默认继承会话代理的路由；`reviewerModel` 可覆盖） |
@@ -317,7 +317,7 @@ Claude Desktop（`claude_desktop_config.json`）配置示例：
 
 - **权限**：workshop 清单声明 `session:append`、`approval:answer`、`subagent:spawn`、`command:register` 与 `tools:observe`。
 - **数据**：不向磁盘写入任何内容；报告环形缓冲在内存中且有界。自身不发起网络请求。
-- **会话日志**：`autoReview/*` 事件携带审查器身份、裁决、理由、风险与耗时 —— 以信封 `ignorable: true` 标记追加，任何构建都能加载日志。`Session.append` 早于该标记的宿主（迄今发布的所有 rc 版本，至 `0.1.1-rc.2`——任何发布版都还未盖标记）会在首次追加前被探测出来（peer 版本预检 + 返回信封探测）；宿主 `0.1.2-rc.1` 在信封上保留 `ignorable` 字段，但 `Session.append` 没有任何方式为其盖章（其第三参数是仅用于 surface 事件的 `SurfaceIntent`），且持久化读取路径拒绝未标记的未知事件类型，因此这些版本线——以及无法解析的版本——同样在首次追加前 fail closed。审计降级为内存镜像 + 无标记反馈，会话日志始终保持可加载。
+- **会话日志**：`autoReview/*` 事件携带审查器身份、裁决、理由、风险与耗时 —— 以信封 `ignorable: true` 标记追加，任何构建都能加载日志。`Session.append` 早于该标记的宿主（迄今发布的所有 rc 版本，至 `0.1.1-rc.2`——任何发布版都还未盖标记）会在首次追加前被探测出来（peer 版本预检 + 返回信封探测）；宿主 `0.1.2-rc.1` 与 `0.1.3-alpha.2` 在信封上保留 `ignorable` 字段，但 `Session.append` 没有任何方式为其盖章（其第三参数是仅用于 surface 事件的 `SurfaceIntent`），且持久化读取路径拒绝未标记的未知事件类型，因此这些版本线——以及无法解析的版本——同样在首次追加前 fail closed。审计降级为内存镜像 + 无标记反馈，会话日志始终保持可加载。
 
 ## 安全边界
 

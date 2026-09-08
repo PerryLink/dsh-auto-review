@@ -10,7 +10,7 @@ import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import type { Session, SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
@@ -28,7 +28,7 @@ function makeFakeAgent(script: { events: SessionEvent[]; idle?: () => Promise<vo
     id: SessionId('eval-test'),
     seq: 5,
     events,
-    header: { version: 0, id: SessionId('eval-test'), createdAt: Date.now(), cwd: 'x', delegationDepth: 0 } as SessionHeader,
+    header: { version: SESSION_FORMAT_VERSION, id: SessionId('eval-test'), createdAt: Date.now(), cwd: 'x', delegationDepth: 0, isSeeded: false } as SessionHeader,
   } as unknown as Session
   let idleWaiters: (() => void)[] = []
   // A scripted turn is in flight between followup() and the turn's completion.

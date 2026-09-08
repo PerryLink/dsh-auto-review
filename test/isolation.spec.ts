@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { UserMessage } from '@deepseek-ai/dsh-llm'
-import { Session, SessionId } from '@deepseek-ai/dsh-session'
+import { Session, SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import { isReviewerOwnedMessage, REVIEWER_MESSAGE_SOURCES, stripInjectedContext } from '../src/index.ts'
 import { CallId } from './call-id.ts'
 import { dispatchAskedApproval, makeAgent, mountHarness } from './harness.ts'
@@ -45,7 +45,7 @@ function instructionsMessage(text: string): UserMessage {
 /** A child agent of the harness session, as the fork backend would publish one. */
 function childAgent(id: string) {
   return makeAgent(Session.create(SessionId(id), undefined, {
-    version: 0,
+    version: SESSION_FORMAT_VERSION,
     id: SessionId(id),
     createdAt: 0,
     parentSession: SessionId('harness-session'),
