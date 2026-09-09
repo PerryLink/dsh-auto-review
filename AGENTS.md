@@ -16,7 +16,7 @@ Standalone DeepSeek Harness plugin repository (`dsh-auto-review`). Development f
 - `src/projection.ts` + `src/projection-types.ts` — the `autoReview` session-projection unit (host fold + wire schema) and its pure-type outlet (zero value imports, so client programs never drag the host chain). Registered in `apply` whenever the host provides the session-projection capability (feature-detected: the answerer must work without it).
 - `src/client/` — browser half: the session-header review panel (`ReviewPanel.tsx`), locale dictionaries, scoped stylesheet, and the client-plugin entry (contract: `name` = package name, `inject`, `apply(ctx)`; the bundle follows the shell's `window.__ModuleLoader__.load` handshake).
 - `src/invariant.ts` — invariant companion, exported as `dsh-auto-review/invariant`. Shipped commented-out in the bundle patch: it needs the `invariants` service, which spine compositions (headless/ACP) provide but the plain web profile does not.
-- `test/` — vitest; real `Context` + real `Session`/`ApprovalService`/`InvariantRegistry` from the pinned `0.1.2-rc.1` dev peers, scripted subagent/commands/tools mocks.
+- `test/` — vitest; real `Context` + real `Session`/`ApprovalService`/`InvariantRegistry` from the pinned `0.1.5-alpha.1` dev peers (the runtime `dependencies` stay on the published `0.1.2-rc.1` line; both published host lines are handled by feature detection), scripted subagent/commands/tools mocks.
 - `fixtures/` — replayable session logs (invariant specs) + config examples.
 
 ## Hard rules applied here
@@ -44,7 +44,7 @@ Standalone DeepSeek Harness plugin repository (`dsh-auto-review`). Development f
 
 CI (`ci.yml`) additionally proves the packed artifact: `pnpm pack --pack-destination out` followed by `node scripts/smoke-package.mjs out` (installs the tarball into a scratch project and loads the node faces through the package exports).
 
-`scripts/check-host-versions.mjs` (run by the CI job `host-compat`) fails when the `@deepseek-ai/dsh-*` peer pins (exact `0.1.0-rc.N` or the `>=0.1.0-rc.N <0.2.0` range) no longer cover the newest rc line published by `@deepseek-ai/dsh` (on any dist-tag), and when the npm `alpha` line outruns the exact dev-pinned alpha — bump the pins (or document a deliberate stay-behind) before publishing.
+`scripts/check-host-versions.mjs` (run by the CI job `host-compat`) fails when the `@deepseek-ai/dsh-*` peer pins (exact `0.1.x-rc.N`/`0.1.x-alpha.N`, a `>=0.1.x-rc.N <0.2.0` range, or a `||` union of such segments) no longer cover the newest rc line published by `@deepseek-ai/dsh` (on any dist-tag), and when the npm `alpha` line outruns both the alpha peer segments and the dev-pinned alpha — bump the pins (or document a deliberate stay-behind) before publishing.
 
 ## Publishing
 
