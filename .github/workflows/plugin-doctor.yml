@@ -26,7 +26,7 @@ jobs:
         run: |
           if [ -z "$DOCTOR_ONLY" ]; then echo "DOCTOR_ONLY is empty"; exit 1; fi
           set +e
-          out="$(npx --yes @perrylink/dsh-plugin-doctor@0.1.4 --repo . --no-smoke --only "$DOCTOR_ONLY" --json /tmp/doctor.json 2>&1)"
+          out="$(npx --yes @perrylink/dsh-plugin-doctor@0.1.5 --repo . --no-smoke --only "$DOCTOR_ONLY" --json /tmp/doctor.json 2>&1)"
           set -e
           printf '%s\n' "$out"
           echo "$out" | grep -q 'R0 ' || { echo "::error::doctor ran no R checks"; exit 1; }
