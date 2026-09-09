@@ -30,4 +30,18 @@ jobs:
       - name: Build (if present)
         run: npm run build --if-present || true
       - name: Run dsh-plugin-doctor
-        run: 'npx --yes @perrylink/dsh-plugin-doctor@0.1.4 --repo . --no-smoke --only "闈欐€伮峰寘缁撴瀯,闈欐€伮穋ordis 濂戠害鎵弿"'
+        env:
+          # Group names are YAML \u escapes so this file stays pure ASCII: a mojibake
+          # round-trip used to make --only match no group, and the gate then passed
+          # silently with zero checks. The guard below fails loudly instead.
+          DOCTOR_ONLY: "\u9759\u6001\u00b7\u5305\u7ed3\u6784,\u9759\u6001\u00b7cordis \u5951\u7ea6\u626b\u63cf"
+        run: |
+          if [ -z "$DOCTOR_ONLY" ]; then echo "DOCTOR_ONLY is empty"; exit 1; fi
+          set +e
+          out="$(npx --yes @perrylink/dsh-plugin-doctor@0.1.4 --repo . --no-smoke --only "$DOCTOR_ONLY" 2>&1)"
+          code=$?
+          set -e
+          printf '%s\n' "$out"
+          echo "$out" | grep -q 'R0 ' || { echo "::error::doctor ran no R checks"; exit 1; }
+          echo "$out" | grep -q 'K1 ' || { echo "::error::doctor ran no K checks"; exit 1; }
+          exit $code
