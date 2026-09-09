@@ -2,6 +2,31 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [0.12.0] - 2026-09-09
+
+### Fixed
+
+- dsh-eval session artifacts (`traces/*.session.jsonl`) are replayable on the 0.1.3+/V3 line again: the header line now emits the seed vocabulary of the header's own format version — `isSeeded` (and never the retired V0 `seedLength`) for V2/V3, `seedLength` for V0 — so the harness format catalog reads the artifact as a current header instead of refusing it as malformed. Previously a V3 artifact carried `version: 3` without `isSeeded` (and `seedLength` whenever an inherited count was present), which the persistence reader rejects.
+- `src/eval/trace.ts`: the traced system prompt is read from the last non-empty `system/message` surface node on the 0.1.5 line (the prompt moved into the message history as surface node zero) while `request/header.header.system` remains the source on the 0.1.2/0.1.3 lines, so the prompt-baseline assertions keep working on both published lines.
+- `scripts/check-host-versions.mjs`: the peer-range parser now splits `||` unions and judges every segment, so the dual-line peers (`>=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0`) are recognized; the alpha-line check accepts an alpha peer segment in addition to the dev pins. The gate previously exited 1 with `no rc-pinned @deepseek-ai/dsh-* peers found`, which made the `host-compat` CI job permanently red.
+- `src/eval/report.ts`: the Markdown footer no longer claims unconditional replayability; it states the line-specific header vocabulary.
+
+### Changed
+
+- Dev pins moved to `@deepseek-ai/dsh@0.1.5-alpha.1` (every `@deepseek-ai/dsh-*` devDependency that publishes the line; `@deepseek-ai/dsh-agent-spine-demo` stays on `0.1.1-rc.2`), including the new `@deepseek-ai/dsh-session-format-catalog@0.1.5-alpha.1` used by the artifact-replay tests; peer ranges are the dual-line `>=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0`; runtime `dependencies` stay on the published `0.1.2-rc.1` line.
+- `src/audit.ts`: `0.1.5-alpha.1` joins the known-unmarked host lines (V3 format; `Session.append` still has no marker channel), so session-log audit stays fail-closed there.
+- `dshWorkshop.compatibility.dshVersions` now lists `0.1.5-alpha.1`; `.github/workflows/compat.yml` profile pins moved from the unsupported `0.1.1-rc.2` (below the peer floor) to `0.1.5-alpha.1`.
+
+### Tests
+
+- New `test/eval/session-artifact.spec.ts` (L6/U6): the rendered artifact replays through `@deepseek-ai/dsh-session-format-catalog` (`readHeader` + `createRestore().finish()`), a V0-line header stays readable with its seed semantics, and malformed V3 fixtures (missing `isSeeded`, retired `seedLength`, non-boolean `isSeeded`), a newer-format header, a V3 body behind a V2 header, and an unmarked unknown `autoReview/*` event are refused instead of silently misread.
+- `test/eval/runner.spec.ts` asserts the runner's own artifact header against the installed format catalog; `test/audit.spec.ts` covers the `0.1.5-alpha.1` version line.
+
+### Docs
+
+- Five-language READMEs: the Harness row now names `dsh-v0.1.5-alpha.1` (verified 2026-09-09), the dev pin `0.1.5-alpha.1`, and the dual-line peer range; the `allowUnmarkedAudit` row and the session-log bullet list `0.1.5-alpha.1` among the non-stamping lines.
+- `AGENTS.md`: corrected the stale test-peer statement and the host-version gate description (compound `||` peer ranges and the alpha peer segment).
+
 ## [0.11.0] - 2026-09-08
 
 ### Changed
