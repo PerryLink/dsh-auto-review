@@ -14,34 +14,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        if: hashFiles('pnpm-lock.yaml') != '' && hashFiles('package-lock.json') == ''
-        with:
-          version: 11.7.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install
-        run: |
-          if [ -f package-lock.json ]; then npm ci
-          elif [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile
-          else npm install --no-audit --no-fund
-          fi
-      - name: Build (if present)
-        run: npm run build --if-present || true
-      - name: Run dsh-plugin-doctor
+      - name: Run dsh-plugin-doctor (static R/K on the committed tree)
         env:
           # Group names are YAML \u escapes so this file stays pure ASCII: a mojibake
           # round-trip used to make --only match no group, and the gate then passed
-          # silently with zero checks. The guard below fails loudly instead.
+          # silently with zero checks. The guards below fail loudly instead.
           DOCTOR_ONLY: "\u9759\u6001\u00b7\u5305\u7ed3\u6784,\u9759\u6001\u00b7cordis \u5951\u7ea6\u626b\u63cf"
         run: |
           if [ -z "$DOCTOR_ONLY" ]; then echo "DOCTOR_ONLY is empty"; exit 1; fi
           set +e
-          out="$(npx --yes @perrylink/dsh-plugin-doctor@0.1.4 --repo . --no-smoke --only "$DOCTOR_ONLY" 2>&1)"
-          code=$?
+          out="$(npx --yes @perrylink/dsh-plugin-doctor@0.1.4 --repo . --no-smoke --only "$DOCTOR_ONLY" --json /tmp/doctor.json 2>&1)"
           set -e
           printf '%s\n' "$out"
           echo "$out" | grep -q 'R0 ' || { echo "::error::doctor ran no R checks"; exit 1; }
           echo "$out" | grep -q 'K1 ' || { echo "::error::doctor ran no K checks"; exit 1; }
-          exit $code
+          if [ ! -f /tmp/doctor.json ]; then echo "::error::doctor produced no JSON report"; exit 1; fi
+          # R2/R4 read the built entry (lib/). The family builds it in its own ci.yml
+          # with the pinned harness aliases (HARNESS_COMMIT + gen-aliases); a build
+          # here would fail without them and its prebuild would wipe the committed
+          # lib/. They are reported but gated by ci.yml, not by this workflow.
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync("/tmp/doctor.json", "utf8")).results
+            const buildDep = r.filter((x) => /^R[24] /.test(x.name))
+            const gated = r.filter((x) => !/^R[24] /.test(x.name))
+            const bad = gated.filter((x) => x.status === "fail" || x.status === "error")
+            console.log("gated " + gated.length + " checks; build-dependent (reported, not gated): " + (buildDep.map((x) => x.name.split(" ")[0] + "=" + x.status).join(" ") || "none"))
+            if (bad.length) { console.error("::error::failing: " + bad.map((x) => x.name).join(" | ")); process.exit(1) }
+          '
