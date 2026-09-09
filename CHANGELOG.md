@@ -2,6 +2,22 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [0.12.1] - 2026-09-09
+
+### Fixed
+
+- Runtime `dependencies`: all 15 `@deepseek-ai/dsh-*` pins moved from `0.1.2-rc.1` to `0.1.5-alpha.1`. Installing the `0.12.0` tarball into a `dsh@0.1.5-alpha.1` web profile hoisted that pinned `0.1.2-rc.1` tree (`dsh-session-persistence-jsonl`, `dsh-app-boot`, `dsh-tool-fs`, …) over the CLI's own `0.1.5-alpha.1` tree, and the next `dsh web` died at boot with `failed to import loader entry session-persistence-jsonl (@deepseek-ai/dsh-session-persistence-jsonl): The requested module '@deepseek-ai/dsh-session-persistence' does not provide an export named 'DEFAULT_PREPARED_SESSION_CACHE_SIZE'`. The runtime pins now follow the alpha line the published CLI installs, so a profile install no longer shadows the host tree. Reproduced and re-verified with `pnpm pack` + `dsh plugin --profile web add <tgz>` + `dsh web` against a scratch `DSH_HOME`: the pre-fix tarball crashes at boot, the fixed tarball boots and serves.
+- `pnpm-lock.yaml` refreshed for the new pins (`pnpm install --no-frozen-lockfile`).
+
+### Changed
+
+- Peer ranges stay the dual-line `>=0.1.2-rc.1 <0.2.0 || >=0.1.5-alpha.1 <0.2.0` and `dshWorkshop.compatibility.dshVersions` still lists `0.1.2-rc.1`, `0.1.3-alpha.2`, and `0.1.5-alpha.1`: the plugin's code keeps feature-detecting both published host lines; only the *installed* runtime dependency pins follow the alpha line.
+
+### Docs
+
+- Five-language READMEs: the Harness row now states runtime deps `0.1.5-alpha.1` and why the pins follow the alpha line.
+- `AGENTS.md` and the `pnpm-workspace.yaml` pin comment: the stale "runtime `dependencies` stay on the published `0.1.2-rc.1` line" statements replaced with the alpha-line pin.
+
 ## [0.12.0] - 2026-09-09
 
 ### Fixed

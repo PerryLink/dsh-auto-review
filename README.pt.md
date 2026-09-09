@@ -27,7 +27,7 @@
 
 | Superfície | Status |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.1.5-alpha.1` (tag do GitHub, verificado em 2026-09-09). Suporte npm de linha dupla: pins de desenvolvimento `0.1.5-alpha.1`, dependências de runtime `0.1.2-rc.1`, peers `>=0.1.2-rc.1 <0.2.0 \|\| >=0.1.5-alpha.1 <0.2.0` — o runtime lida com ambas as linhas de host publicadas (detecção de recursos), e cada linha executa a cadeia completa de gates. |
+| Harness | DeepSeek Harness `dsh-v0.1.5-alpha.1` (tag do GitHub, verificado em 2026-09-09). Suporte npm de linha dupla: pins de desenvolvimento e dependências de runtime `0.1.5-alpha.1`, peers `>=0.1.2-rc.1 <0.2.0 \|\| >=0.1.5-alpha.1 <0.2.0` — o código do plugin detecta ambas as linhas de host publicadas (detecção de recursos) e cada linha executa a cadeia completa de gates; as dependências de runtime seguem a linha alpha para que uma instalação em um perfil nunca sombreie a árvore `0.1.5-alpha.1` do host. |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | Plataformas | Todas (answerer de host; painel web opcional via capacidade de projeção de sessão) |
 | Modelo | Qualquer (o revisor herda a rota do agente da sessão; `reviewerModel` sobrescreve) |
