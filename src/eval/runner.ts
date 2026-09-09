@@ -186,7 +186,19 @@ export async function resolvePromptBaselines(suite: EvalSuite, suiteDir?: string
   return map
 }
 
-/** Serialize one session header as the persistence-backend header line. */
+/**
+ * Serialize one session header as the persistence-backend header line.
+ *
+ * The physical header vocabulary is line-specific: the 0.1.2 (V0) line
+ * records the inherited prefix length as `seedLength` and has no `isSeeded`,
+ * while the V2/V3 lines require `isSeeded` and reject any unknown key — so a
+ * V3 header must never carry `seedLength` (the seed cut is derived from the
+ * log's `session/end-seed` marker instead). Emit the keys of the header's own
+ * format version so an artifact written on one line stays readable on it.
+ * @param header - the session header.
+ * @param inheritedEventCount - the inherited prefix length (V0 `seedLength`).
+ * @returns the header-line record.
+ */
 export function sessionHeaderLine(header: SessionHeader, inheritedEventCount?: unknown): Record<string, unknown> {
   return {
     type: 'session',
@@ -195,7 +207,9 @@ export function sessionHeaderLine(header: SessionHeader, inheritedEventCount?: u
     createdAt: header.createdAt,
     ...(header.cwd !== undefined ? { cwd: header.cwd } : {}),
     ...(header.parentSession !== undefined ? { parentSession: header.parentSession } : {}),
-    ...(inheritedEventCount !== undefined ? { seedLength: inheritedEventCount } : {}),
+    ...(header.version >= 2
+      ? { isSeeded: header.isSeeded === true }
+      : inheritedEventCount !== undefined ? { seedLength: inheritedEventCount } : {}),
     ...(header.origin !== undefined ? { origin: header.origin } : {}),
     delegationDepth: header.delegationDepth ?? 0,
     ...(header.agentPreset !== undefined ? { agentPreset: header.agentPreset } : {}),
