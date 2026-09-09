@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
+import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import type { Session, SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
@@ -28,7 +29,7 @@ function makeFakeAgent(script: { events: SessionEvent[]; idle?: () => Promise<vo
     id: SessionId('eval-test'),
     seq: 5,
     events,
-    header: { version: SESSION_FORMAT_VERSION, id: SessionId('eval-test'), createdAt: Date.now(), cwd: 'x', delegationDepth: 0, isSeeded: false } as SessionHeader,
+    header: { version: SESSION_FORMAT_VERSION, id: SessionId('eval-test'), createdAt: Date.now(), cwd: process.cwd(), delegationDepth: 0, isSeeded: false } as SessionHeader,
   } as unknown as Session
   let idleWaiters: (() => void)[] = []
   // A scripted turn is in flight between followup() and the turn's completion.
@@ -162,6 +163,15 @@ describe('EvalEngine.runSuite', () => {
     const artifact = await readFile(join(traceDir, 'a.session.jsonl'), 'utf8')
     expect(artifact).toContain('"type":"session"')
     expect(artifact).toContain('tool/call')
+    // L6: the header line must be valid in the installed host's format
+    // vocabulary, not merely parseable — the artifact is meant to replay.
+    const headerLine = JSON.parse(artifact.trimEnd().split('\n')[0] as string) as Record<string, unknown>
+    expect(headerLine['version']).toBe(SESSION_FORMAT_VERSION)
+    expect(sessionFormatCatalog.readHeader(headerLine).status).not.toBe('malformed')
+    if (SESSION_FORMAT_VERSION >= 2) {
+      expect(headerLine['isSeeded']).toBe(false)
+      expect(headerLine).not.toHaveProperty('seedLength')
+    }
   })
 
   it('fails a case whose assertions do not hold', async () => {
