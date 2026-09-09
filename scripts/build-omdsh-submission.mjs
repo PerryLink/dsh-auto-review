@@ -4,7 +4,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-const repo = 'D:/deepseek-harness/Project/Plugins/dsh-auto-review'
+const repo = 'D:/Projects/dsh/plugins/dsh-auto-review'
 const pkg = JSON.parse(readFileSync(path.join(repo, 'package.json'), 'utf8'))
 const ref = process.argv[2] ?? process.env.PINNED_REF
 const updatedAt = new Date().toISOString()

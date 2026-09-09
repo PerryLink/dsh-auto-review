@@ -9,7 +9,7 @@
   name: '@deepseek-ai/dsh-host-directory-picker-browse'
 - insert:
     - id: auto-review
-      name: file:///D:/deepseek-harness/Project/Plugins/dsh-auto-review/src/index.ts
+      name: file:///D:/Projects/dsh/plugins/dsh-auto-review/src/index.ts
       config:
         toolsPolicy:
           overrides:
