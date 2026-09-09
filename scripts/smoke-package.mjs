@@ -36,10 +36,23 @@ const checkFile = path.join(scratch, 'check.mjs')
 // The tarball goes in as a `file:` dependency: npm is then invoked with fixed
 // arguments only (no path on the command line, so Windows .cmd quoting and
 // tmpdir paths with spaces cannot break the spawn).
+//
+// pnpm's auto-install-peers cannot resolve the harness's prerelease-only peer
+// chain: the auto-installed peers (dsh-agent, dsh-session, dsh-tools, ...)
+// each peer on @deepseek-ai/dsh-scope / @deepseek-ai/dsh-typert-protocol at
+// `^0.1.5-alpha.1`, and pnpm merges those into the stable-anchored spec
+// `>=0.1.5 <0.2.0-0`, which no published `0.1.5-alpha.x` satisfies
+// (ERR_PNPM_NO_MATCHING_VERSION). Pin the two packages at the line this repo
+// already dev-pins so the smoke proves the artifact instead of pnpm's peer
+// resolver; drop the pins once pnpm resolves prerelease peer chains.
+const PEER_PINS = {
+  '@deepseek-ai/dsh-scope': '0.1.5-alpha.1',
+  '@deepseek-ai/dsh-typert-protocol': '0.1.5-alpha.1',
+}
 writeFileSync(path.join(scratch, 'package.json'), JSON.stringify({
   name: 'smoke',
   private: true,
-  dependencies: { 'dsh-auto-review': `file:${tarball.replace(/\\/g, '/')}` },
+  dependencies: { 'dsh-auto-review': `file:${tarball.replace(/\\/g, '/')}`, ...PEER_PINS },
 }))
 writeFileSync(checkFile, `
 import assert from 'node:assert/strict'

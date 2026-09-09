@@ -42,7 +42,7 @@ Standalone DeepSeek Harness plugin repository (`dsh-auto-review`). Development f
 
 `pnpm run typecheck && pnpm test && pnpm run build && pnpm run verify:self-contained && pnpm pack`.
 
-CI (`ci.yml`) additionally proves the packed artifact: `pnpm pack --pack-destination out` followed by `node scripts/smoke-package.mjs out` (installs the tarball into a scratch project and loads the node faces through the package exports).
+CI (`ci.yml`) additionally proves the packed artifact: `pnpm pack --pack-destination out` followed by `node scripts/smoke-package.mjs out` (installs the tarball into a scratch project and loads the node faces through the package exports; the scratch manifest pins `@deepseek-ai/dsh-scope` / `@deepseek-ai/dsh-typert-protocol` because pnpm's auto-install-peers synthesizes an unsatisfiable stable-anchored spec for the harness's prerelease-only peer chain).
 
 `scripts/check-host-versions.mjs` (run by the CI job `host-compat`) fails when the `@deepseek-ai/dsh-*` peer pins (exact `0.1.x-rc.N`/`0.1.x-alpha.N`, a `>=0.1.x-rc.N <0.2.0` range, or a `||` union of such segments) no longer cover the newest rc line published by `@deepseek-ai/dsh` (on any dist-tag), and when the npm `alpha` line outruns both the alpha peer segments and the dev-pinned alpha — bump the pins (or document a deliberate stay-behind) before publishing.
 
