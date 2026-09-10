@@ -56,8 +56,10 @@ jobs:
       - name: Publish to npm
         # prepublishOnly re-runs the full gate on the fresh checkout. A tag
         # push without the secret, or for a version already on the registry
-        # (e.g. published manually before the tag), skips the publish instead
-        # of failing the release tag.
+        # (e.g. published manually before the tag), no longer skips silently.
+        # A release that published nothing used to go green; it now fails
+        # loudly instead. A version already on the registry still skips
+        # (idempotent re-runs).
         shell: bash
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -65,14 +67,29 @@ jobs:
         run: |
           version="$(node -p "require('./package.json').version")"
           if [ -z "$NPM_TOKEN" ]; then
-            echo "NPM_TOKEN secret is not set; skipping npm publish"
-            exit 0
+            echo "::error::NPM_TOKEN secret is not set; refusing to report a release that published nothing"
+            exit 1
           fi
           if npm view "dsh-auto-review@${version}" version >/dev/null 2>&1; then
             echo "dsh-auto-review@${version} is already published; skipping npm publish"
           else
             pnpm publish --no-git-checks --provenance
           fi
+      - name: Verify the version is live on the registry
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          for attempt in 1 2 3 4 5 6; do
+            if npm view "dsh-auto-review@${version}" version >/dev/null 2>&1; then
+              echo "dsh-auto-review@${version} is live on the registry"
+              exit 0
+            fi
+            echo "attempt ${attempt}: not visible on the registry yet; retrying"
+            sleep 5
+          done
+          echo "::error::dsh-auto-review@${version} is not on the registry after the publish step"
+          exit 1
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
