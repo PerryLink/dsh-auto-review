@@ -18,15 +18,9 @@ jobs:
         with:
           node-version: 22
       - name: Run dsh-plugin-doctor (static R/K on the committed tree)
-        env:
-          # Group names are YAML \u escapes so this file stays pure ASCII: a mojibake
-          # round-trip used to make --only match no group, and the gate then passed
-          # silently with zero checks. The guards below fail loudly instead.
-          DOCTOR_ONLY: "\u9759\u6001\u00b7\u5305\u7ed3\u6784,\u9759\u6001\u00b7cordis \u5951\u7ea6\u626b\u63cf"
         run: |
-          if [ -z "$DOCTOR_ONLY" ]; then echo "DOCTOR_ONLY is empty"; exit 1; fi
           set +e
-          out="$(npx --yes @perrylink/dsh-plugin-doctor@0.1.5 --repo . --no-smoke --only "$DOCTOR_ONLY" --json /tmp/doctor.json 2>&1)"
+          out="$(npx --yes @perrylink/dsh-plugin-doctor@0.1.6 --repo . --no-smoke --only "R,K" --json /tmp/doctor.json 2>&1)"
           set -e
           printf '%s\n' "$out"
           echo "$out" | grep -q 'R0 ' || { echo "::error::doctor ran no R checks"; exit 1; }
