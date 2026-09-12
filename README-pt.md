@@ -27,7 +27,7 @@
 
 | Superfície | Status |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.1.5-rc.1` (tag do GitHub, verificado em 2026-09-10). Suporte npm de linha dupla: pins de desenvolvimento e dependências de runtime `0.1.5-rc.1`, peers `>=0.1.2-rc.1 <0.2.0 \|\| >=0.1.5-alpha.1 <0.2.0` — o código do plugin detecta ambas as linhas de host publicadas (detecção de recursos) e cada linha executa a cadeia completa de gates; as dependências de runtime seguem a linha alpha para que uma instalação em um perfil nunca sombreie a árvore `0.1.5-rc.1` do host. |
+| Harness | DeepSeek Harness `dsh-v0.1.5-rc.2` (tag do GitHub, verificado em 2026-09-11). Suporte npm de linha dupla: pins de desenvolvimento e dependências de runtime `0.1.5-rc.2`, peers `>=0.1.2-rc.1 <0.2.0 \|\| >=0.1.5-alpha.1 <0.2.0` — o código do plugin detecta ambas as linhas de host publicadas (detecção de recursos) e cada linha executa a cadeia completa de gates; as dependências de runtime seguem a linha alpha para que uma instalação em um perfil nunca sombreie a árvore `0.1.5-rc.2` do host. |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | Plataformas | Todas (answerer de host; painel web opcional via capacidade de projeção de sessão) |
 | Modelo | Qualquer (o revisor herda a rota do agente da sessão; `reviewerModel` sobrescreve) |
@@ -102,7 +102,7 @@ Todos os ajustes são campos Schemastery `Config` (alteráveis no cordis.yml). U
 | `verdictCacheTtlMs` | `60000` | Reutiliza um veredito recente para uma impressão `ferramenta + argumentos` idêntica; `0` desativa o cache. Só se aplica com `contextBudget.turns: 0` — um veredito que depende da transcrição não é reproduzível apenas a partir de `ferramenta + argumentos` |
 | `verdictCacheMaxEntries` | `256` | Máximo de impressões em cache antes de despejar a mais antiga |
 | `language` | `en` | Idioma da UI da saída do comando `/auto-review` (`en` \| `zh`) |
-| `allowUnmarkedAudit` | `false` | Força a auditoria do registro de sessão em hosts que descartam o marcador `ignorable` (perigoso: eventos sem marcador tornam sessões irrecuperáveis em outros hosts); o padrão é detectar e degradar (adaptado em 2026-09-02, reverificado contra `0.1.5-rc.1` em 2026-09-10) |
+| `allowUnmarkedAudit` | `false` | Força a auditoria do registro de sessão em hosts que descartam o marcador `ignorable` (perigoso: eventos sem marcador tornam sessões irrecuperáveis em outros hosts); o padrão é detectar e degradar (adaptado em 2026-09-02, reverificado contra `0.1.5-rc.2` em 2026-09-11) |
 
 Exemplo (forma completa anotada: `fixtures/config/config-full.yaml`):
 
@@ -318,7 +318,7 @@ O servidor é somente-leitura e determinista: sem rede, sem modelo, sem gravaç�
 
 - **Permissões**: o manifesto do workshop declara `session:append`, `approval:answer`, `subagent:spawn`, `command:register` e `tools:observe`.
 - **Dados**: nada é gravado em disco; o buffer circular de relatórios fica em memória e é limitado. Sem requisições de rede próprias.
-- **Log de sessão**: os eventos `autoReview/*` carregam identidade do revisor, veredito, razão, risco e duração — anexados com o marcador de envelope `ignorable: true` para que qualquer build carregue o log. Hosts cujo `Session.append` é anterior ao marcador (todas as linhas rc publicadas até `0.1.1-rc.2` — nenhuma versão o estampa ainda) são detectados antes do primeiro append (pré-checagem da versão do peer e, em seguida, sondagem do envelope retornado); os hosts `0.1.2-rc.1`, `0.1.3-alpha.2` e `0.1.5-rc.1` mantêm o campo `ignorable` no envelope, mas o `Session.append` não oferece nenhuma forma de estampá-lo (seu terceiro parâmetro é `SurfaceIntent`, apenas para eventos de superfície), e o caminho de leitura da persistência recusa tipos de evento desconhecidos sem marcação, então essas linhas — e versões irresolvíveis — também falham fechadas antes de qualquer append. A auditoria degrada para um espelho em memória com feedback sem marcador, mantendo as sessões carregáveis em qualquer lugar.
+- **Log de sessão**: os eventos `autoReview/*` carregam identidade do revisor, veredito, razão, risco e duração — anexados com o marcador de envelope `ignorable: true` para que qualquer build carregue o log. Hosts cujo `Session.append` é anterior ao marcador (todas as linhas rc publicadas até `0.1.1-rc.2` — nenhuma versão o estampa ainda) são detectados antes do primeiro append (pré-checagem da versão do peer e, em seguida, sondagem do envelope retornado); os hosts `0.1.2-rc.1`, `0.1.3-alpha.2` e `0.1.5-rc.2` mantêm o campo `ignorable` no envelope, mas o `Session.append` não oferece nenhuma forma de estampá-lo (seu terceiro parâmetro é `SurfaceIntent`, apenas para eventos de superfície), e o caminho de leitura da persistência recusa tipos de evento desconhecidos sem marcação, então essas linhas — e versões irresolvíveis — também falham fechadas antes de qualquer append. A auditoria degrada para um espelho em memória com feedback sem marcador, mantendo as sessões carregáveis em qualquer lugar.
 
 ## Limites de segurança
 

@@ -27,7 +27,7 @@
 
 | Superficie | Estado |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.1.5-rc.1` (tag de GitHub, verificado el 2026-09-10). Soporte npm de doble línea: pins de desarrollo y dependencias de runtime `0.1.5-rc.1`, peers `>=0.1.2-rc.1 <0.2.0 \|\| >=0.1.5-alpha.1 <0.2.0` — el código del plugin detecta ambas líneas de host publicadas (detección de características) y cada línea ejecuta la cadena completa de gates; las dependencias de runtime siguen la línea alpha para que una instalación en un perfil nunca sombree el árbol `0.1.5-rc.1` del host. |
+| Harness | DeepSeek Harness `dsh-v0.1.5-rc.2` (tag de GitHub, verificado el 2026-09-11). Soporte npm de doble línea: pins de desarrollo y dependencias de runtime `0.1.5-rc.2`, peers `>=0.1.2-rc.1 <0.2.0 \|\| >=0.1.5-alpha.1 <0.2.0` — el código del plugin detecta ambas líneas de host publicadas (detección de características) y cada línea ejecuta la cadena completa de gates; las dependencias de runtime siguen la línea alpha para que una instalación en un perfil nunca sombree el árbol `0.1.5-rc.2` del host. |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | Plataformas | Todas (answerer de host; panel web opcional mediante la capacidad de proyección de sesión) |
 | Modelo | Cualquiera (el revisor hereda la ruta del agente de sesión; `reviewerModel` la reemplaza) |
@@ -102,7 +102,7 @@ Todas las opciones son campos Schemastery `Config` (modificables desde cordis.ym
 | `verdictCacheTtlMs` | `60000` | Reutiliza un veredicto reciente para una huella `herramienta + argumentos` idéntica; `0` desactiva la caché. Solo se aplica con `contextBudget.turns: 0` — un veredicto que depende de la transcripción no es reproducible solo desde `herramienta + argumentos` |
 | `verdictCacheMaxEntries` | `256` | Máximo de huellas en caché antes de desalojar la más antigua |
 | `language` | `en` | Idioma de la UI de la salida del comando `/auto-review` (`en` \| `zh`) |
-| `allowUnmarkedAudit` | `false` | Fuerza la auditoría del registro de sesión en hosts que descartan el marcador `ignorable` (peligroso: los eventos sin marcar hacen las sesiones irrecuperables en otros hosts); por defecto se detecta y se degrada (adaptado el 2026-09-02, reverificado contra `0.1.5-rc.1` el 2026-09-10) |
+| `allowUnmarkedAudit` | `false` | Fuerza la auditoría del registro de sesión en hosts que descartan el marcador `ignorable` (peligroso: los eventos sin marcar hacen las sesiones irrecuperables en otros hosts); por defecto se detecta y se degrada (adaptado el 2026-09-02, reverificado contra `0.1.5-rc.2` el 2026-09-11) |
 
 Ejemplo (forma completa anotada: `fixtures/config/config-full.yaml`):
 
@@ -318,7 +318,7 @@ El servidor es de solo lectura y determinista: sin red, sin modelo, sin escritur
 
 - **Permisos**: el manifiesto del workshop declara `session:append`, `approval:answer`, `subagent:spawn`, `command:register` y `tools:observe`.
 - **Datos**: nada se guarda en disco; el búfer circular de informes está en memoria y acotado. Sin peticiones de red propias.
-- **Registro de sesión**: los eventos `autoReview/*` llevan identidad del revisor, veredicto, razón, riesgo y duración — añadidos con el marcador de sobre `ignorable: true` para que cualquier compilación cargue el registro. Los hosts cuyo `Session.append` es anterior al marcador (todas las líneas rc publicadas hasta `0.1.1-rc.2` — ninguna versión lo estampa aún) se detectan antes del primer append (precomprobación de la versión del peer y luego sondeo del sobre devuelto); los hosts `0.1.2-rc.1`, `0.1.3-alpha.2` y `0.1.5-rc.1` mantienen el campo `ignorable` en el sobre, pero `Session.append` no ofrece ninguna forma de estamparlo (su tercer parámetro es `SurfaceIntent`, solo para eventos de superficie), y la ruta de lectura de persistencia rechaza los tipos de evento desconocidos sin marcar, por lo que esas líneas — y las versiones irresolubles — también cierran en fallo antes de cualquier append. La auditoría se degrada a un espejo en memoria con comentarios sin marcador, de modo que las sesiones siguen siendo cargables en todas partes.
+- **Registro de sesión**: los eventos `autoReview/*` llevan identidad del revisor, veredicto, razón, riesgo y duración — añadidos con el marcador de sobre `ignorable: true` para que cualquier compilación cargue el registro. Los hosts cuyo `Session.append` es anterior al marcador (todas las líneas rc publicadas hasta `0.1.1-rc.2` — ninguna versión lo estampa aún) se detectan antes del primer append (precomprobación de la versión del peer y luego sondeo del sobre devuelto); los hosts `0.1.2-rc.1`, `0.1.3-alpha.2` y `0.1.5-rc.2` mantienen el campo `ignorable` en el sobre, pero `Session.append` no ofrece ninguna forma de estamparlo (su tercer parámetro es `SurfaceIntent`, solo para eventos de superficie), y la ruta de lectura de persistencia rechaza los tipos de evento desconocidos sin marcar, por lo que esas líneas — y las versiones irresolubles — también cierran en fallo antes de cualquier append. La auditoría se degrada a un espejo en memoria con comentarios sin marcador, de modo que las sesiones siguen siendo cargables en todas partes.
 
 ## Límites de seguridad
 
