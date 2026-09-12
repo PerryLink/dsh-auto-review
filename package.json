@@ -216,7 +216,7 @@
     "@deepseek-ai/schemastery": "^3.18.2",
     "@types/node": "^26.2.0",
     "@types/react": "19.2.18",
-    "@vitest/coverage-v8": "4.1.10",
+    "@vitest/coverage-v8": "5.0.0",
     "jsdom": "^30.0.1",
     "oxlint": "1.81.0",
     "react": "19.2.8",
