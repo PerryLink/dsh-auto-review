@@ -251,7 +251,7 @@ export class AutoReviewRuntime {
     if (this.warnedUnmarked) return
     this.warnedUnmarked = true
     this.ctx.logger.warn(
-      'auto-review: this host drops the ignorable marker on audit events or rejects unknown event types on read (Session.append predates the marker / fail-closed event vocabulary), which would make sessions unresumable — session-log audit is disabled and an in-memory mirror takes over; set allowUnmarkedAudit: true to opt back in, and repair already-polluted logs with scripts/repair-session-logs.mjs from dsh-permission-rules',
+      'auto-review: no published Session.append can write the ignorable marker on audit events, and unmarked unknown event types are refused on read, which would make sessions unresumable — session-log audit is disabled and an in-memory mirror takes over. allowUnmarkedAudit: true forces the writes anyway and will make these sessions unloadable; repair logs already written that way with scripts/repair-session-logs.mjs from dsh-permission-rules',
     )
   }
 

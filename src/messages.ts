@@ -53,9 +53,10 @@ const EN: Messages = {
   circuitNotice: (kind, count) => `The AI auto-review rejection circuit breaker tripped (${kind}: ${count} denials). `
     + 'This turn is aborted because the agent kept proposing blocked actions. '
     + 'Adjust the sandbox boundary or the review policy, then continue.',
-  auditDisabledNotice: 'Session-log audit is disabled on this host: its Session.append predates the ignorable marker and '
-    + 'unmarked audit events would make sessions unresumable on stricter harness builds. '
-    + 'Set allowUnmarkedAudit: true to opt back in, and repair already-polluted logs with scripts/repair-session-logs.mjs from dsh-permission-rules.',
+  auditDisabledNotice: 'Session-log audit is disabled on this host: no published Session.append can write the ignorable marker, '
+    + 'and an unmarked audit event makes the session unresumable on any harness that validates stored events. '
+    + 'The in-memory mirror keeps budgets and verdicts for this session. '
+    + 'allowUnmarkedAudit: true re-enables the log writes and WILL make these sessions unloadable; repair logs already written that way with scripts/repair-session-logs.mjs from dsh-permission-rules.',
 }
 
 const ZH: Messages = {
@@ -80,8 +81,9 @@ const ZH: Messages = {
   circuitNotice: (kind, count) => `AI 自动审查拒绝熔断器触发（${kind}：${count} 次拒绝）。`
     + '由于代理持续提出被阻止的操作，本回合已中止。'
     + '请调整沙箱边界或审查策略后继续。',
-  auditDisabledNotice: '本宿主上会话日志审计已停用：其 Session.append 早于 ignorable 标记支持，未标记的审计事件会使会话在更严格的 harness 构建上无法恢复。'
-    + '设 allowUnmarkedAudit: true 可重新开启；已被污染的历史日志可用 dsh-permission-rules 的 scripts/repair-session-logs.mjs 修复。',
+  auditDisabledNotice: '本宿主上会话日志审计已停用：没有任何已发布版本的 Session.append 能写入 ignorable 标记，而未标记的审计事件会让会话在任何校验已存事件的 harness 上无法恢复。'
+    + '本会话的预算与裁决由内存镜像接管。'
+    + '设 allowUnmarkedAudit: true 会恢复日志写入，并会让这些会话无法再次加载；已按此写坏的日志可用 dsh-permission-rules 的 scripts/repair-session-logs.mjs 修复。',
 }
 
 /** The message tables, keyed by {@link UiLanguage}. */

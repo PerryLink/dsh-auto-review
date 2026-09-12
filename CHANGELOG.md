@@ -2,6 +2,14 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [0.12.4] - 2026-09-12
+
+### Fixed
+
+- Correct the host-capability documentation that claimed a later harness line could stamp the `ignorable` envelope marker from `Session.append`. **No published line can**, and the code was right all along. Verified three ways: the host source (`packages/core/session/src/index.ts:710-738` — the optional third parameter is `SurfaceIntent`, accepted for surface event types only, and the envelope is assembled from `{ type, seq, time, data }` plus `surfaceOp`/`sourceEventSeqs` alone), every relevant published tarball (`0.1.0-rc.2/3/6/7/8`, `0.1.1-rc.1/2`, `0.1.2-alpha.2–alpha.5`, `0.1.2-rc.1`, `0.1.3-alpha.2`, `0.1.5-rc.1`, `0.1.5-rc.2` — all build the same envelope), and a live append against the host's own built `Session` on the `0.1.5-rc.2` line, which returns keys `["type","seq","time","data"]` with `ignorable` undefined. The marker is reachable only through the seed/restore path, i.e. it is written by the harness that owns the log, never by a plugin appending to it. `isUnmarkedHostVersion` returning `true` for the whole published 0.1.x range is therefore accurate and not an over-reach; it is now pinned by a test so a future "narrow the bound" change cannot silently become the log pollution the guard exists to prevent. Reported with the opposite diagnosis on issue #38.
+- Rewrite the `auditDisabledNotice` (EN + ZH), the `warnUnmarkedAuditHost` warning, the `allowUnmarkedAudit` config doc, and the AGENTS.md audit bullet so they no longer say the host "predates" the marker or that unmarked events break resume only "on stricter harness builds". The unmarked event is refused by `validateStoredEvents` on **every** validating harness, reached from the ordinary local jsonl load path — and `allowUnmarkedAudit: true` is now stated as what it is: a switch that makes those sessions unloadable, not a compatibility workaround. The previous wording led a user to recommend it publicly as safe on `0.1.5-rc.2`.
+- Add a regression test that calls the installed peer's real `Session.append` with `{ ignorable: true }` on an out-of-tree type and asserts the returned envelope carries no marker, plus a table test over every published 0.1.x version string.
+
 ## [0.12.3] - 2026-09-12
 
 ### Changed

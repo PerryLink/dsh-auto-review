@@ -189,11 +189,17 @@ export interface Config {
   /** UI language of the `/auto-review` command output (`en` | `zh`). Default `'en'`. */
   language?: UiLanguage
   /**
-   * Force session-log audit even when the host drops the `ignorable`
-   * envelope marker (the `0.1.0-rc.6` line). Deliberately dangerous:
-   * unmarked `autoReview/*` events make sessions unresumable on stricter
-   * harness builds. Default `false` — the runtime detects such hosts and
-   * degrades to an in-memory audit mirror instead.
+   * Force session-log audit even though the host cannot write the `ignorable`
+   * envelope marker. Deliberately dangerous, and NOT a compatibility
+   * workaround: no published `Session.append` can stamp the marker (verified
+   * 2026-09-12 against the host source, every relevant published tarball, and
+   * a live append on the `0.1.5-rc.2` line), so enabling this writes unmarked
+   * `autoReview/*` events — and the persistence read path refuses unknown
+   * unmarked types, which makes those sessions unloadable on every validating
+   * harness. Default `false`: the runtime detects the host and degrades to an
+   * in-memory audit mirror instead. If you enabled it and sessions stopped
+   * loading, repair them with `scripts/repair-session-logs.mjs` from
+   * `dsh-permission-rules`.
    */
   allowUnmarkedAudit?: boolean
 }
