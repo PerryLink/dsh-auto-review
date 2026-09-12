@@ -221,7 +221,7 @@
     "oxlint": "1.81.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.0"
   },
   "scripts": {
     "build": "node scripts/prepare.mjs",
