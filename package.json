@@ -187,7 +187,7 @@
     "@deepseek-ai/dsh-subprocess-local": "0.1.5-rc.2",
     "@deepseek-ai/dsh-tool-fs": "0.1.5-rc.2",
     "@deepseek-ai/dsh-tool-fs-search": "0.1.5-rc.2",
-    "tsdown": "^0.22.14",
+    "tsdown": "^0.23.0",
     "typescript": "^7.0.2",
     "yaml": "^2.8.2",
     "zod": "^4.4.3"
