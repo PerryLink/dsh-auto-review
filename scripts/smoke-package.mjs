@@ -39,15 +39,17 @@ const checkFile = path.join(scratch, 'check.mjs')
 //
 // pnpm's auto-install-peers cannot resolve the harness's prerelease-only peer
 // chain: the auto-installed peers (dsh-agent, dsh-session, dsh-tools, ...)
-// each peer on @deepseek-ai/dsh-scope / @deepseek-ai/dsh-typert-protocol at
-// `^0.1.5-alpha.1`, and pnpm merges those into the stable-anchored spec
-// `>=0.1.5 <0.2.0-0`, which no published `0.1.5-alpha.x` satisfies
-// (ERR_PNPM_NO_MATCHING_VERSION). Pin the two packages at the line this repo
-// already dev-pins so the smoke proves the artifact instead of pnpm's peer
-// resolver; drop the pins once pnpm resolves prerelease peer chains.
+// each peer on @deepseek-ai/dsh-scope / @deepseek-ai/dsh-typert-protocol /
+// @deepseek-ai/dsh-invariants at `^0.1.6-alpha.2`, and pnpm merges those into
+// the stable-anchored spec `>=0.1.6 <0.2.0-0`, which no published
+// `0.1.6-alpha.x` satisfies (ERR_PNPM_NO_MATCHING_VERSION). Pin these packages
+// at the line this repo already dev-pins so the smoke proves the artifact
+// instead of pnpm's peer resolver; drop the pins once pnpm resolves prerelease
+// peer chains.
 const PEER_PINS = {
-  '@deepseek-ai/dsh-scope': '0.1.5-alpha.1',
-  '@deepseek-ai/dsh-typert-protocol': '0.1.5-alpha.1',
+  '@deepseek-ai/dsh-scope': '0.1.6-alpha.2',
+  '@deepseek-ai/dsh-typert-protocol': '0.1.6-alpha.2',
+  '@deepseek-ai/dsh-invariants': '0.1.6-alpha.2',
 }
 writeFileSync(path.join(scratch, 'package.json'), JSON.stringify({
   name: 'smoke',
