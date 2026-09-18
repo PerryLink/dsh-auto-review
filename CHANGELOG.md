@@ -2,6 +2,12 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [Unreleased]
+
+### Changed
+
+- **Raise the pinned harness line from `0.1.5-rc.2` to `0.1.6-alpha.2`** (31 `@deepseek-ai/dsh-*` pins across `dependencies` and `devDependencies`; only `dsh-agent-spine-demo` stays on `0.1.1-rc.2`, as it has no alpha.2 release). The old pin was not merely cosmetic: on an alpha.2 host the hoisted `dsh-home-paths` came from the rc.2 line and lacks `dshCachePath`, which the alpha.2 host packages (`dsh-attachment-local`) import at module scope, so a scratch profile booted with `SyntaxError: The requested module '@deepseek-ai/dsh-home-paths' does not provide an export named 'dshCachePath'`. The lockfile now resolves a single `dsh-home-paths@0.1.6-alpha.2`. Feature detection for older host lines is untouched.
+
 ## [0.12.5] - 2026-09-18
 
 ### Changed
