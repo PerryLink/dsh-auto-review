@@ -52,7 +52,7 @@
     models:
       - id: deepseek-v4-pro
         contextWindow: 128000
-      - id: deepseek-v4-flash
+      - id: deepseek-flash
         contextWindow: 128000
 
 # Plain-JSONL session persistence under the report directory: each case's

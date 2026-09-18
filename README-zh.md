@@ -28,7 +28,7 @@
 
 | 方面 | 状态 |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.1.5-rc.2`（GitHub tag，2026-09-11 已核验）。双线 npm 支持：dev 钉号与运行时依赖均为 `0.1.5-rc.2`、peer 范围 `>=0.1.2-rc.1 <0.2.0 \|\| >=0.1.5-alpha.1 <0.2.0` —— 插件代码兼容两条已发布宿主线（特性探测），两线均跑完整门禁链；运行时依赖钉号随 alpha 线，避免 profile 安装遮蔽宿主自带的 `0.1.5-rc.2` 树。 |
+| Harness | DeepSeek Harness `dsh-v0.1.6-alpha.2`（2026-09-18 已核验）。双线 npm 支持：dev 钉号与运行时依赖均为 `0.1.5-rc.2`、peer 范围 `>=0.1.2-rc.1 <0.2.0 \|\| >=0.1.5-alpha.1 <0.2.0 \|\| >=0.1.6-0 <0.2.0` —— 插件代码兼容各已发布宿主线（特性探测），各线均跑完整门禁链；运行时依赖钉号随 alpha 线，避免 profile 安装遮蔽宿主自带树。alpha.2 线上 eval 夹具钉 `deepseek-flash`（已移除的 `deepseek-v4-flash` 不再出现在 `eval/`）。 |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | 平台 | 全部（宿主 answerer；可选 Web 审查面板，依赖会话投影能力） |
 | 模型 | 任意（审查器默认继承会话代理的路由；`reviewerModel` 可覆盖） |
@@ -228,7 +228,7 @@ suite:
 运行（环境需有 DeepSeek API 密钥）：
 
 ```sh
-dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+dsh-eval eval/cases --model deepseek-flash --timeout-ms 240000 --out .eval-reports
 ```
 
 ### 断言族
@@ -265,7 +265,7 @@ CI 门禁：仅当每个套件的每个用例都通过时，进程才以 0 退�
 
 ```yaml
 - name: dsh-eval
-  run: npx dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+  run: npx dsh-eval eval/cases --model deepseek-flash --timeout-ms 240000 --out .eval-reports
   env:
     DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
 ```

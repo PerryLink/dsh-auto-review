@@ -28,7 +28,7 @@
 
 | सतह | स्थिति |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.1.5-rc.2` (GitHub tag, 2026-09-11 को सत्यापित)। दोहरी-लाइन npm समर्थन: dev पिन और रनटाइम निर्भरताएँ `0.1.5-rc.2`, peers `>=0.1.2-rc.1 <0.2.0 \|\| >=0.1.5-alpha.1 <0.2.0` — प्लगइन कोड दोनों प्रकाशित होस्ट लाइनों को फ़ीचर-डिटेक्ट करता है और हर लाइन पूरी गेट श्रृंखला चलाती है; रनटाइम निर्भरताएँ alpha लाइन का पालन करती हैं ताकि प्रोफ़ाइल इंस्टॉल होस्ट के अपने `0.1.5-rc.2` ट्री को शैडो न करें। |
+| Harness | DeepSeek Harness `dsh-v0.1.6-alpha.2` (2026-09-18 को सत्यापित)। दोहरी-लाइन npm समर्थन: dev पिन और रनटाइम निर्भरताएँ `0.1.5-rc.2`, peers `>=0.1.2-rc.1 <0.2.0 \|\| >=0.1.5-alpha.1 <0.2.0 \|\| >=0.1.6-0 <0.2.0` — प्लगइन कोड प्रकाशित होस्ट लाइनों को फ़ीचर-डिटेक्ट करता है और हर लाइन पूरी गेट श्रृंखला चलाती है; रनटाइम निर्भरताएँ alpha लाइन का पालन करती हैं ताकि प्रोफ़ाइल इंस्टॉल होस्ट के अपने ट्री को शैडो न करें। alpha.2 लाइन पर eval फ़िक्स्चर `deepseek-flash` पिन करते हैं (हटाया गया `deepseek-v4-flash` अब `eval/` में नहीं है)। |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | प्लेटफ़ॉर्म | सभी (होस्ट answerer; सत्र-प्रोजेक्शन क्षमता के ज़रिए वैकल्पिक वेब समीक्षा पैनल) |
 | मॉडल | कोई भी (समीक्षक सत्र एजेंट का मार्ग विरासत में लेता है; `reviewerModel` उसे बदल देता है) |
@@ -228,7 +228,7 @@ suite:
 इसे चलाएँ (वातावरण में एक DeepSeek API कुंजी होनी चाहिए):
 
 ```sh
-dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+dsh-eval eval/cases --model deepseek-flash --timeout-ms 240000 --out .eval-reports
 ```
 
 ### दावा परिवार
@@ -265,7 +265,7 @@ CI द्वार: प्रक्रिया केवल तभी 0 से 
 
 ```yaml
 - name: dsh-eval
-  run: npx dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+  run: npx dsh-eval eval/cases --model deepseek-flash --timeout-ms 240000 --out .eval-reports
   env:
     DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
 ```

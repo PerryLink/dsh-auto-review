@@ -28,7 +28,7 @@
 
 | Superfície | Status |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.1.5-rc.2` (tag do GitHub, verificado em 2026-09-11). Suporte npm de linha dupla: pins de desenvolvimento e dependências de runtime `0.1.5-rc.2`, peers `>=0.1.2-rc.1 <0.2.0 \|\| >=0.1.5-alpha.1 <0.2.0` — o código do plugin detecta ambas as linhas de host publicadas (detecção de recursos) e cada linha executa a cadeia completa de gates; as dependências de runtime seguem a linha alpha para que uma instalação em um perfil nunca sombreie a árvore `0.1.5-rc.2` do host. |
+| Harness | DeepSeek Harness `dsh-v0.1.6-alpha.2` (verificado em 2026-09-18). Suporte npm de linha dupla: pins de desenvolvimento e dependências de runtime `0.1.5-rc.2`, peers `>=0.1.2-rc.1 <0.2.0 \|\| >=0.1.5-alpha.1 <0.2.0 \|\| >=0.1.6-0 <0.2.0` — o código do plugin detecta as linhas de host publicadas (detecção de recursos) e cada linha executa a cadeia completa de gates; as dependências de runtime seguem a linha alpha para que uma instalação em um perfil nunca sombreie a árvore do host. Na linha alpha.2 os fixtures de eval fixam `deepseek-flash` (o id removido `deepseek-v4-flash` não aparece mais em `eval/`). |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | Plataformas | Todas (answerer de host; painel web opcional via capacidade de projeção de sessão) |
 | Modelo | Qualquer (o revisor herda a rota do agente da sessão; `reviewerModel` sobrescreve) |
@@ -228,7 +228,7 @@ suite:
 Execute-o (uma chave de API da DeepSeek deve estar no ambiente):
 
 ```sh
-dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+dsh-eval eval/cases --model deepseek-flash --timeout-ms 240000 --out .eval-reports
 ```
 
 ### Famílias de asserção
@@ -265,7 +265,7 @@ Portão de CI: o processo sai com 0 somente quando todos os casos de todas as su
 
 ```yaml
 - name: dsh-eval
-  run: npx dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+  run: npx dsh-eval eval/cases --model deepseek-flash --timeout-ms 240000 --out .eval-reports
   env:
     DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
 ```

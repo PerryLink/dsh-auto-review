@@ -1,7 +1,7 @@
 # dsh-eval demo suite — three cases that exercise this repository itself.
 #
 # Run from the repo root:
-#   dsh-eval eval/cases --model deepseek-v4-flash --out .eval-reports
+#   dsh-eval eval/cases --model deepseek-flash --out .eval-reports
 #
 # The cases need no hardcoded model/timeout here: the CLI (or a suite
 # override) supplies them; a case that resolves neither fails loudly.
@@ -11,7 +11,7 @@ suite:
   description: "The engine's own regression suite: output assertion, tool-trace assertion, and second-model review."
   models:
     tiers:
-      fast: deepseek-v4-flash
+      fast: deepseek-flash
       pro: deepseek-v4-pro
   concurrency: 1
   cases:

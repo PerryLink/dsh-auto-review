@@ -28,7 +28,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.1.5-rc.2` (GitHub tag, verified 2026-09-11). Dual-line npm support: dev pins and runtime deps `0.1.5-rc.2`, peers `>=0.1.2-rc.1 <0.2.0 \|\| >=0.1.5-alpha.1 <0.2.0` — the plugin code feature-detects both published host lines and each line runs the full gate chain; the runtime dependency pins follow the alpha line so a profile install never shadows the host's own `0.1.5-rc.2` tree. |
+| Harness | DeepSeek Harness `dsh-v0.1.6-alpha.2` (verified 2026-09-18). Dual-line npm support: dev pins and runtime deps `0.1.5-rc.2`, peers `>=0.1.2-rc.1 <0.2.0 \|\| >=0.1.5-alpha.1 <0.2.0 \|\| >=0.1.6-0 <0.2.0` — the plugin code feature-detects the published host lines and each line runs the full gate chain; the runtime dependency pins follow the alpha line so a profile install never shadows the host's own tree. On the alpha.2 line the eval fixtures pin `deepseek-flash` (the removed `deepseek-v4-flash` id is gone from `eval/`). |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | Platforms | All (host answerer; optional Web review panel via the session-projection capability) |
 | Model | Any (the reviewer inherits the session agent's route; `reviewerModel` overrides) |
@@ -229,7 +229,7 @@ suite:
 Run it (a DeepSeek API key must be in the environment):
 
 ```sh
-dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+dsh-eval eval/cases --model deepseek-flash --timeout-ms 240000 --out .eval-reports
 ```
 
 ### Assertion families
@@ -266,7 +266,7 @@ CI gate: the process exits 0 only when every case of every suite passed — fail
 
 ```yaml
 - name: dsh-eval
-  run: npx dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+  run: npx dsh-eval eval/cases --model deepseek-flash --timeout-ms 240000 --out .eval-reports
   env:
     DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
 ```

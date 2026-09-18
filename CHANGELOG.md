@@ -2,6 +2,24 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [Unreleased]
+
+### Changed
+
+- **Raise the pinned harness line from `0.1.5-rc.2` to `0.1.6-alpha.2`** (31 `@deepseek-ai/dsh-*` pins across `dependencies` and `devDependencies`; only `dsh-agent-spine-demo` stays on `0.1.1-rc.2`, as it has no alpha.2 release). The old pin was not merely cosmetic: on an alpha.2 host the hoisted `dsh-home-paths` came from the rc.2 line and lacks `dshCachePath`, which the alpha.2 host packages (`dsh-attachment-local`) import at module scope, so a scratch profile booted with `SyntaxError: The requested module '@deepseek-ai/dsh-home-paths' does not provide an export named 'dshCachePath'`. The lockfile now resolves a single `dsh-home-paths@0.1.6-alpha.2`. Feature detection for older host lines is untouched.
+
+## [0.12.5] - 2026-09-18
+
+### Changed
+
+- Land the eval fixtures on the alpha.2 model vocabulary: `eval/cordis.yml` and `eval/cases/demo.yaml` (plus the five README run examples) now name `deepseek-flash` instead of the removed `deepseek-v4-flash` id, and the compatibility row admits the `>=0.1.6-0 <0.2.0` peer segment.
+- Declare `dsh.manifestVersion: 1` and the canonical three-clause `engines.dsh` (G-3).
+
+### Notes
+
+- The A2 wrapper static assertion (a lint rule proving `src/session-events.ts` stays the only `snapshotEvents()` call site) is **not yet enforceable here**: this repo lints with oxlint (96 rules, no `typescript/no-deprecated` rule configured), so the card's precondition does not hold. The single call site is unchanged and documented; the assertion can land once the rule is enabled.
+- The resume round-trip criterion (`check-session-log.mjs` over a real log) still needs a real host log; the audit gate contract plus the existing regression tests pin the no-unmarked-append invariant in the meantime.
+
 ## [0.12.4] - 2026-09-12
 
 ### Fixed
