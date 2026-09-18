@@ -228,7 +228,7 @@ suite:
 इसे चलाएँ (वातावरण में एक DeepSeek API कुंजी होनी चाहिए):
 
 ```sh
-dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+dsh-eval eval/cases --model deepseek-flash --timeout-ms 240000 --out .eval-reports
 ```
 
 ### दावा परिवार
@@ -265,7 +265,7 @@ CI द्वार: प्रक्रिया केवल तभी 0 से 
 
 ```yaml
 - name: dsh-eval
-  run: npx dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+  run: npx dsh-eval eval/cases --model deepseek-flash --timeout-ms 240000 --out .eval-reports
   env:
     DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
 ```

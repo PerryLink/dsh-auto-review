@@ -228,7 +228,7 @@ suite:
 Execute-o (uma chave de API da DeepSeek deve estar no ambiente):
 
 ```sh
-dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+dsh-eval eval/cases --model deepseek-flash --timeout-ms 240000 --out .eval-reports
 ```
 
 ### Famílias de asserção
@@ -265,7 +265,7 @@ Portão de CI: o processo sai com 0 somente quando todos os casos de todas as su
 
 ```yaml
 - name: dsh-eval
-  run: npx dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+  run: npx dsh-eval eval/cases --model deepseek-flash --timeout-ms 240000 --out .eval-reports
   env:
     DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
 ```

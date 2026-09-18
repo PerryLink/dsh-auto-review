@@ -228,7 +228,7 @@ suite:
 运行（环境需有 DeepSeek API 密钥）：
 
 ```sh
-dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+dsh-eval eval/cases --model deepseek-flash --timeout-ms 240000 --out .eval-reports
 ```
 
 ### 断言族
@@ -265,7 +265,7 @@ CI 门禁：仅当每个套件的每个用例都通过时，进程才以 0 退�
 
 ```yaml
 - name: dsh-eval
-  run: npx dsh-eval eval/cases --model deepseek-v4-flash --timeout-ms 240000 --out .eval-reports
+  run: npx dsh-eval eval/cases --model deepseek-flash --timeout-ms 240000 --out .eval-reports
   env:
     DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
 ```
