@@ -19,6 +19,11 @@ import { readFile } from 'node:fs/promises'
 
 const EXACT_PIN = /^0\.1\.(\d+)-(rc|alpha)\.(\d+)$/u
 const RANGE_SEGMENT = /^>=0\.1\.(\d+)-(rc|alpha)\.(\d+) <0\.2\.0$/u
+// The family canonical tuple idiom `>=0.1.<minor>-0 <0.2.0`: the `-0` lower bound
+// admits EVERY prerelease of that minor (semver admits a prerelease only into a
+// comparator set whose own tuple carries a prerelease), so it covers that minor's
+// alpha line at the lowest rank.
+const TUPLE_SEGMENT = /^>=0\.1\.(\d+)-0 <0\.2\.0$/u
 // semver prerelease precedence within one 0.1.x line: alpha < rc.
 const RANK = { alpha: 0, rc: 1 }
 
@@ -35,6 +40,10 @@ function parseBound(text) {
   const range = RANGE_SEGMENT.exec(text)
   if (range !== null) {
     return { minor: Number(range[1]), rank: range[2], n: Number(range[3]), exact: false }
+  }
+  const tuple = TUPLE_SEGMENT.exec(text)
+  if (tuple !== null) {
+    return { minor: Number(tuple[1]), rank: 'alpha', n: 0, exact: false }
   }
   return null
 }
