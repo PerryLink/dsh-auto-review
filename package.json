@@ -220,7 +220,7 @@
     "@types/react": "19.2.18",
     "@vitest/coverage-v8": "5.0.0",
     "jsdom": "^30.0.1",
-    "oxlint": "1.82.0",
+    "oxlint": "1.83.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "vitest": "^5.0.0"
