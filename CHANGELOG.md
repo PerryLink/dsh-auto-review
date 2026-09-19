@@ -2,7 +2,15 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
-## [Unreleased]
+## [0.12.6] - 2026-09-19
+
+### Added
+
+- `pnpm run check:lockfile` (`scripts/check-lockfile-drift.mjs`) fails fast when `package.json` and `pnpm-lock.yaml` disagree; the documented checks chain runs it alongside the other gates.
+
+### Changed
+
+- The release workflow now publishes through **npm trusted publishing** (OIDC) instead of the long-lived `NPM_TOKEN` secret: `setup-node` no longer sets `registry-url` (its empty `_authToken` line made the registry answer 404), and the "NPM_TOKEN is not set -> fail" guard is gone so the OIDC exchange is the only path. pnpm performs the OIDC exchange itself.
 
 ### Changed
 
