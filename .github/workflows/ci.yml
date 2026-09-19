@@ -31,6 +31,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
+      - name: Typecheck (published line)
+        run: pnpm run typecheck:ci
       - run: pnpm test
       - run: pnpm run test:coverage
       - run: pnpm run lint
