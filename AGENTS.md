@@ -40,7 +40,7 @@ Standalone DeepSeek Harness plugin repository (`dsh-auto-review`). Development f
 
 ## Checks
 
-`pnpm run typecheck && pnpm test && pnpm run build && pnpm run verify:self-contained && pnpm pack`.
+`pnpm run typecheck && pnpm test && pnpm run build && pnpm run verify:self-contained && pnpm run check:lockfile && pnpm pack`.
 
 CI (`ci.yml`) additionally proves the packed artifact: `pnpm pack --pack-destination out` followed by `node scripts/smoke-package.mjs out` (installs the tarball into a scratch project and loads the node faces through the package exports; the scratch manifest pins `@deepseek-ai/dsh-scope` / `@deepseek-ai/dsh-typert-protocol` because pnpm's auto-install-peers synthesizes an unsatisfiable stable-anchored spec for the harness's prerelease-only peer chain).
 
