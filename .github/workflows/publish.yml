@@ -82,20 +82,21 @@ jobs:
           else
             pnpm publish --no-git-checks --provenance
           fi
-      - name: Verify the version is live on the registry
+      # Advisory only: npm's read side can lag minutes behind a successful publish, and a hard
+      # failure here skipped the GitHub Release (observed on dsh-cert-mcp v0.2.1).
+      - name: Verify the version is live on the registry (advisory)
         shell: bash
         run: |
           version="$(node -p "require('./package.json').version")"
-          for attempt in 1 2 3 4 5 6; do
+          for attempt in $(seq 1 12); do
             if npm view "dsh-auto-review@${version}" version >/dev/null 2>&1; then
               echo "dsh-auto-review@${version} is live on the registry"
               exit 0
             fi
             echo "attempt ${attempt}: not visible on the registry yet; retrying"
-            sleep 5
+            sleep 15
           done
-          echo "::error::dsh-auto-review@${version} is not on the registry after the publish step"
-          exit 1
+          echo "::warning::dsh-auto-review@${version} is still not visible on the registry after ~3 minutes (the publish step reported success; npm's read side is lagging)"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
