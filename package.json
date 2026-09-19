@@ -235,6 +235,7 @@
     "check:readmes": "node scripts/check-readme-sync.mjs",
     "prepare": "node scripts/prepare.mjs",
     "verify:self-contained": "node scripts/verify-self-contained.mjs",
+    "check:lockfile": "node scripts/check-lockfile-drift.mjs",
     "prepublishOnly": "pnpm run typecheck && pnpm test && pnpm run build && pnpm run verify:self-contained"
   },
   "license": "Apache-2.0",
