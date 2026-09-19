@@ -42,8 +42,11 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-          registry-url: 'https://registry.npmjs.org'
           cache: pnpm
+          # No registry-url on purpose: it writes
+          # //registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN} into .npmrc, and with
+          # the secret retired that line is an empty bearer token - the registry
+          # answers 404 on PUT instead of letting npm/pnpm do the OIDC exchange.
       - run: pnpm install --frozen-lockfile
       - name: Verify the tag matches the package version
         shell: bash
@@ -53,23 +56,27 @@ jobs:
             echo "tag ${GITHUB_REF_NAME} does not match package version ${tag}"
             exit 1
           fi
+      # prepublishOnly re-runs the full gate on the fresh checkout. Trusted
+      # publishing: the OIDC token (id-token: write above) replaces NPM_TOKEN, so
+      # the empty-token guard is gone on purpose - with the secret retired it would
+      # fail every release. A version already on the registry still skips.
+      - name: Upgrade npm and show what the publish will authenticate with
+        shell: bash
+        run: |
+          npm install -g npm@^11.5.1
+          echo "npm: $(npm --version)"
+          echo "pnpm: $(pnpm --version)"
+          echo "registry: $(npm config get registry)"
+          if [ -f .npmrc ]; then echo "--- workspace .npmrc ---"; cat .npmrc; else echo "no workspace .npmrc"; fi
+          if [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then echo "OIDC request TOKEN: present"; else echo "OIDC request TOKEN: MISSING"; fi
       - name: Publish to npm
-        # prepublishOnly re-runs the full gate on the fresh checkout. A tag
-        # push without the secret, or for a version already on the registry
-        # (e.g. published manually before the tag), no longer skips silently.
-        # A release that published nothing used to go green; it now fails
-        # loudly instead. A version already on the registry still skips
-        # (idempotent re-runs).
         shell: bash
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # npm/pnpm's OIDC exchange never throws: a failure is only visible at
+          # verbose level, otherwise the step just fails with no reason.
+          NPM_CONFIG_LOGLEVEL: verbose
         run: |
           version="$(node -p "require('./package.json').version")"
-          if [ -z "$NPM_TOKEN" ]; then
-            echo "::error::NPM_TOKEN secret is not set; refusing to report a release that published nothing"
-            exit 1
-          fi
           if npm view "dsh-auto-review@${version}" version >/dev/null 2>&1; then
             echo "dsh-auto-review@${version} is already published; skipping npm publish"
           else
