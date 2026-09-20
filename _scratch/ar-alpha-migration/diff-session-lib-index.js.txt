@@ -1,0 +1,641 @@
+﻿diff --git "a/C:\\Users\\zzhdz\\AppData\\Local\\Temp\\ar-api-diff\\x-0.1.2-rc.1\\package\\lib\\index.js" "b/C:\\Users\\zzhdz\\AppData\\Local\\Temp\\ar-api-diff\\x-0.1.3-alpha.2\\package\\lib\\index.js"
+index 46fd18c..e440bcc 100644
+--- "a/C:\\Users\\zzhdz\\AppData\\Local\\Temp\\ar-api-diff\\x-0.1.2-rc.1\\package\\lib\\index.js"
++++ "b/C:\\Users\\zzhdz\\AppData\\Local\\Temp\\ar-api-diff\\x-0.1.3-alpha.2\\package\\lib\\index.js"
+@@ -1,7 +1,7 @@
+ import { Service } from "@deepseek-ai/cordis";
+ import { isAbsolute } from "node:path";
+ import { brandNumber, brandString } from "@deepseek-ai/dsh-brand";
+-import { deepFreeze, snapshotJsonValue } from "@deepseek-ai/dsh-util-values";
++import { assertNever, deepFreeze, snapshotJsonValue } from "@deepseek-ai/dsh-util-values";
+ import { scopeOf, scopeTarget } from "@deepseek-ai/dsh-scope";
+ import { callConfigEquals } from "@deepseek-ai/dsh-llm";
+ //#region lib/types/types.js
+@@ -32,11 +32,11 @@ function SessionLogOffset(value) {
+ 	return brandNumber(value);
+ }
+ /**
+-* The on-disk session format version, stamped into every newly-written {@link SessionHeader}
+-* and enforced by every persistence backend on load. The single source of truth for the
+-* version — write sites and the load-time check all read it.
+-* While the harness is unreleased it is pinned at `0`: no compatibility is
+-* implied, incompatible logs are rejected, and no migration is provided.
++* Current logical Session format version, stamped into every newly written
++* {@link SessionHeader}. Current Session and persistence code accept only this
++* value; header-only readers classify supported historical formats, while an
++* event-body read composes the build-static adjacent chain and publishes only
++* this final generation before constructing a Session.
+ *
+ * The version is a single monotonic integer with no major/minor split. Whether
+ * a bump is needed is decided by what the WRITER emits, never by what a newer
+@@ -49,12 +49,11 @@ function SessionLogOffset(value) {
+ * Adding an ordinary event type does not bump — the per-event
+ * {@link SessionEvent.ignorable} guard covers vocabulary growth instead. When
+ * in doubt, bump: a near-identity upgrade step is almost free, a missed bump
+-* makes older runtimes read new logs wrong silently. The full mechanism
+-* (upgrade-step chain, in-memory view conversion, migrate-on-continue) is
+-* recorded in the session-log-version-mechanism Agent Note
+-* (`.agents/notes/implemented/architecture/2026-08-10-session-log-version-mechanism.md`).
++* makes older runtimes read new logs wrong silently. The released migration,
++* immutable prior-generation, and current fast-path rules are recorded in
++* `.agents/notes/implemented/architecture/2026-08-31-released-session-format-migrations.md`.
+ */
+-const SESSION_FORMAT_VERSION = 0;
++const SESSION_FORMAT_VERSION = 2;
+ //#endregion
+ //#region lib/types/surface.js
+ /**
+@@ -115,7 +114,7 @@ function isReplacementSurfaceEvent(event) {
+ }
+ /**
+ * Project a single event into the LLM message it derives to, or null when it
+-* produces none — a non-surface event (chunk, boundary, log-only record) or an
++* produces none — a non-surface event (attempt, boundary, log-only record) or an
+ * empty-content assistant/message (which exists only to host usage). This is
+ * THE per-node projection rule: `Session.deriveMessages` folds it over the
+ * live surface, external reconstructors and pure projections fold the same
+@@ -170,10 +169,11 @@ function surfaceOpOf(event) {
+ /** Validate cited source-event seqs against prior log entries and the replacement range. */
+ function assertProvenance(event, shadowedSeqs) {
+ 	const raw = event.sourceEventSeqs;
++	if (event.type === "assistant/message" && raw !== void 0) throw new Error("assistant/message embeds its source stream and cannot carry sourceEventSeqs");
+ 	const sources = /* @__PURE__ */ new Set();
+ 	if (raw !== void 0) {
+ 		if (!Array.isArray(raw)) throw new Error(`sourceEventSeqs on event at seq ${event.seq} must be an array when present`);
+-		if (raw.length === 0 && event.type !== "assistant/message") throw new Error("sourceEventSeqs must not be empty except on assistant/message");
++		if (raw.length === 0) throw new Error("sourceEventSeqs must not be empty");
+ 		let nonEarlierSource;
+ 		for (const source of raw) {
+ 			if (!isEventSeq(source)) throw new Error(`session event "${event.type}" sourceEventSeqs must densely contain non-negative safe integers`);
+@@ -575,321 +575,6 @@ function interruptedTurnClosers(events) {
+ 	return closers;
+ }
+ //#endregion
+-//#region lib/types/chunk-rows.js
+-/**
+-* Lossless row packing for `assistant/chunk` delta runs. Providers stream
+-* token-sized deltas, so a log stores hundreds of near-identical event lines
+-* whose JSON envelopes dwarf their payloads (~56× measured on a real DeepSeek
+-* session). This module packs each run of consecutive same-block delta chunks
+-* into ONE storage row — `text-chunks`, `reasoning-chunks`, or
+-* `tool-call-chunks` — and expands rows back to the exact original events.
+-*
+-* Packed rows are an encoding vocabulary, NOT session events: they never enter
+-* `Session.snapshotEvents()`, have no `SessionEventMap` entry, and use bare (slash-less)
+-* type tags so a reader cannot confuse them with the event taxonomy
+-* (precedent: the JSONL header line's `session` tag). Persistence and bounded
+-* history transport both use the codec. The encoder whitelists exact shapes —
+-* anything it does not fully recognize stays verbatim, so unknown fields or
+-* future chunk variants lose compression, never data. The decoder validates
+-* before expanding and fails loud on a malformed row-tagged value instead of
+-* silently dropping a whole run.
+-*
+-* @module @deepseek-ai/dsh-session/chunk-rows
+-*/
+-/**
+-* Minimum members before a run packs. Below it a row's envelope rivals the
+-* event lines it replaces. A format constant, not a tunable: both layouts
+-* decode identically, so changing it never invalidates stored logs.
+-*/
+-const MIN_RUN = 3;
+-function isRecord(value) {
+-	return typeof value === "object" && value !== null;
+-}
+-/** Exact-key check: `value` has every key in `keys` and nothing else. */
+-function hasExactKeys(value, keys) {
+-	return Object.keys(value).length === keys.length && keys.every((k) => Object.hasOwn(value, k));
+-}
+-/**
+-* Classify an event for packing: its delta kind when the ENTIRE shape
+-* (envelope, data, chunk — exact keys, primitive types, integer seq/time) is
+-* whitelisted, else `undefined` (store verbatim). Inputs come from live typed
+-* appends AND parsed fixture files, so the checks are structural, not
+-* type-trusted. Integer times keep gap encoding exact: a fractional time would
+-* reconstruct through float subtraction/addition, which need not round-trip.
+-*/
+-function classify(event) {
+-	if (event.type !== "assistant/chunk") return void 0;
+-	if (!hasExactKeys(event, [
+-		"type",
+-		"seq",
+-		"time",
+-		"data"
+-	])) return void 0;
+-	if (!Number.isSafeInteger(event.seq) || event.seq < 0 || Object.is(event.seq, -0) || !Number.isSafeInteger(event.time)) return void 0;
+-	const data = event.data;
+-	if (!isRecord(data) || !hasExactKeys(data, [
+-		"turn",
+-		"step",
+-		"chunk"
+-	])) return void 0;
+-	if (typeof data.turn !== "number" || typeof data.step !== "number") return void 0;
+-	const chunk = data.chunk;
+-	if (!isRecord(chunk) || typeof chunk.index !== "number") return void 0;
+-	switch (chunk.type) {
+-		case "text-delta":
+-		case "reasoning-delta": return hasExactKeys(chunk, [
+-			"type",
+-			"index",
+-			"text"
+-		]) && typeof chunk.text === "string" ? chunk.type : void 0;
+-		case "tool-call-delta": return (hasExactKeys(chunk, [
+-			"type",
+-			"index",
+-			"id",
+-			"argumentsDelta"
+-		]) || hasExactKeys(chunk, [
+-			"type",
+-			"index",
+-			"id",
+-			"name",
+-			"argumentsDelta"
+-		]) && typeof chunk.name === "string") && typeof chunk.id === "string" && typeof chunk.argumentsDelta === "string" ? chunk.type : void 0;
+-		default: return;
+-	}
+-}
+-/** The tool-call fields of a whitelisted delta chunk (only after {@link classify} returned `'tool-call-delta'`). */
+-function toolCallOf(event) {
+-	return event.data.chunk;
+-}
+-/** The block index of a whitelisted delta chunk (not every {@link StreamChunk} variant carries one). */
+-function indexOf(event) {
+-	return event.data.chunk.index;
+-}
+-/** Whether `next` extends a run ending in `prev` (same kind already checked by the caller). */
+-function continues(prev, next, kind) {
+-	if (next.seq !== prev.seq + 1) return false;
+-	if (!Number.isSafeInteger(next.time - prev.time)) return false;
+-	if (next.data.turn !== prev.data.turn || next.data.step !== prev.data.step) return false;
+-	if (indexOf(next) !== indexOf(prev)) return false;
+-	if (kind !== "tool-call-delta") return true;
+-	const a = toolCallOf(prev);
+-	const b = toolCallOf(next);
+-	return a.id === b.id && Object.hasOwn(a, "name") === Object.hasOwn(b, "name") && a.name === b.name;
+-}
+-/** Build the row for a completed run (`run.length >= MIN_RUN`, uniform per {@link continues}). */
+-function buildRow(kind, run) {
+-	const first = run[0];
+-	const base = {
+-		turn: first.data.turn,
+-		step: first.data.step,
+-		index: indexOf(first),
+-		dt: run.slice(1).map((event, i) => event.time - run[i].time)
+-	};
+-	const envelope = {
+-		seq0: first.seq,
+-		time0: first.time
+-	};
+-	if (kind === "tool-call-delta") {
+-		const call = toolCallOf(first);
+-		return {
+-			type: "tool-call-chunks",
+-			...envelope,
+-			data: {
+-				...base,
+-				id: brandString(call.id),
+-				...Object.hasOwn(call, "name") ? { name: call.name } : {},
+-				args: run.map((event) => event.data.chunk.argumentsDelta)
+-			}
+-		};
+-	}
+-	const data = {
+-		...base,
+-		texts: run.map((event) => event.data.chunk.text)
+-	};
+-	return kind === "text-delta" ? {
+-		type: "text-chunks",
+-		...envelope,
+-		data
+-	} : {
+-		type: "reasoning-chunks",
+-		...envelope,
+-		data
+-	};
+-}
+-/**
+-* Pack an event batch for storage: each run of at least {@link MIN_RUN}
+-* consecutive whitelisted same-kind, same-block delta chunk events becomes one
+-* {@link ChunkRow}; every other event passes through verbatim, in order.
+-* Pure and stateless — safe over any array, including a batch whose runs were
+-* split by flush boundaries (the split runs simply pack per batch).
+-*
+-* @param events - the batch to encode, in log order.
+-* @returns the storage records to write, one JSONL line each.
+-*/
+-function packChunkRuns(events) {
+-	const out = [];
+-	let kind;
+-	let run = [];
+-	const flush = () => {
+-		if (kind !== void 0 && run.length >= MIN_RUN) out.push(buildRow(kind, run));
+-		else out.push(...run);
+-		kind = void 0;
+-		run = [];
+-	};
+-	for (const event of events) {
+-		const k = classify(event);
+-		if (k === void 0) {
+-			flush();
+-			out.push(event);
+-			continue;
+-		}
+-		const delta = event;
+-		const last = run[run.length - 1];
+-		if (k === kind && last !== void 0 && continues(last, delta, k)) {
+-			run.push(delta);
+-			continue;
+-		}
+-		flush();
+-		kind = k;
+-		run = [delta];
+-	}
+-	flush();
+-	return out;
+-}
+-/** Throw the uniform malformed-row diagnostic. */
+-function malformed(tag, why) {
+-	throw new Error(`malformed ${tag} storage row: ${why}`);
+-}
+-/** Validate the shared run-data fields and the payload/dt arity; returns the member payload. */
+-function validateRunData(tag, data, payloadKey) {
+-	if (typeof data.turn !== "number" || typeof data.step !== "number" || typeof data.index !== "number") malformed(tag, "turn/step/index must be numbers");
+-	const payload = data[payloadKey];
+-	if (!Array.isArray(payload) || payload.length === 0 || payload.some((entry) => typeof entry !== "string")) malformed(tag, `${payloadKey} must be a non-empty string array`);
+-	const dt = data.dt;
+-	if (!Array.isArray(dt) || dt.some((gap) => !Number.isSafeInteger(gap))) malformed(tag, "dt must be an array of safe integers");
+-	if (dt.length !== payload.length - 1) malformed(tag, `dt length ${dt.length} does not match ${payload.length} members`);
+-	return payload;
+-}
+-/** Validate a row-tagged parsed value's envelope and data, throwing on any malformation. */
+-function validateRow(value, tag) {
+-	if (!hasExactKeys(value, [
+-		"type",
+-		"seq0",
+-		"time0",
+-		"data"
+-	])) malformed(tag, "envelope must be exactly {type, seq0, time0, data}");
+-	if (!Number.isSafeInteger(value.seq0) || value.seq0 < 0 || Object.is(value.seq0, -0)) malformed(tag, "seq0 must be a non-negative safe integer");
+-	if (!Number.isSafeInteger(value.time0)) malformed(tag, "time0 must be a safe integer");
+-	const data = value.data;
+-	if (!isRecord(data)) malformed(tag, "data must be an object");
+-	let payload;
+-	if (tag === "tool-call-chunks") {
+-		const withName = hasExactKeys(data, [
+-			"turn",
+-			"step",
+-			"index",
+-			"id",
+-			"name",
+-			"dt",
+-			"args"
+-		]);
+-		if (!withName && !hasExactKeys(data, [
+-			"turn",
+-			"step",
+-			"index",
+-			"id",
+-			"dt",
+-			"args"
+-		])) malformed(tag, "data must be exactly {turn, step, index, id, name?, dt, args}");
+-		if (typeof data.id !== "string" || withName && typeof data.name !== "string") malformed(tag, "id (and name when present) must be strings");
+-		payload = validateRunData(tag, data, "args");
+-	} else {
+-		if (!hasExactKeys(data, [
+-			"turn",
+-			"step",
+-			"index",
+-			"dt",
+-			"texts"
+-		])) malformed(tag, "data must be exactly {turn, step, index, dt, texts}");
+-		payload = validateRunData(tag, data, "texts");
+-	}
+-	if (payload.length - 1 > Number.MAX_SAFE_INTEGER - value.seq0) malformed(tag, "member seqs must stay safe integers");
+-	let time = value.time0;
+-	for (const gap of data.dt) {
+-		time += gap;
+-		if (!Number.isSafeInteger(time)) malformed(tag, "member times must stay safe integers");
+-	}
+-	SessionSeq(value.seq0);
+-	return value;
+-}
+-/** Expand a validated row back into its exact original events, in order. */
+-function expandRow(row) {
+-	const members = row.type === "tool-call-chunks" ? row.data.args : row.data.texts;
+-	const events = [];
+-	let time = row.time0;
+-	for (let k = 0; k < members.length; k++) {
+-		if (k > 0) time += row.data.dt[k - 1];
+-		let chunk;
+-		switch (row.type) {
+-			case "text-chunks":
+-				chunk = {
+-					type: "text-delta",
+-					index: row.data.index,
+-					text: members[k]
+-				};
+-				break;
+-			case "reasoning-chunks":
+-				chunk = {
+-					type: "reasoning-delta",
+-					index: row.data.index,
+-					text: members[k]
+-				};
+-				break;
+-			case "tool-call-chunks":
+-				chunk = {
+-					type: "tool-call-delta",
+-					index: row.data.index,
+-					id: row.data.id,
+-					...Object.hasOwn(row.data, "name") ? { name: row.data.name } : {},
+-					argumentsDelta: members[k]
+-				};
+-				break;
+-			/* v8 ignore next 4 -- validateRow only returns the three row tags */
+-			default: throw new Error(`chunk-rows received unsupported row ${String(row)}`);
+-		}
+-		events.push({
+-			type: "assistant/chunk",
+-			seq: SessionSeq(row.seq0 + k),
+-			time,
+-			data: {
+-				turn: row.data.turn,
+-				step: row.data.step,
+-				chunk
+-			}
+-		});
+-	}
+-	return events;
+-}
+-/**
+-* Decode one parsed JSONL line value into the session event(s) it stores.
+-* Chunk-row-tagged values validate and expand (a malformed row throws — it is
+-* corrupt storage, and treating it as an event would silently drop a whole
+-* run); every other value passes through as a single event after admitting a
+-* numeric `seq` through the Session-sequence constructor.
+-*
+-* @param value - one line's `JSON.parse` result.
+-* @returns the stored events, in log order.
+-*/
+-function decodeStorageRecord(value) {
+-	if (!isRecord(value)) return [value];
+-	const tag = value.type;
+-	if (tag !== "text-chunks" && tag !== "reasoning-chunks" && tag !== "tool-call-chunks") {
+-		if (typeof value.seq === "number") SessionSeq(value.seq);
+-		return [value];
+-	}
+-	return expandRow(validateRow(value, tag));
+-}
+-//#endregion
+ //#region lib/types/known-event-types.js
+ /**
+ * GENERATED by `scripts/gen-persistence-catalog.ts` — do not edit by hand; run
+@@ -917,7 +602,7 @@ const KNOWN_SESSION_EVENT_TYPES = new Set([
+ 	"approval/asked",
+ 	"approval/decided",
+ 	"approval/policy",
+-	"assistant/chunk",
++	"assistant/attempt",
+ 	"assistant/message",
+ 	"command/done",
+ 	"command/run",
+@@ -925,6 +610,8 @@ const KNOWN_SESSION_EVENT_TYPES = new Set([
+ 	"compaction/prune",
+ 	"compaction/start",
+ 	"compaction/summary",
++	"feedback/message-delete",
++	"feedback/message-put",
+ 	"feedback/record",
+ 	"goal/change",
+ 	"hook/invoked",
+@@ -1034,7 +721,7 @@ function validateSessionHeader(id, input) {
+ 	if (input === null || typeof input !== "object" || Array.isArray(input)) throw new Error("session header is not a plain JSON record");
+ 	const record = input;
+ 	if (Object.hasOwn(record, "seedLength")) throw new Error("session header has invalid field \"seedLength\"");
+-	if (record.version !== 0) throw new Error(`session header version must be 0, got ${String(record.version)}`);
++	if (record.version !== 2) throw new Error(`session header version must be 2, got ${String(record.version)}`);
+ 	if (record.id !== id) throw new Error(`session header id "${String(record.id)}" does not match session id "${id}"`);
+ 	if (typeof record.createdAt !== "number" || !Number.isSafeInteger(record.createdAt) || record.createdAt < 0) throw new Error("session header createdAt must be a non-negative safe integer");
+ 	if (record.cwd !== void 0) {
+@@ -1059,7 +746,7 @@ function validateRestoredSessionHeader(id, input) {
+ /** Detach, validate, and freeze the creation metadata published by a session. */
+ function snapshotSessionHeader(id, source) {
+ 	const snapshot = snapshotJsonValue(source === void 0 ? {
+-		version: 0,
++		version: 2,
+ 		id,
+ 		createdAt: Date.now(),
+ 		isSeeded: false
+@@ -1097,23 +784,9 @@ function adoptSessionEvent(event) {
+ function snapshotSessionEvent(event) {
+ 	return adoptSessionEvent(structuredClone(event));
+ }
+-/** Deep-freeze one acyclic JSON tree without consuming the JavaScript call stack. */
+-function freezeRestoredObject(value) {
+-	const pending = [value];
+-	while (pending.length > 0) {
+-		const current = pending.pop();
+-		Object.freeze(current);
+-		for (const key in current) {
+-			const child = current[key];
+-			if (child !== null && typeof child === "object") pending.push(child);
+-		}
+-	}
+-	return value;
+-}
+ /** Validate the fixed event envelope after one-pass JSON materialization. */
+ function assertSessionEventEnvelope(value, index) {
+ 	const event = value;
+-	if (event["type"] === "request/header-delta") throw new Error(`seed event at index ${index} uses unsupported legacy request/header-delta format`);
+ 	for (const key in event) switch (key) {
+ 		case "type":
+ 		case "seq":
+@@ -1131,6 +804,7 @@ function assertSessionEventEnvelope(value, index) {
+ 	switch (type) {
+ 		case "request/header":
+ 		case "user/message":
++		case "assistant/attempt":
+ 		case "assistant/message":
+ 		case "tool/result":
+ 			assertCurrentLlmShape(event, index);
+@@ -1150,10 +824,24 @@ function assertCurrentLlmShape(event, index) {
+ 		const reasoningEffort = configRecord["reasoningEffort"];
+ 		if (reasoningEffort !== void 0 && (typeof reasoningEffort !== "string" || reasoningEffort.length === 0)) throw new Error(`seed request/header at index ${index} has an invalid reasoningEffort`);
+ 		assertAdapterDefaults(headerRecord?.["adapterDefaults"], configRecord, index);
++		const reason = record?.["reason"];
++		if (reason !== "initial" && reason !== "resume" && reason !== "change" && reason !== "series") throw new Error(`seed request/header at index ${index} has an invalid reason`);
++		if (record?.["startsSeries"] !== void 0 && record["startsSeries"] !== true) throw new Error(`seed request/header at index ${index} has an invalid startsSeries marker`);
+ 	}
+ 	const type = event["type"];
++	if (type === "assistant/attempt") {
++		assertAssistantSettlementShape(record, type, index);
++		return;
++	}
+ 	if (type !== "user/message" && type !== "assistant/message" && type !== "tool/result") return;
+ 	assertMessageEventShape(event, `seed ${type} at index ${index}`);
++	if (type === "assistant/message") assertAssistantSettlementShape(record, type, index);
++}
++/** Validate fields used directly by restored Session lifecycle logic without replaying the embedded stream. */
++function assertAssistantSettlementShape(data, type, index) {
++	const turn = data?.["turn"];
++	const step = data?.["step"];
++	if (typeof turn !== "number" || !Number.isSafeInteger(turn) || turn < 0 || Object.is(turn, -0) || typeof step !== "number" || !Number.isSafeInteger(step) || step < 0 || Object.is(step, -0) || !Array.isArray(data?.["stream"])) throw new Error(`seed ${type} at index ${index} has invalid settlement fields`);
+ }
+ const allowedAdapterKeys = new Set(["reasoningEffort", "maxTokens"]);
+ /** Validate adapter-default markers imported from a durable request header. */
+@@ -1195,11 +883,6 @@ function hasProviderModel(value) {
+ 	const pair = value;
+ 	return typeof pair["provider"] === "string" && pair["provider"].length > 0 && typeof pair["model"] === "string" && pair["model"].length > 0;
+ }
+-/** Reject request-header vocabulary removed with the legacy delta codec. */
+-function assertSupportedRequestHeader(type, data, location) {
+-	if (type === "request/header-delta") throw new Error(`${location} uses unsupported legacy request/header-delta format`);
+-	if (type === "request/header" && data !== null && typeof data === "object" && !Array.isArray(data) && data["reason"] === "fallback") throw new Error(`${location} uses unsupported legacy request/header reason "fallback"`);
+-}
+ /** Resolve one listener snapshot, including Cordis's internal dispatch checks. */
+ function collectSessionCallbacks(ctx, args) {
+ 	return [...ctx.events.dispatch("emit", args)];
+@@ -1252,9 +935,10 @@ var Session = class Session {
+ 	* The first seq appended IN THIS PROCESS: the length of the constructor
+ 	* seed (0 without one). Events with smaller seq values entered through
+ 	* construction — replay, fork, or resume — and were never published on the
+-	* `session/event` firehose (constructor seeds do not emit), so consumers
+-	* that replay the log as a publication substitute (telemetry adoption)
+-	* start here. Distinct from {@link inheritedEventCount}, the DURABLE
++	* `session/event` firehose (constructor seeds do not emit). This offset marks
++	* the constructor-input boundary for lifecycle ownership and persistence
++	* adoption; consumers that need complete canonical history still start at
++	* seq 0. Distinct from {@link inheritedEventCount}, the DURABLE
+ 	* fork-lineage cut: a resumed session's constructor seed is its full stored
+ 	* log, while the inherited count keeps the original fork value — this field is the
+ 	* in-process construction fact.
+@@ -1284,32 +968,34 @@ var Session = class Session {
+ 		return new Session(id, seed, header, "snapshot", inheritedEventCount);
+ 	}
+ 	/**
+-	* Restore a detached session by taking ownership of fresh persistence values.
+-	* The storage format, event envelopes, sequence continuity, surface transitions,
+-	* and header fields are validated before the restored objects are frozen.
++	* Restore a detached session by adopting an independently owned or deeply frozen seed.
++	* Runtime-required event fields, event envelopes, sequence continuity, surface
++	* transitions, and header fields are validated without copying or freezing events.
++	* Embedded Assistant streams remain opaque until a stream consumer or storage
++	* verifier reads them.
+ 	* @param id - restored session identity.
+-	* @param seed - fresh detached events whose ownership is transferred.
+-	* @param header - fresh detached metadata whose ownership is transferred.
++	* @param seed - independently owned or deeply frozen events.
++	* @param header - independently owned storage metadata.
+ 	* @param inheritedEventCount - exact fork-inherited prefix length decoded from storage.
++	* @param eventState - aliasing state carried from the operation that produced the seed.
+ 	* @returns a restored detached session.
+ 	*/
+-	static fromRestore(id, seed, header, inheritedEventCount) {
+-		return new Session(id, seed, header, "restore", inheritedEventCount);
++	static fromRestore(id, seed, header, inheritedEventCount, eventState) {
++		return new Session(id, seed, header, eventState, inheritedEventCount);
+ 	}
+ 	constructor(id, seed, header, mode = "snapshot", suppliedInheritedEventCount) {
+-		const restoredHeader = mode === "restore" ? validateRestoredSessionHeader(id, header) : void 0;
++		const restoredHeader = mode === "snapshot" ? void 0 : validateRestoredSessionHeader(id, header);
+ 		if (seed !== void 0) for (const [index, source] of seed.entries()) {
+-			const snapshot = mode === "restore" ? source : snapshotJsonValue(source);
++			const snapshot = mode === "snapshot" ? snapshotJsonValue(source) : source;
+ 			if (snapshot === void 0) throw new Error(`seed event at index ${index} is not losslessly JSON-serializable`);
+ 			assertSessionEventEnvelope(snapshot, index);
+-			assertSupportedRequestHeader(snapshot.type, snapshot.data, `seed event at index ${index}`);
+ 			if (snapshot.seq !== index) throw new Error(`seed event at index ${index} has seq ${snapshot.seq} (expected ${index}); seed must be contiguous from 0`);
+ 			try {
+ 				this.surfaceManager.validateNext(snapshot);
+ 			} catch (error) {
+ 				throw new Error(`invalid seed event at index ${index}: ${error instanceof Error ? error.message : "invalid surface metadata"}`);
+ 			}
+-			this.log.push(mode === "restore" ? freezeRestoredObject(snapshot) : deepFreeze(snapshot));
++			this.log.push(mode === "snapshot" ? deepFreeze(snapshot) : snapshot);
+ 		}
+ 		this.firstLiveSeq = SessionLogOffset(this.log.length);
+ 		this.header = restoredHeader ?? snapshotSessionHeader(id, header);
+@@ -1318,8 +1004,10 @@ var Session = class Session {
+ 		const inheritedEventCount = SessionLogOffset(suppliedInheritedEventCount ?? 0);
+ 		if (!this.header.isSeeded && inheritedEventCount !== 0) throw new Error("unseeded session inherited event count must be 0");
+ 		if (inheritedEventCount > this.log.length) throw new Error("session inherited event count exceeds its event log");
++		if (mode === "snapshot" && this.header.isSeeded && inheritedEventCount !== this.log.length) throw new Error("seeded session constructor seed must equal its inherited prefix");
+ 		this.inheritedEventCount = inheritedEventCount;
+-		if (seed !== void 0 && this.log.at(-1)?.type !== "session/end-seed") this.append("session/end-seed", {});
++		if (seed !== void 0 && mode === "snapshot" && this.header.isSeeded) this.append("session/end-seed", { inherited: true });
++		else if (seed !== void 0 && this.log.at(-1)?.type !== "session/end-seed") this.append("session/end-seed", {});
+ 	}
+ 	/** Cached immutable full snapshot of the private append-only log. */
+ 	eventsSnapshot;
+@@ -1382,7 +1070,8 @@ var Session = class Session {
+ 	*   declare how it joins the surface, the sole source of derived model
+ 	*   history) and
+ 	*   rejected by the compiler for non-surface types like `turn/start` or
+-	*   `assistant/chunk`.
++	*   `assistant/attempt`. Assistant messages embed their exact provider
++	*   stream and cannot cite top-level source events.
+ 	* @returns the logged event — its assigned `seq`/`time` plus the SNAPSHOT of
+ 	*   `data` that entered the log, so reading `event.data` back sees the logged
+ 	*   value, never the caller's still-mutable input.
+@@ -1408,7 +1097,6 @@ var Session = class Session {
+ 		};
+ 		const dataSnapshot = snapshotJsonValue(data);
+ 		if (dataSnapshot === void 0) throw new Error(`session event "${type}" carries non-JSON-serializable data`);
+-		assertSupportedRequestHeader(type, dataSnapshot, `session event "${type}"`);
+ 		const surfaceMetadataSnapshot = snapshotJsonValue(surfaceMetadata);
+ 		if (surfaceMetadataSnapshot === void 0) throw new Error(`session event "${type}" carries non-JSON-serializable surface metadata`);
+ 		const entry = attachments.get(this);
+@@ -1537,8 +1225,9 @@ var SessionForkError = class extends Error {
+ /**
+ * In-memory session store (`ctx.sessions`).
+ *
+-* Persistence is intentionally not implemented here — persistence plugins
+-* subscribe to `session/event` and flush on `session/flush` / dispose.
++* Persistence is intentionally not implemented here — the agent lifecycle
++* attaches a session-log writer to each published session's write handle;
++* a session published outside that lifecycle persists nothing.
+ */
+ var SessionStore = class extends Service {
+ 	store = /* @__PURE__ */ new Map();
+@@ -1595,10 +1284,9 @@ var SessionStore = class extends Service {
+ 	*
+ 	* @param id - the session id; omitted, the store mints `session-<n>`.
+ 	* @param options - seed events and/or creation metadata for the header. With
+-	*   `seedSource: 'persistence'`, metadata and events must be fresh detached
+-	*   graphs whose ownership transfers to this call: they are validated and
+-	*   frozen in place through {@link Session.fromRestore}, so the caller must
+-	*   retain no mutable aliases.
++	*   `eventState`, every seed event is either independently owned or any
++	*   shared value is deeply frozen; {@link Session.fromRestore} validates and
++	*   adopts those values without copying or freezing them.
+ 	* @returns the constructed session, NOT yet in the store.
+ 	* @throws if a session with `id` already exists, metadata is not a plain
+ 	*   lossless-JSON record with valid scalar fields, or `meta.cwd` is a
+@@ -1611,11 +1299,20 @@ var SessionStore = class extends Service {
+ 		while (this.store.has(sessionId));
+ 		else sessionId = brandString(id);
+ 		if (this.store.has(sessionId)) throw new Error(`session "${sessionId}" already exists`);
+-		if (options?.seedSource === "persistence") return Session.fromRestore(sessionId, options.seed, options.meta, options.inheritedEventCount);
++		if (options !== void 0) {
++			const { eventState } = options;
++			switch (eventState) {
++				case "detached":
++				case "shared-frozen": return Session.fromRestore(sessionId, options.seed, options.meta, options.inheritedEventCount, eventState);
++				case void 0: break;
++				/* v8 ignore next -- closed-union exhaustiveness guard */
++				default: assertNever(eventState, "SessionStore.prepare event state");
++			}
++		}
+ 		const seed = options?.seed;
+ 		const meta = options?.meta;
+ 		const header = {
+-			version: 0,
++			version: 2,
+ 			id: sessionId,
+ 			createdAt: meta?.createdAt ?? Date.now(),
+ 			...meta?.cwd === void 0 ? {} : { cwd: meta.cwd },
+@@ -1847,4 +1544,4 @@ var SessionStore = class extends Service {
+ 	}
+ };
+ //#endregion
+-export { KNOWN_SESSION_EVENT_TYPES, SESSION_FORMAT_VERSION, Session, SessionForkError, SessionId, SessionLogOffset, SessionPreparation, SessionSeq, SessionStore, SessionStore as default, TOOL_NOT_STARTED, TOOL_OUTCOME_UNKNOWN, adoptSessionEvent, canonicalHeader, decodeSeqRanges, decodeStorageRecord, deriveEventMessage, encodeSeqRanges, foldRequestHeader, foldSurface, headerEquals, interruptedTurnClosers, isAppendSurfaceEvent, isReplacementSurfaceEvent, isSurfaceEligibleType, isSurfaceEvent, packChunkRuns, snapshotSessionEvent };
++export { KNOWN_SESSION_EVENT_TYPES, SESSION_FORMAT_VERSION, Session, SessionForkError, SessionId, SessionLogOffset, SessionPreparation, SessionSeq, SessionStore, SessionStore as default, TOOL_NOT_STARTED, TOOL_OUTCOME_UNKNOWN, adoptSessionEvent, canonicalHeader, decodeSeqRanges, deriveEventMessage, encodeSeqRanges, foldRequestHeader, foldSurface, headerEquals, interruptedTurnClosers, isAppendSurfaceEvent, isReplacementSurfaceEvent, isSurfaceEligibleType, isSurfaceEvent, snapshotSessionEvent };

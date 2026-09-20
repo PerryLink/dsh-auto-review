@@ -1,0 +1,140 @@
+=== STEP: pnpm install ===
+. prepare: ? [dsh-auto-review/mcp] [ESM] lib\mcp.js  25.71 kB ©¦ gzip: 8.27 kB
+. prepare: ? [dsh-auto-review/mcp] [ESM] 1 files, total: 25.71 kB
+. prepare: ? [dsh-auto-review/mcp] Build complete in 23ms
+. prepare: ? [dsh-auto-review/client] [CJS] lib\client.js      17.82 kB ©¦ gzip: 4.93 kB
+. prepare: ? [dsh-auto-review/client] [CJS] lib\client.js.map  28.46 kB ©¦ gzip: 8.18 kB
+. prepare: ? [dsh-auto-review/client] [CJS] 2 files, total: 46.27 kB
+. prepare: ? [dsh-auto-review/client] Build complete in 24ms
+. prepare: ? [dsh-auto-review] Hint: consider adding deps.onlyBundle option to avoid unintended bundling of dependencies, or set deps.onlyBundle: false to disable this hint.
+. prepare: See more at https://tsdown.dev/options/dependencies#deps-onlybundle
+. prepare: Detected dependencies in bundle:
+. prepare: - zod
+. prepare: ? [dsh-auto-review] [ESM] lib\index.js            249.44 kB ©¦ gzip: 61.87 kB
+. prepare: ? [dsh-auto-review] [ESM] lib\invariant.js         12.11 kB ©¦ gzip:  2.72 kB
+. prepare: ? [dsh-auto-review] [ESM] lib\events-B26rtaMW.js   17.04 kB ©¦ gzip:  4.42 kB
+. prepare: ? [dsh-auto-review] [ESM] 3 files, total: 278.58 kB
+. prepare: ? [dsh-auto-review] Build complete in 51ms
+. prepare: ? [dsh-auto-review/eval] Hint: consider adding deps.onlyBundle option to avoid unintended bundling of dependencies, or set deps.onlyBundle: false to disable this hint.
+. prepare: See more at https://tsdown.dev/options/dependencies#deps-onlybundle
+. prepare: Detected dependencies in bundle:
+. prepare: - yaml
+. prepare: - zod
+. prepare: ? [dsh-auto-review/eval] [ESM] lib\eval-cli.js          19.36 kB ©¦ gzip:   6.14 kB
+. prepare: ? [dsh-auto-review/eval] [ESM] lib\eval.js               1.34 kB ©¦ gzip:   0.55 kB
+. prepare: ? [dsh-auto-review/eval] [ESM] lib\report-CKaOyIzM.js  476.36 kB ©¦ gzip: 109.64 kB
+. prepare: ? [dsh-auto-review/eval] [ESM] 3 files, total: 497.06 kB
+. prepare: ? [dsh-auto-review/eval] Build complete in 79ms
+. prepare: fix-dts: 19 file(s), 53 specifier(s) rewritten to .js
+. prepare: build complete: lib/types + lib/index.js + lib/invariant.js + lib/client.js
+. prepare: Done
+Done in 1.3s using pnpm v11.21.0
+EXIT: pnpm install -> 0
+=== STEP: typecheck ===
+$ tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit
+EXIT: typecheck -> 0
+=== STEP: test ===
+ ? |node| test/mcp.spec.ts (9 tests) 8ms
+ ? |node| test/eval/dsl.spec.ts (20 tests) 21ms
+ ? |node| test/eval/assert.spec.ts (18 tests) 28ms
+ ? |node| test/eval/report.spec.ts (6 tests) 16ms
+ ? |node| test/cache.spec.ts (13 tests) 6ms
+ ? |node| test/projection.spec.ts (8 tests) 9ms
+ ? |node| test/lifecycle.spec.ts (1 test) 14ms
+ ? |node| test/audit-degradation.spec.ts (7 tests) 229ms
+ ? |node| test/events.spec.ts (17 tests) 9ms
+ ? |node| test/cache-integration.spec.ts (8 tests) 217ms
+ ? |node| test/isolation.spec.ts (7 tests) 27ms
+ ? |node| test/reviewer.spec.ts (22 tests) 36ms
+ ? |node| test/invariant.spec.ts (23 tests) 71ms
+ ? |node| test/command.spec.ts (12 tests) 43ms
+ ? |node| test/config.spec.ts (20 tests) 23ms
+ ? |node| test/audit.spec.ts (5 tests) 5ms
+ ? |node| test/eval/trace.spec.ts (9 tests) 6ms
+ ? |node| test/eval/diff.spec.ts (6 tests) 4ms
+ ? |node| test/eval/stress.spec.ts (4 tests) 3ms
+ ? |node| test/eval/runner.spec.ts (11 tests) 227ms
+ ? |node| test/eval/cli.spec.ts (6 tests) 4ms
+ ? |client| test/client-registration.spec.ts (2 tests) 37ms
+ ? |node| test/answerer.spec.ts (37 tests) 507ms
+ ? |node| test/composition.spec.ts (5 tests) 1834ms
+
+ Test Files  24 passed (24)
+      Tests  276 passed (276)
+   Start at  13:06:29
+   Duration  2.38s (transform 3.34s, setup 0ms, import 6.48s, tests 3.38s, environment 828ms)
+
+EXIT: test -> 0
+=== STEP: build ===
+Learn more at https://nodejs.org/en/learn/modules/publishing-a-package#how-did-we-get-here
+System.Management.Automation.RemoteException
+? [dsh-auto-review/mcp] [ESM] lib\mcp.js  25.71 kB ©¦ gzip: 8.27 kB
+? [dsh-auto-review/mcp] [ESM] 1 files, total: 25.71 kB
+? [dsh-auto-review/mcp] Build complete in 23ms
+? [dsh-auto-review/client] [CJS] lib\client.js      17.82 kB ©¦ gzip: 4.93 kB
+? [dsh-auto-review/client] [CJS] lib\client.js.map  28.46 kB ©¦ gzip: 8.18 kB
+? [dsh-auto-review/client] [CJS] 2 files, total: 46.27 kB
+? [dsh-auto-review/client] Build complete in 25ms
+? [dsh-auto-review] Hint: consider adding deps.onlyBundle option to avoid unintended bundling of dependencies, or set deps.onlyBundle: false to disable this hint.
+See more at https://tsdown.dev/options/dependencies#deps-onlybundle
+Detected dependencies in bundle:
+- zod
+? [dsh-auto-review] [ESM] lib\index.js            249.44 kB ©¦ gzip: 61.87 kB
+? [dsh-auto-review] [ESM] lib\invariant.js         12.11 kB ©¦ gzip:  2.72 kB
+? [dsh-auto-review] [ESM] lib\events-B26rtaMW.js   17.04 kB ©¦ gzip:  4.42 kB
+? [dsh-auto-review] [ESM] 3 files, total: 278.58 kB
+? [dsh-auto-review] Build complete in 51ms
+? [dsh-auto-review/eval] Hint: consider adding deps.onlyBundle option to avoid unintended bundling of dependencies, or set deps.onlyBundle: false to disable this hint.
+See more at https://tsdown.dev/options/dependencies#deps-onlybundle
+Detected dependencies in bundle:
+- yaml
+- zod
+? [dsh-auto-review/eval] [ESM] lib\eval-cli.js          19.36 kB ©¦ gzip:   6.14 kB
+? [dsh-auto-review/eval] [ESM] lib\eval.js               1.34 kB ©¦ gzip:   0.55 kB
+? [dsh-auto-review/eval] [ESM] lib\report-CKaOyIzM.js  476.36 kB ©¦ gzip: 109.64 kB
+? [dsh-auto-review/eval] [ESM] 3 files, total: 497.06 kB
+? [dsh-auto-review/eval] Build complete in 74ms
+fix-dts: 19 file(s), 53 specifier(s) rewritten to .js
+build complete: lib/types + lib/index.js + lib/invariant.js + lib/client.js
+EXIT: build -> 0
+=== STEP: verify:self-contained ===
+$ node scripts/verify-self-contained.mjs
+self-contained: all dependency specs resolve from the registry
+EXIT: verify:self-contained -> 0
+=== STEP: pack ===
+src/client/locales.ts
+src/client/present.ts
+src/client/ReviewPanel.tsx
+src/client/styles.ts
+src/config.ts
+src/eval/assert.ts
+src/eval/cli.ts
+src/eval/diff.ts
+src/eval/dsl.ts
+src/eval/index.ts
+src/eval/report.ts
+src/eval/review.ts
+src/eval/runner.ts
+src/eval/stress.ts
+src/eval/trace.ts
+src/events.ts
+src/index.ts
+src/invariant.ts
+src/isolation.ts
+src/mcp/index.ts
+src/mcp/server.ts
+src/mcp/standalone.ts
+src/messages.ts
+src/projection-types.ts
+src/projection.ts
+src/review.ts
+src/runtime.ts
+src/session-events.ts
+Tarball Details
+dsh-auto-review-0.10.3.tgz
+EXIT: pack -> 0
+=== STEP: check-host-versions ===
+check-host-versions: peers cover the newest @deepseek-ai/dsh rc line (0.1.2-rc.1)
+check-host-versions: dev pins cover the newest @deepseek-ai/dsh alpha line (0.1.2-alpha.5)
+EXIT: check-host-versions -> 0
+GATE_ALL_PASS

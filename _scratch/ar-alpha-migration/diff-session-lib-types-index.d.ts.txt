@@ -1,0 +1,106 @@
+﻿diff --git "a/C:\\Users\\zzhdz\\AppData\\Local\\Temp\\ar-api-diff\\x-0.1.2-rc.1\\package\\lib\\types\\index.d.ts" "b/C:\\Users\\zzhdz\\AppData\\Local\\Temp\\ar-api-diff\\x-0.1.3-alpha.2\\package\\lib\\types\\index.d.ts"
+index 9d08c9d..6d8d957 100644
+--- "a/C:\\Users\\zzhdz\\AppData\\Local\\Temp\\ar-api-diff\\x-0.1.2-rc.1\\package\\lib\\types\\index.d.ts"
++++ "b/C:\\Users\\zzhdz\\AppData\\Local\\Temp\\ar-api-diff\\x-0.1.3-alpha.2\\package\\lib\\types\\index.d.ts"
+@@ -10,15 +10,13 @@ import type { Scoped } from '@deepseek-ai/dsh-scope';
+ import type { Message } from '@deepseek-ai/dsh-llm';
+ import { SessionLogOffset, SessionSeq } from './types.ts';
+ import type { TypertLookup } from '@deepseek-ai/dsh-typert-protocol';
+-import type { CreateSessionOptions, EpochHeader, PrepareSessionOptions, RequestContext, SessionEvent, SessionEventMap, SessionEventType, SessionHeader, SessionId, SurfaceIntent, SurfaceEventType } from './types.ts';
++import type { CreateSessionOptions, EpochHeader, PrepareSessionOptions, RequestContext, SessionEvent, SessionEventMap, SessionEventType, SessionHeader, SessionId, SessionSeedEventState, SurfaceIntent, SurfaceEventType } from './types.ts';
+ import type { SessionSurface } from './surface.ts';
+ export * from './types.ts';
+ export { SessionPreparation } from './preparation.ts';
+ export type { SessionPreparationOptions } from './preparation.ts';
+ export type { AssistantMessage, ToolResultMessage, UserMessage } from '@deepseek-ai/dsh-llm';
+ export { interruptedTurnClosers, TOOL_NOT_STARTED, TOOL_OUTCOME_UNKNOWN } from './repair.ts';
+-export { decodeStorageRecord, packChunkRuns } from './chunk-rows.ts';
+-export type { ChunkRow, StorageRecord } from './chunk-rows.ts';
+ export type { SessionSurface, SurfaceFoldReplacement, SurfaceFoldResult } from './surface.ts';
+ export { deriveEventMessage, foldSurface, isAppendSurfaceEvent, isReplacementSurfaceEvent, isSurfaceEvent, isSurfaceEligibleType } from './surface.ts';
+ export { canonicalHeader, foldRequestHeader, headerEquals } from './request-header.ts';
+@@ -124,9 +122,10 @@ export declare class Session {
+      * The first seq appended IN THIS PROCESS: the length of the constructor
+      * seed (0 without one). Events with smaller seq values entered through
+      * construction — replay, fork, or resume — and were never published on the
+-     * `session/event` firehose (constructor seeds do not emit), so consumers
+-     * that replay the log as a publication substitute (telemetry adoption)
+-     * start here. Distinct from {@link inheritedEventCount}, the DURABLE
++     * `session/event` firehose (constructor seeds do not emit). This offset marks
++     * the constructor-input boundary for lifecycle ownership and persistence
++     * adoption; consumers that need complete canonical history still start at
++     * seq 0. Distinct from {@link inheritedEventCount}, the DURABLE
+      * fork-lineage cut: a resumed session's constructor seed is its full stored
+      * log, while the inherited count keeps the original fork value — this field is the
+      * in-process construction fact.
+@@ -154,16 +153,19 @@ export declare class Session {
+      */
+     static create(id: SessionId, seed?: readonly SessionEvent[], header?: SessionHeader, inheritedEventCount?: SessionLogOffset): Session;
+     /**
+-     * Restore a detached session by taking ownership of fresh persistence values.
+-     * The storage format, event envelopes, sequence continuity, surface transitions,
+-     * and header fields are validated before the restored objects are frozen.
++     * Restore a detached session by adopting an independently owned or deeply frozen seed.
++     * Runtime-required event fields, event envelopes, sequence continuity, surface
++     * transitions, and header fields are validated without copying or freezing events.
++     * Embedded Assistant streams remain opaque until a stream consumer or storage
++     * verifier reads them.
+      * @param id - restored session identity.
+-     * @param seed - fresh detached events whose ownership is transferred.
+-     * @param header - fresh detached metadata whose ownership is transferred.
++     * @param seed - independently owned or deeply frozen events.
++     * @param header - independently owned storage metadata.
+      * @param inheritedEventCount - exact fork-inherited prefix length decoded from storage.
++     * @param eventState - aliasing state carried from the operation that produced the seed.
+      * @returns a restored detached session.
+      */
+-    static fromRestore(id: SessionId, seed: readonly SessionEvent[], header: SessionHeader, inheritedEventCount: SessionLogOffset): Session;
++    static fromRestore(id: SessionId, seed: readonly SessionEvent[], header: SessionHeader, inheritedEventCount: SessionLogOffset, eventState: SessionSeedEventState): Session;
+     private constructor();
+     /** Cached immutable full snapshot of the private append-only log. */
+     private eventsSnapshot;
+@@ -212,7 +214,8 @@ export declare class Session {
+      *   declare how it joins the surface, the sole source of derived model
+      *   history) and
+      *   rejected by the compiler for non-surface types like `turn/start` or
+-     *   `assistant/chunk`.
++     *   `assistant/attempt`. Assistant messages embed their exact provider
++     *   stream and cannot cite top-level source events.
+      * @returns the logged event — its assigned `seq`/`time` plus the SNAPSHOT of
+      *   `data` that entered the log, so reading `event.data` back sees the logged
+      *   value, never the caller's still-mutable input.
+@@ -230,7 +233,7 @@ export declare class Session {
+      *   append reentered while this acceptance/publication boundary is open also
+      *   rejects before the log changes.
+      */
+-    append<T extends SessionEventType>(type: T, data: SessionEventMap[T], ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent] : []): SessionEvent<T>;
++    append<T extends SessionEventType>(type: T, data: SessionEventMap[T], ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent<T>] : []): SessionEvent<T>;
+     /** Cached fold of the request-header events — see {@link requestHeader}. */
+     private headerFold;
+     /** Log position (events consumed) the header fold has reached. */
+@@ -305,8 +308,9 @@ export declare class SessionForkError extends Error {
+ /**
+  * In-memory session store (`ctx.sessions`).
+  *
+- * Persistence is intentionally not implemented here — persistence plugins
+- * subscribe to `session/event` and flush on `session/flush` / dispose.
++ * Persistence is intentionally not implemented here — the agent lifecycle
++ * attaches a session-log writer to each published session's write handle;
++ * a session published outside that lifecycle persists nothing.
+  */
+ export declare class SessionStore extends Service {
+     private store;
+@@ -345,10 +349,9 @@ export declare class SessionStore extends Service {
+      *
+      * @param id - the session id; omitted, the store mints `session-<n>`.
+      * @param options - seed events and/or creation metadata for the header. With
+-     *   `seedSource: 'persistence'`, metadata and events must be fresh detached
+-     *   graphs whose ownership transfers to this call: they are validated and
+-     *   frozen in place through {@link Session.fromRestore}, so the caller must
+-     *   retain no mutable aliases.
++     *   `eventState`, every seed event is either independently owned or any
++     *   shared value is deeply frozen; {@link Session.fromRestore} validates and
++     *   adopts those values without copying or freezing them.
+      * @returns the constructed session, NOT yet in the store.
+      * @throws if a session with `id` already exists, metadata is not a plain
+      *   lossless-JSON record with valid scalar fields, or `meta.cwd` is a
