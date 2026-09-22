@@ -35,9 +35,6 @@
     toolBash: false
     toolJobs: false
 
-- id: settings
-  name: '@deepseek-ai/dsh-settings-file'
-
 - id: credentials
   name: '@deepseek-ai/dsh-credentials-local'
 
