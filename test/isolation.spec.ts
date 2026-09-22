@@ -29,9 +29,22 @@ function toolResultMessage(text: string): UserMessage {
   }) as UserMessage
 }
 
-/** The loop's runtime-context snapshot / any context-injecting plugin. */
+/**
+ * The loop's runtime-context snapshot / any context-injecting plugin.
+ *
+ * Host `dsh-v0.1.7-alpha.1` has no catch-all `plugin` source kind: each
+ * producer merge-extends `MessageSourceMap` with its OWN kind. The loop's
+ * runtime-context snapshot declares `'runtime-context'`
+ * (`@deepseek-ai/dsh-agent-loop/src/runtime-context.ts`); this suite does not
+ * import that package, so the literal carries one cast. That is the point of
+ * the fixture: an injected context kind the reviewer allow-list does not name
+ * must be dropped — and a producer being NEW is not a way in.
+ */
 function pluginMessage(plugin: string, text: string): UserMessage {
-  return createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'plugin', plugin } })
+  return createUserMessage({
+    content: [{ type: 'text', text }],
+    source: { kind: plugin, form: 'snapshot', sections: [] } as never,
+  })
 }
 
 /** The workspace instruction loader's own merge-extended source kind. */

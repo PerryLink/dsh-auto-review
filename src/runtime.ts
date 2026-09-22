@@ -9,7 +9,9 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { boundContextSummary, createUserMessage } from '@deepseek-ai/dsh-llm/message'
+// Type-only: declares this plugin's producer-owned message source kind.
+import type {} from './message-source.ts'
 import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
 import type { Session, SessionEventMap } from '@deepseek-ai/dsh-session'
 import { sessionEvents } from './session-events.ts'
@@ -18,7 +20,7 @@ import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-subagent'
 import type { PostToolDecision, ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
-import type { UserMessage } from '@deepseek-ai/dsh-llm'
+import type { UserMessage } from '@deepseek-ai/dsh-llm/message'
 import type { CallId } from './call-id.ts'
 import { isMarkedAuditEvent, isUnmarkedHostVersion, peerSessionVersion, type AuditSupport } from './audit.ts'
 import { fingerprint, VerdictCache } from './cache.ts'
@@ -679,9 +681,14 @@ export class AutoReviewRuntime {
     }
     this.ctx.logger.warn(`auto-review circuit breaker tripped (${trip.kind}: ${trip.count}) by ${request.toolName}; action=${action}`)
     if (action === 'abort-turn') {
+      const notice = messages(this.config.language).circuitNotice(trip.kind, trip.count)
       request.agent.inject(createUserMessage({
-        content: [{ type: 'text', text: messages(this.config.language).circuitNotice(trip.kind, trip.count) }],
-        source: { kind: 'plugin', plugin: 'auto-review' },
+        content: [{ type: 'text', text: notice }],
+        source: {
+          kind: 'auto-review',
+          form: 'notice',
+          summary: boundContextSummary(`auto-review circuit breaker tripped (${trip.kind}: ${trip.count} denials) on ${request.toolName}`),
+        },
       }))
       const timer = setTimeout(() => {
         this.pendingAborts.delete(timer)
@@ -833,12 +840,17 @@ export class AutoReviewRuntime {
     } else {
       memory.enabledOverride = enabled
     }
+    const notice = t.switchedNotice(enabled)
     agent.inject(createUserMessage({
       content: [{
         type: 'text',
-        text: t.switchedNotice(enabled),
+        text: notice,
       }],
-      source: { kind: 'plugin', plugin: 'auto-review' },
+      source: {
+        kind: 'auto-review',
+        form: 'notice',
+        summary: boundContextSummary(notice),
+      },
     }))
     return { kind: 'success', text: t.switchedResult(input.toUpperCase()) }
   }
