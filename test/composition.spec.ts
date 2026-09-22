@@ -21,6 +21,12 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const runner = join(repositoryRoot, 'scripts', 'loader-runner.mjs')
 const builtEntry = join(repositoryRoot, 'lib', 'index.js')
 
+/**
+ * Force the loader runner back to the host's silent non-mount behavior. Used
+ * by one regression guard below; every other case runs the real path.
+ */
+const SILENT_RUNNER_ENV = { DSH_LOADER_RUNNER_NO_RETHROW: '1' }
+
 /** One cordis.yml: real service rows, then the plugin row with config. */
 function configFor(pluginRow: string, configLines: string[] = []): string {
   return [
@@ -33,11 +39,11 @@ function configFor(pluginRow: string, configLines: string[] = []): string {
   ].join('\n')
 }
 
-function run(command: string, args: string[], cwd: string, shell = false, timeout = 120_000) {
+function run(command: string, args: string[], cwd: string, shell = false, timeout = 120_000, env = {}) {
   const result = spawnSync(command, args, {
     cwd,
     encoding: 'utf8',
-    env: { ...process.env },
+    env: { ...process.env, ...env },
     timeout,
     shell,
   })
@@ -77,6 +83,12 @@ describe('real Loader composition', () => {
     const evidence = run(process.execPath, [runner, configPath, 'answerer'], repositoryRoot)
     expect(evidence.status, `invalid config unexpectedly mounted:\n${evidence.stderr}`).not.toBe(0)
     expect(evidence.stderr).toMatch(/toolsPolicy|union|expected|ai|human|never/u)
+    // The refusal must be the CONFIG's, not a downstream symptom of a silent
+    // non-mount: the loader reports a rejected row through `ctx.logger.error`
+    // and its tree no longer re-throws, so without the runner's FAILED-row
+    // re-throw this case passed on the generic "command is missing" text.
+    expect(evidence.stderr).not.toMatch(/command is missing/u)
+    expect(evidence.stderr).toMatch(/toolsPolicy\.default/u)
   })
 
   it('fails loud on an out-of-range budget at resolveConfig through the Loader', () => {
@@ -85,6 +97,7 @@ describe('real Loader composition', () => {
     const evidence = run(process.execPath, [runner, configPath, 'answerer'], repositoryRoot)
     expect(evidence.status, `invalid config unexpectedly mounted:\n${evidence.stderr}`).not.toBe(0)
     expect(evidence.stderr).toMatch(/reviewerTimeoutMs/u)
+    expect(evidence.stderr).not.toMatch(/command is missing/u)
   })
 
   it('a default export fails through the Loader with the missing-inject reason', () => {
@@ -100,6 +113,23 @@ describe('real Loader composition', () => {
     const evidence = run(process.execPath, [runner, configPath, 'answerer'], repositoryRoot)
     expect(evidence.status, 'default-export wrapper unexpectedly mounted').not.toBe(0)
     expect(evidence.stderr).toMatch(/without inject/u)
+    expect(evidence.stderr).not.toMatch(/command is missing/u)
+  })
+
+  it('the silent-non-mount guard is load-bearing: without the re-throw those messages are lost', () => {
+    // The three cases above only prove what they claim because the runner
+    // re-throws the FAILED row's own error. This case pins that dependency by
+    // reproducing the host's silent non-mount: the same invalid config then
+    // fails with the DOWNSTREAM symptom instead, which the assertions above
+    // would have accepted.
+    const configPath = join(temporaryRoot, 'invalid-policy-silent.yml')
+    writeFileSync(configPath, configFor(pathToFileURL(builtEntry).href, ['toolsPolicy:', '  default: bogus']))
+    const loud = run(process.execPath, [runner, configPath, 'answerer'], repositoryRoot)
+    const silent = run(process.execPath, [runner, configPath, 'answerer'], repositoryRoot, false, 120_000, SILENT_RUNNER_ENV)
+    expect(silent.stderr).toMatch(/command is missing/u)
+    expect(silent.stderr).not.toMatch(/toolsPolicy\.default/u)
+    expect(loud.stderr).toMatch(/toolsPolicy\.default/u)
+    expect(loud.stderr).not.toMatch(/command is missing/u)
   })
 })
 

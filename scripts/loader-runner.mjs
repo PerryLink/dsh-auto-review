@@ -16,6 +16,10 @@
 // Usage: node scripts/loader-runner.mjs <cordis.yml> [answerer]
 // Exit 0 prints DSH_LOADER_RESULT <json>; a load failure (invalid config,
 // default export) exits non-zero with the reason on stderr.
+//
+// `DSH_LOADER_RUNNER_NO_RETHROW=1` disables the FAILED-row re-throw below. It
+// exists so the negative regressions can be re-measured against the host's
+// silent non-mount behavior on demand; it is not a supported runtime switch.
 
 import { Context } from '@deepseek-ai/cordis'
 import Include from '@deepseek-ai/cordis-plugin-include'
@@ -24,6 +28,13 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import { createRequire } from 'node:module'
 import { dirname, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+
+/**
+ * Value mirror of `FiberState.FAILED`. The host's cordis declares it as a
+ * `const enum`, so there is no runtime object to import; this is the same
+ * mirror the host's own settings package uses for the same reason.
+ */
+const FIBER_FAILED = 3
 
 const configArgument = process.argv[2]
 const mode = process.argv[3] ?? 'answerer'
@@ -80,6 +91,22 @@ try {
     config: { path: pathToFileURL(configPath).href },
   })
   await ctx.loader.await()
+
+  // A row whose config is rejected (or whose callback throws) no longer fails
+  // `loader.await()`: the loader reports it through `ctx.logger.error` and the
+  // tree now waits with `Promise.allSettled`, so the error stays on that row's
+  // fiber while the composition returns normally. A minimal composition has no
+  // log sink either, so the report is swallowed too. Both negative regressions
+  // this runner exists for (invalid config, stray default export) would
+  // therefore degrade into a silent non-mount and be diagnosed as something
+  // else entirely — so re-throw the first FAILED row's recorded error here.
+  const failedEntry = process.env.DSH_LOADER_RUNNER_NO_RETHROW === '1'
+    ? undefined
+    : [...ctx.loader.entries()].find(entry => entry.fiber?.state === FIBER_FAILED)
+  if (failedEntry !== undefined) {
+    throw /** @type {any} */ (failedEntry.fiber)._error
+      ?? new Error(`loader entry ${failedEntry.options.id ?? ''} failed without a recorded error`)
+  }
 
   if (mode === 'load-only') {
     process.stdout.write('DSH_LOADER_RESULT {"mounted":true}\n')
