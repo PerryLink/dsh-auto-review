@@ -75,7 +75,7 @@ function completedTraceEvents(output: string, toolName?: string): SessionEvent[]
   const events = [event(6, 'turn/start', { turn: 1 })]
   if (toolName !== undefined) {
     events.push(event(7, 'tool/call', { turn: 1, step: 1, callId: 'c1', name: toolName, arguments: '{"pattern":"src/**"}' }))
-    events.push(event(8, 'tool/result', { turn: 1, step: 1, message: { role: 'user', id: 'm1', source: { kind: 'tool', toolName }, content: [{ type: 'tool-result', toolCallId: 'c1', content: [{ type: 'text', text: 'src/index.ts' }] }] } }))
+    events.push(event(8, 'tool/result', { turn: 1, step: 1, message: { role: 'tool', id: 'm1', source: { kind: 'tool', callId: 'c1' }, toolCallId: 'c1', content: [{ type: 'text', text: 'src/index.ts' }] } }))
   }
   events.push(event(9, 'assistant/message', { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: output }] } }))
   events.push(event(10, 'turn/end', { turn: 1, reason: { kind: 'completed' } }))

@@ -376,7 +376,7 @@ describe('compact transcript context', () => {
       { type: 'user/message', data: { content: [{ type: 'text', text: 'please fix the tests' }] } },
       { type: 'assistant/message', data: { turn: 1, step: 1, message: { role: 'assistant', content: [{ type: 'text', text: 'running tests now' }] } } },
       { type: 'tool/call', data: { turn: 1, step: 1, callId: 'c1', name: 'bash', arguments: '{"command":"pnpm test"}' } },
-      { type: 'tool/result', data: { turn: 1, step: 1, message: { role: 'user', content: [{ type: 'tool-result', toolCallId: 'c1', content: [{ type: 'text', text: '76 passed' }], isError: false }] } } },
+      { type: 'tool/result', data: { turn: 1, step: 1, message: { role: 'tool', toolCallId: 'c1', content: [{ type: 'text', text: '76 passed' }] } } },
     ])
     const section = buildContextSection(session.snapshotEvents(), { turns: 1, maxChars: 1000 })
     expect(section).toContain('[user] please fix the tests')

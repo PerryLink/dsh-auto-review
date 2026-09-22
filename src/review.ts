@@ -13,6 +13,7 @@ import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { CallId } from './call-id.ts'
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import { sessionEvents } from './session-events.ts'
+import { readToolResult, toolResultText } from './session-message.ts'
 import type { ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-subagent'
 import { assertObjectJsonSchema, type ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
@@ -150,9 +151,11 @@ function contextLine(event: SessionEvent): string | undefined {
       return `[tool call ${event.data.name}] ${truncate(args, CONTEXT_LINE_BUDGET)}`
     }
     case 'tool/result': {
-      const block = event.data.message.content[0]
-      if (block === undefined || block.type !== 'tool-result') return undefined
-      const text = contentText(block.content)
+      // The result shape differs by host line (V4 first-class tool message vs
+      // the retired V3 `tool-result` wrapper); `readToolResult` reads both.
+      const result = readToolResult(event.data.message)
+      if (result === undefined) return undefined
+      const text = toolResultText(result)
       return text === '' ? undefined : `[tool result] ${truncate(text, CONTEXT_LINE_BUDGET)}`
     }
     default: return undefined

@@ -51,6 +51,13 @@ describe('auto-review invariants', () => {
     await expect(mount('valid-deny-verdict.json')).resolves.toBeDefined()
   })
 
+  // The released-V3 tool-result shape cannot be seeded through `Session.create`
+  // any more: the host's seed boundary asserts the current V4 LLM shape
+  // (`message must have role "tool"`), so a retired row only reaches this
+  // companion through a recovered restore. The V3 tolerance itself is covered
+  // at its own seam in test/session-message.spec.ts, which is where the two
+  // shapes are actually reconciled.
+
   it('fails a log whose deny marker references no verdict (model-visible ⟺ logged)', async () => {
     await expect(mount('deny-marker-orphan.json')).rejects.toMatchObject({
       code: 'INVARIANT',

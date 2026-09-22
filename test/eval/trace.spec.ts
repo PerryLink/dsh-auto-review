@@ -15,10 +15,26 @@ function event(seq: number, type: string, data: unknown): SessionEvent {
 }
 
 const TOOL_CALL = event(5, 'tool/call', { turn: 1, step: 1, callId: 'call-1', name: 'glob', arguments: '{"pattern":"src/**"}' })
+/**
+ * The V4 `tool/result` shape the `dsh-v0.1.7-alpha.1` host writes: a
+ * first-class `role: 'tool'` message carrying `toolCallId` and the result
+ * blocks at its top level. The retired V3 `tool-result` wrapper is gone.
+ */
 const TOOL_RESULT = event(7, 'tool/result', {
   turn: 1,
   step: 1,
-  message: { role: 'user', id: 'm1', source: { kind: 'tool', toolName: 'glob' }, content: [{ type: 'tool-result', toolCallId: 'call-1', content: [{ type: 'text', text: 'src/index.ts' }] }] },
+  message: { role: 'tool', id: 'm1', source: { kind: 'tool', callId: 'call-1' }, toolCallId: 'call-1', content: [{ type: 'text', text: 'src/index.ts' }] },
+})
+
+/**
+ * The released-V3 `tool/result` shape (a `tool-result` wrapper block inside a
+ * user-role message) — READ compatibility only. Logs written before the
+ * upgrade are still replayable, so the fold must keep reading them.
+ */
+const V3_TOOL_RESULT = event(7, 'tool/result', {
+  turn: 1,
+  step: 1,
+  message: { role: 'user', id: 'm1', source: { kind: 'tool', callId: 'call-1' }, content: [{ type: 'tool-result', toolCallId: 'call-1', content: [{ type: 'text', text: 'src/index.ts' }] }] },
 })
 
 describe('collectTrace', () => {
@@ -51,15 +67,30 @@ describe('collectTrace', () => {
     expect(trace.lastSeq).toBe(11)
   })
 
-  it('marks results as errors from the event error identity or the block flag', () => {
+  it('marks results as errors from the event error identity or the message flag', () => {
     const withEventError = event(7, 'tool/result', {
       turn: 1, step: 1,
-      message: { role: 'user', id: 'm1', source: { kind: 'tool', toolName: 'bash' }, content: [{ type: 'tool-result', toolCallId: 'call-1', content: [{ type: 'text', text: 'boom' }] }] },
+      message: { role: 'tool', id: 'm1', source: { kind: 'tool', callId: 'call-1' }, toolCallId: 'call-1', content: [{ type: 'text', text: 'boom' }] },
       error: { name: 'ExecError', code: 'TIMEOUT' },
     })
     const trace = collectTrace(SessionId('s1'), [TOOL_CALL, withEventError], 5)
     expect(trace.toolCalls[0]?.result?.isError).toBe(true)
     expect(trace.toolCalls[0]?.result?.error).toEqual({ name: 'ExecError', code: 'TIMEOUT' })
+  })
+
+  it('reads a released-V3 tool-result wrapper too (upgrade read compatibility)', () => {
+    const trace = collectTrace(SessionId('s1'), [TOOL_CALL, V3_TOOL_RESULT], 5)
+    expect(trace.toolCalls[0]?.result?.text).toBe('src/index.ts')
+    expect(trace.toolCalls[0]?.result?.isError).toBe(false)
+  })
+
+  it('marks a V3 wrapper result as an error from its isError flag', () => {
+    const failed = event(7, 'tool/result', {
+      turn: 1, step: 1,
+      message: { role: 'user', id: 'm1', source: { kind: 'tool', callId: 'call-1' }, content: [{ type: 'tool-result', toolCallId: 'call-1', content: [{ type: 'text', text: 'boom' }], isError: true }] },
+    })
+    const trace = collectTrace(SessionId('s1'), [TOOL_CALL, failed], 5)
+    expect(trace.toolCalls[0]?.result?.isError).toBe(true)
   })
 
   it('sums token usage across assistant messages', () => {
@@ -88,6 +119,14 @@ describe('collectTrace', () => {
   it('degrades unknown turn-end reasons to a label', () => {
     const trace = collectTrace(SessionId('s1'), [event(5, 'turn/end', { turn: 1, reason: { kind: 'mystery' } })], 5)
     expect(trace.turnEnd).toEqual({ kind: 'unknown' })
+  })
+
+  it('reports the host\'s forked turn-end reason as itself, not as unknown', () => {
+    // Fork-seed construction closes a turn still open at the fork boundary.
+    // The eval runner forks sessions, so this is a reason a real case can end
+    // with — and `turnEnds: completed` must still see it as NOT completed.
+    const trace = collectTrace(SessionId('s1'), [event(5, 'turn/end', { turn: 1, reason: { kind: 'forked' } })], 5)
+    expect(trace.turnEnd).toEqual({ kind: 'forked' })
   })
 
   it('ignores unparseable tool arguments', () => {

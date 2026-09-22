@@ -9,6 +9,7 @@
  */
 
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
+import { readToolResult, toolResultIsError, toolResultText } from '../session-message.ts'
 
 /** One collected tool invocation: the call and, when present, its paired result. */
 export interface ToolCallRecord {
@@ -48,6 +49,8 @@ export type TraceTurnEnd =
   | { kind: 'error'; code: string; message: string }
   | { kind: 'max-tokens' }
   | { kind: 'interrupted' }
+  /** Fork-seed construction closed a turn still open at the fork boundary (host `TurnEndReasonMap.forked`). */
+  | { kind: 'forked' }
   | { kind: 'unknown' }
 
 /** One collected request header: the model-visible prompt and tool catalog. */
@@ -125,7 +128,15 @@ function tryParseJson(text: string): unknown | undefined {
   }
 }
 
-/** Copy one turn-end reason into the owned {@link TraceTurnEnd} shape. */
+/**
+ * Copy one turn-end reason into the owned {@link TraceTurnEnd} shape.
+ *
+ * The host's `TurnEndReasonMap` is merge-extensible, so this is deliberately
+ * NOT exhaustive: `default` labels a kind this build does not know instead of
+ * silently falling through. `forked` (host `dsh-v0.1.7-alpha.1`) has its own
+ * case rather than landing in `default`, so a fork-seed cut is reported as
+ * itself instead of as an unrecognized reason.
+ */
 function copyTurnEnd(value: unknown): TraceTurnEnd {
   if (typeof value !== 'object' || value === null) return { kind: 'unknown' }
   const record = value as Record<string, unknown>
@@ -135,6 +146,7 @@ function copyTurnEnd(value: unknown): TraceTurnEnd {
     case 'blocked': return { kind: 'blocked' }
     case 'max-tokens': return { kind: 'max-tokens' }
     case 'interrupted': return { kind: 'interrupted' }
+    case 'forked': return { kind: 'forked' }
     case 'aborted': return { kind: 'aborted' }
     case 'error': {
       const error = record.error
@@ -245,13 +257,13 @@ export function collectTrace(sessionId: SessionId, events: readonly SessionEvent
         break
       }
       case 'tool/result': {
-        const block = event.data.message.content[0]
-        if (block === undefined || block.type !== 'tool-result') break
-        const text = contentText(block.content as readonly { type: string }[])
-        const isError = event.data.error !== undefined || block.isError === true
-        resultsByCall.set(block.toolCallId, {
-          text,
-          isError,
+        // The result shape differs by host line (V4 first-class tool message vs
+        // the retired V3 `tool-result` wrapper); `readToolResult` reads both.
+        const result = readToolResult(event.data.message)
+        if (result === undefined) break
+        resultsByCall.set(result.callId, {
+          text: toolResultText(result),
+          isError: toolResultIsError(event.data.error, result),
           ...(event.data.error !== undefined ? { error: { name: event.data.error.name, code: event.data.error.code } } : {}),
         })
         break
