@@ -4,6 +4,8 @@ All notable changes to `dsh-auto-review` are documented here. The repo is pre-re
 
 ## [Unreleased]
 
+## [0.12.7] - 2026-09-22
+
 ### Changed
 
 - **Adapt to host `dsh-v0.1.7-alpha.1`.** Five confirmed breakages between the `0.1.6-alpha.2` faces this package was built against and the `0.1.7-alpha.1` host:
