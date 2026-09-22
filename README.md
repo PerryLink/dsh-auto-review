@@ -2,6 +2,7 @@
 
 # 🤖 dsh-auto-review
 [![Gitee](https://img.shields.io/badge/Gitee-mirror-c71d23?logo=gitee)](https://gitee.com/perrylink/dsh-auto-review)
+[![dshfind](https://dshfind.com/api/badge/PerryLink/dsh-auto-review?metric=downloads)](https://dshfind.com/plugins/PerryLink/dsh-auto-review?ref=badge)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/PerryLink/dsh-auto-review/badge)](https://api.securityscorecards.dev/projects/github.com/PerryLink/dsh-auto-review)
 
 **Second-model AI approval for DeepSeek Harness — a read-only reviewer subagent decides allow/deny on the approval chain, fail-closed by default.**
