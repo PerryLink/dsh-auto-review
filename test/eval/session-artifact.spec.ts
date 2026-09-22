@@ -156,11 +156,17 @@ describe('malformed and unsupported headers (U6)', () => {
     const { headerLine, rows } = parseArtifact(renderSessionArtifact(makeHeader(), v3Events as unknown as SessionEvent[]))
     const mislabeled = { ...headerLine, version: 2 }
     expect(sessionFormatCatalog.readHeader(mislabeled).status).toBe('migration-required')
-    const restore = sessionFormatCatalog.createRestore(mislabeled, { recovery: 'strict', validation: 'current' })
+    // The refusal now happens while the cross-version stage is BUILT: the
+    // installed V3→V4 catalog migration demands explicit historical child
+    // facts (an empty array for a parent with none) that a mislabeled V2
+    // header cannot supply, so `createRestore` throws instead of handing back
+    // a reader. Either way the artifact is refused rather than read as V2 —
+    // the session-format stage boundary moved, not the guarantee.
     expect(() => {
+      const restore = sessionFormatCatalog.createRestore(mislabeled, { recovery: 'strict', validation: 'current' })
       for (const row of rows) restore.decodeRow(row)
       restore.finish()
-    }).toThrow()
+    }).toThrow(/explicit historical child facts/u)
   })
 
   it('fails closed on an unmarked unknown autoReview event in the artifact body', () => {
