@@ -30,7 +30,7 @@
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.1.6-alpha.2` (verified 2026-09-18). Dual-line npm support: dev pins and runtime deps `0.1.5-rc.2`, peers `>=0.1.2-rc.1 <0.2.0 \|\| >=0.1.5-alpha.1 <0.2.0 \|\| >=0.1.6-0 <0.2.0` — the plugin code feature-detects the published host lines and each line runs the full gate chain; the runtime dependency pins follow the alpha line so a profile install never shadows the host's own tree. On the alpha.2 line the eval fixtures pin `deepseek-flash` (the removed `deepseek-v4-flash` id is gone from `eval/`). |
+| Harness | DeepSeek Harness `dsh-v0.1.7-alpha.1` (verified 2026-09-22). Dual-line npm support: dev pins and runtime deps `0.1.7-alpha.1`, peers `>=0.1.2-rc.1 <0.2.0 \|\| >=0.1.5-alpha.1 <0.2.0 \|\| >=0.1.6-0 <0.2.0 \|\| >=0.1.7-0 <0.2.0 \|\| >=0.1.7-0 <0.2.0` — the plugin code feature-detects the published host lines and each line runs the full gate chain; the runtime dependency pins follow the host line so a profile install never shadows the host's own tree. `pnpm-workspace.yaml` pins the whole `@deepseek-ai/dsh-*` graph to that line, because `autoInstallPeers` otherwise fills the frozen `dsh-agent-spine-demo` subgraph's `^0.1.1-rc.2` peers with previews that lack the exports the 0.1.7 packages import. On the alpha.2 line the eval fixtures pin `deepseek-flash` (the removed `deepseek-v4-flash` id is gone from `eval/`). |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | Platforms | All (host answerer; optional Web review panel via the session-projection capability) |
 | Model | Any (the reviewer inherits the session agent's route; `reviewerModel` overrides) |
