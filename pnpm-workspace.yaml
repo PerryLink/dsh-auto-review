@@ -16,7 +16,7 @@ allowBuilds:
   '@deepseek-ai/dsh-subprocess-local': true
   node-pty: true
   koffi: true
-# Whole-graph pin to the host line (dsh-v0.1.7-alpha.1).
+# Whole-graph pin to the host line (dsh-v0.1.7-alpha.2).
 #
 # Only the DIRECT `@deepseek-ai/dsh-*` dependencies can be pinned in
 # package.json, because pnpm 11 no longer reads a `pnpm` field there. Everything
@@ -31,65 +31,65 @@ allowBuilds:
 # composition with 7 of 18 entries inactive. This map is the fix.
 #
 # It is a pin, not a widening: every listed package IS published on
-# 0.1.7-alpha.1, and that line is what this package's own dependencies and the
+# 0.1.7-alpha.2, and that line is what this package's own dependencies and the
 # host already require. Do NOT re-add a row for a package the host has deleted
 # (`dsh-agent-presets`, `dsh-code-runtime`) — pnpm would fail to resolve it.
 overrides:
-  '@deepseek-ai/dsh-agent': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-agent-instructions': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-agent-loop': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-agent-preset-registry': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-anonymous-user-id': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-atomic-write': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-attachment': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-brand': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-commands': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-compaction': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-credentials': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-deepseek-account': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-deepseek-llm-api-extensions': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-fs': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-fs-local': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-goal': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-goal-round-driver': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-home-paths': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-invariants': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-jobs': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-jobs-local': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-launch-environment': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-llm': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-llm-retry': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-output-retention': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-permission-presets': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-ptc-runtime': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-sandbox': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-sandbox-policy': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-scope': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-session': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-session-persistence': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-session-projection': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-session-projection-cache': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-session-query': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-session-title': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-settings': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-shell': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-shell-env': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-skill': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-skill-filesystem': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-spill': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-subagent': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-subagent-in-process-driver': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-subprocess': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-system-prompt': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-timeout': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-tool-bash': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-tool-goal': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-tool-jobs': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-tool-skill': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-tools': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-typert-protocol': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-user-approval': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-util-time': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-util-values': 0.1.7-alpha.1
-  '@deepseek-ai/dsh-workspace': 0.1.7-alpha.1
+  '@deepseek-ai/dsh-agent': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-agent-instructions': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-agent-loop': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-agent-preset-registry': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-anonymous-user-id': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-atomic-write': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-attachment': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-brand': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-commands': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-compaction': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-credentials': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-deepseek-account': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-deepseek-llm-api-extensions': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-fs': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-fs-local': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-goal': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-goal-round-driver': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-home-paths': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-invariants': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-jobs': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-jobs-local': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-launch-environment': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-llm': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-llm-retry': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-output-retention': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-permission-presets': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-ptc-runtime': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-sandbox': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-sandbox-policy': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-scope': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-session': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-session-persistence': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-session-projection': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-session-projection-cache': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-session-query': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-session-title': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-settings': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-shell': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-shell-env': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-skill': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-skill-filesystem': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-spill': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-subagent': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-subagent-in-process-driver': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-subprocess': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-system-prompt': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-timeout': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-tool-bash': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-tool-goal': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-tool-jobs': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-tool-skill': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-tools': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-typert-protocol': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-user-approval': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-util-time': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-util-values': 0.1.7-alpha.2
+  '@deepseek-ai/dsh-workspace': 0.1.7-alpha.2
 verifyDepsBeforeRun: false
