@@ -2,6 +2,13 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [Unreleased]
+
+### Changed
+
+- Move the `@deepseek-ai/dsh-*` host pins to the published `0.1.7-rc.1` line and re-verify this plugin against that host line.
+- `dshWorkshop.compatibility.dshVersions` records `0.1.7-rc.1`; the five-language README compatibility rows name `dsh-v0.1.7-rc.1`.
+
 ## [0.12.8] - 2026-09-23
 
 ### Changed
