@@ -37,7 +37,7 @@
 
 | 方面 | 状态 |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.1.7-rc.1`（2026-09-24 已核验）。双线 npm 支持：dev 钉号与运行时依赖均为 `0.1.7-rc.1`、peer 范围 `>=0.1.2-rc.1 <0.2.0 \|\| >=0.1.5-alpha.1 <0.2.0 \|\| >=0.1.6-0 <0.2.0 \|\| >=0.1.7-0 <0.2.0 \|\| >=0.1.7-0 <0.2.0` —— 插件代码兼容各已发布宿主线（特性探测），各线均跑完整门禁链；运行时依赖钉号随宿主线，避免 profile 安装遮蔽宿主自带树。`pnpm-workspace.yaml` 把整张 `@deepseek-ai/dsh-*` 图钉到该线：否则 `autoInstallPeers` 会用缺少 0.1.7 包所需导出的预览版填补已冻结的 `dsh-agent-spine-demo` 子图的 `^0.1.1-rc.2` peer。alpha.2 线上 eval 夹具钉 `deepseek-flash`（已移除的 `deepseek-v4-flash` 不再出现在 `eval/`）。 |
+| Harness | DeepSeek Harness `dsh-v0.1.7-rc.2`（2026-09-24 已核验）。双线 npm 支持：dev 钉号与运行时依赖均为 `0.1.7-rc.2`、peer 范围 `>=0.1.2-rc.1 <0.2.0 \|\| >=0.1.5-alpha.1 <0.2.0 \|\| >=0.1.6-0 <0.2.0 \|\| >=0.1.7-0 <0.2.0 \|\| >=0.1.7-0 <0.2.0` —— 插件代码兼容各已发布宿主线（特性探测），各线均跑完整门禁链；运行时依赖钉号随宿主线，避免 profile 安装遮蔽宿主自带树。`pnpm-workspace.yaml` 把整张 `@deepseek-ai/dsh-*` 图钉到该线：否则 `autoInstallPeers` 会用缺少 0.1.7 包所需导出的预览版填补已冻结的 `dsh-agent-spine-demo` 子图的 `^0.1.1-rc.2` peer。alpha.2 线上 eval 夹具钉 `deepseek-flash`（已移除的 `deepseek-v4-flash` 不再出现在 `eval/`）。 |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | 平台 | 全部（宿主 answerer；可选 Web 审查面板，依赖会话投影能力） |
 | 模型 | 任意（审查器默认继承会话代理的路由；`reviewerModel` 可覆盖） |
