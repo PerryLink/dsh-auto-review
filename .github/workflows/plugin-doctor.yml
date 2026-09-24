@@ -1,4 +1,17 @@
+# dsh-plugin-doctor gate — the canonical CI step.
+#
+# Copy this file to `.github/workflows/plugin-doctor.yml` in YOUR repository.
+# That exact path is required only for the author-issued audited badge
+# (Path B); for the self-serve badge (Path A) any path works, though keeping
+# the conventional one lets others find it.
+#
+# What this does: runs the STATIC R+K criteria (SPEC.md) over the committed
+# tree and fails the job if any gated check fails. It deliberately does NOT
+# install dependencies or build — see the note below.
+#
+# Criteria and their author: https://github.com/PerryLink/dsh-plugin-doctor/blob/main/SPEC.md
 name: plugin-doctor
+
 on:
   push:
     branches: [main, master]
@@ -13,23 +26,45 @@ jobs:
     name: dsh-plugin-doctor (static R/K)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # Do NOT add install / build steps to THIS workflow:
+      #   ① family repos need HARNESS_COMMIT + gen-aliases to build; without them
+      #      the build always fails;
+      #   ② a prebuild step wipes the committed lib/, manufacturing a false red
+      #      (measured 2026-09-09: 17 false reds).
+      # R2/R4 read built artifacts and are gated by each repo's own ci.yml.
+      # This gate REPORTS them but does not judge on them.
+      #
+      # ⚠️  The pin MUST be the scoped full name at an exact version:
+      #     the bare npm name `dsh-plugin-doctor` belongs to a DIFFERENT project
+      #     (Xrainsmile/DSH-Plugin-Doctor), so `npx dsh-plugin-doctor` executes
+      #     someone else's package and none of these checks run.
+      #     Always: @perrylink/dsh-plugin-doctor@<exact version>
+      #
+      # ⚠️  `cd /tmp` is REQUIRED, not tidiness. `npm exec` resolves the command
+      #     name against the current package.json first, so running this inside a
+      #     checkout that declares a `bin` of the same name makes npx invoke the
+      #     LOCAL bin instead of the published one — and with no node_modules
+      #     present that is `sh: 1: dsh-plugin-doctor: not found`, exit 127.
+      #     Measured on ubuntu-latest, npm 10.9.8, node 22:
+      #       from the checkout  -> exit 127, no JSON      (this repository)
+      #       from /tmp          -> exit 0, JSON written   (every other repo)
+      #     So this repository's own gate failed while 42 others passed. Running
+      #     from outside the tree removes the ambiguity; --repo is absolute
+      #     because the working directory is no longer the checkout.
       - name: Run dsh-plugin-doctor (static R/K on the committed tree)
         run: |
           set +e
-          out="$(npx --yes @perrylink/dsh-plugin-doctor@0.3.1 --repo . --no-smoke --only "R,K" --json /tmp/doctor.json 2>&1)"
+          cd /tmp
+          out="$(npx --yes @perrylink/dsh-plugin-doctor@0.4.4 --repo "$GITHUB_WORKSPACE" --no-smoke --only "R,K" --json /tmp/doctor.json 2>&1)"
           set -e
           printf '%s\n' "$out"
           echo "$out" | grep -q 'R0 ' || { echo "::error::doctor ran no R checks"; exit 1; }
           echo "$out" | grep -q 'K1 ' || { echo "::error::doctor ran no K checks"; exit 1; }
           if [ ! -f /tmp/doctor.json ]; then echo "::error::doctor produced no JSON report"; exit 1; fi
-          # R2/R4 read the built entry (lib/). The family builds it in its own ci.yml
-          # with the pinned harness aliases (HARNESS_COMMIT + gen-aliases); a build
-          # here would fail without them and its prebuild would wipe the committed
-          # lib/. They are reported but gated by ci.yml, not by this workflow.
           node -e '
             const r = JSON.parse(require("fs").readFileSync("/tmp/doctor.json", "utf8")).results
             const buildDep = r.filter((x) => /^R[24] /.test(x.name))
