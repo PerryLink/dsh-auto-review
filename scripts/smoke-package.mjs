@@ -46,9 +46,9 @@ const checkFile = path.join(scratch, 'check.mjs')
 // already dev-pins so the smoke proves the artifact instead of pnpm's peer
 // resolver; drop the pins once pnpm resolves prerelease peer chains.
 const PEER_PINS = {
-  '@deepseek-ai/dsh-scope': '0.1.7-alpha.2',
-  '@deepseek-ai/dsh-typert-protocol': '0.1.7-alpha.2',
-  '@deepseek-ai/dsh-invariants': '0.1.7-alpha.2',
+  '@deepseek-ai/dsh-scope': '0.1.7-rc.1',
+  '@deepseek-ai/dsh-typert-protocol': '0.1.7-rc.1',
+  '@deepseek-ai/dsh-invariants': '0.1.7-rc.1',
 }
 writeFileSync(path.join(scratch, 'package.json'), JSON.stringify({
   name: 'smoke',
