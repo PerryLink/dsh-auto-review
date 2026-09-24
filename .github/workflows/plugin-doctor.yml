@@ -59,7 +59,7 @@ jobs:
         run: |
           set +e
           cd /tmp
-          out="$(npx --yes @perrylink/dsh-plugin-doctor@0.3.2 --repo "$GITHUB_WORKSPACE" --no-smoke --only "R,K" --json /tmp/doctor.json 2>&1)"
+          out="$(npx --yes @perrylink/dsh-plugin-doctor@0.4.4 --repo "$GITHUB_WORKSPACE" --no-smoke --only "R,K" --json /tmp/doctor.json 2>&1)"
           set -e
           printf '%s\n' "$out"
           echo "$out" | grep -q 'R0 ' || { echo "::error::doctor ran no R checks"; exit 1; }
