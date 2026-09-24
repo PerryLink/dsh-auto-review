@@ -4,6 +4,8 @@ All notable changes to `dsh-auto-review` are documented here. The repo is pre-re
 
 ## [Unreleased]
 
+## [0.12.10] - 2026-09-25
+
 ### Changed
 
 - Host pins move to `0.1.7-rc.2`; re-verified against that host line. Every `@deepseek-ai/dsh-*` dev/test dependency now pins `0.1.7-rc.2`, the `dshWorkshop.compatibility.dshVersions` timeline appends `0.1.7-rc.2`, and the compatibility baseline in every README records the `dsh-v0.1.7-rc.2` host. The declared host ranges (`engines.dsh` and the `peerDependencies` union) are deliberately **unchanged** — they already admit `0.1.7-rc.2`, and a range is what the manifest accepts, not what has been tested.
