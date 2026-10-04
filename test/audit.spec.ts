@@ -36,8 +36,22 @@ describe('isUnmarkedHostVersion', () => {
     }
   })
 
+  // Regression pin for the 2026-10-04 0.2.1-alpha.1 migration: the published
+  // `dsh-session@0.2.1-alpha.1` builds the append envelope as
+  // `{ type, seq, time, data }` + surface metadata only, exactly like the 0.1.x
+  // lines, so `0.2.x` prereleases must classify as unmarked BEFORE the first
+  // append. Classifying them as "possibly marker-aware" made the probe write
+  // one unmarked event and only then degrade — losing that event from the
+  // in-memory mirror and leaving the per-turn budgets under-counted, which
+  // turned two answerer specs red.
+  it('flags every published 0.2.x prerelease line', () => {
+    for (const version of ['0.2.0-rc.1', '0.2.0-rc.2', '0.2.1-alpha.1', '0.2.1-rc.1']) {
+      expect(isUnmarkedHostVersion(version), `${version} must classify as unmarked`).toBe(true)
+    }
+  })
+
   it('treats later and non-rc versions as possibly-marker-aware (verified by the probe)', () => {
-    for (const version of ['0.1.0-rc.9', '0.1.1-rc.3', '0.2.0', '0.1.0', '1.0.0', '0.1.0-rc.8-nightly']) {
+    for (const version of ['0.1.0-rc.9', '0.1.1-rc.3', '0.2.0', '0.2.1', '0.1.0', '1.0.0', '0.1.0-rc.8-nightly']) {
       expect(isUnmarkedHostVersion(version)).toBe(false)
     }
   })

@@ -96,6 +96,18 @@ export function isUnmarkedHostVersion(version: string): boolean {
   // stable `0.1.x` cannot be distinguished from its prereleases here, and
   // fail-closed is the safe direction.
   if (line !== null) return Number(line[1]) >= 2
+  // The 0.2 corridor is non-stamping too, verified 2026-10-04 against the
+  // published `0.2.1-alpha.1` `dsh-session`: `append(type, data, ...opts)`
+  // reads only `sourceEventSeqs`/`surfaceOp` out of the options bag and builds
+  // the envelope as `{ type, seq, time, data }` plus that surface metadata, so
+  // `{ ignorable: true }` is dropped and the event lands unmarked. Without this
+  // clause the line falls through to the "possibly marker-aware" path, whose
+  // append probe writes one unmarked event into the log BEFORE discovering the
+  // host cannot stamp — the exact pollution this guard exists to prevent.
+  // Only PRERELEASES are classified here: a stable `0.2.x` may yet add the
+  // append option, and that must fail open into the probe instead.
+  const rc02 = /^0\.2\.(\d+)-/.exec(v)
+  if (rc02 !== null) return Number(rc02[1]) >= 0
   return false
 }
 
