@@ -4,6 +4,10 @@ All notable changes to `dsh-auto-review` are documented here. The repo is pre-re
 
 ## [Unreleased]
 
+## [0.12.12] - 2026-10-05
+
+Adds the versioned five-language **interoperability declaration** to the READMEs: the plugin records, against DSH `0.2.0-rc.2`, every injection point it owns and why none of them collide with another plugin — no tool-name, service-key, slot, HTTP-route, patch-layer or global-mutation overlap, and, for each ordering-sensitive event it listens on, that the listener delegates through `next()` so a shared waterfall chain is never short-circuited. Verified by `dsh-plugin-doctor` K10-K14 (checkset `R0-R8+K1-K14+D0-D3,D9+CC1-CC5/3`). Documentation only; no behaviour change.
+
 ## [0.12.11] - 2026-10-04
 
 

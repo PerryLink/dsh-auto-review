@@ -391,6 +391,25 @@ Todos los plugins de PerryLink pueden explorarse en el mercado integrado de DSH 
 [Apache License 2.0](LICENSE) © 2026 dsh-auto-review contributors
 
 
+## Interoperabilidad con otros plugins de DSH
+
+Verificado contra **DSH `0.2.0-rc.2`** (el runtime para el que se publica este README) y el conjunto de plugins con más estrellas sondeado el 2026-10-05.
+
+Este plugin **no interfiere** con otros plugins, incluidos los de más estrellas:
+
+- **Sin colisión de nombres de herramienta.** Todas las herramientas llevan espacio de nombres; ninguna ocupa un nombre desnudo ya perteneciente a una herramienta incluida u otro plugin.
+- **Sin colisión de clave de servicio.** Solo provee `autoReviewRuntime`; esa clave no es una costura incluida ni la provee ningún plugin de más estrellas.
+- **Sin colisión de slot.** No registra ninguna clave de slot de cliente, así que no disputa un asiento `shadows-shipped-ui`.
+- **Sin colisión de ruta HTTP.** No registra ningún prefijo `webServer`.
+- **Sin colisión en la capa de patch.** El patch del bundle solo hace `insert` de su propia fila; nunca sobrescribe el `config` de una fila incluida.
+- **Sin mutación global.** No parchea prototipos, ni reescribe `process.env`, ni reemplaza el dispatcher global de fetch.
+
+**Los listeners de eventos compartidos no interfieren por construcción.** Observa los eventos sensibles al orden `agent/pre-step`, `approval/request`, `tools/post-execute` con `ctx.on()` — el registro de difusión de Cordis, donde cada listener se ejecuta y ninguno puede dejar sin turno a otro. **Todos los listeners aquí delegan por `next()`**, así que la cadena nunca se cortocircuita:
+  - `agent/pre-step` — also used by `dsh-routing-suite` (7000★, 7 listeners), `modlens` (4122★), `dsh-purge` (3317★), `dsh-agent-teams` (1923★), `dsh-context` (1849★).
+  - `tools/post-execute` — also used by `cc-safety-net` (1576★).
+
+Evidencia estática: `dsh-plugin-doctor` K10–K13 dan `pass` en todas las comprobaciones de este repositorio.
+
 ## PerryLink DSH Plugin Family
 
 This project is one of the **45 DeepSeek Harness plugins** maintained by [PerryLink](https://github.com/PerryLink). If this one helps you, the others likely will too:
