@@ -4,7 +4,7 @@ All notable changes to `dsh-auto-review` are documented here. The repo is pre-re
 
 ## [Unreleased]
 
-## [0.12.13] - undefined
+## [0.12.13] - 2026-10-05
 
 undefined
 
