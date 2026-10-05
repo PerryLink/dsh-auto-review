@@ -2,6 +2,15 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [0.12.15] - 2026-10-06
+
+### Fixed
+
+- **The published package cannot typecheck on the 0.2.1 line.** `src/invariant.ts` imported the `InvariantFailure` and `InvariantInstaller` types from `@deepseek-ai/dsh-invariants`, which the host REMOVED in `0.2.1-alpha.1` (upgrade guide `remove-runtime-invariants`), while the package's own peer band already admitted `>=0.2.1-0 <0.3.0`. Both shapes are now declared locally, together with the `invariants` service augmentation the removed package used to contribute 鈥?the companion's single `ctx.invariants.register(...)` call depends on it, so dropping the import without that augmentation would have moved the same failure one line down.
+- The companion's behaviour is unchanged: `inject: ['invariants']` still parks its fiber in PENDING on a composition that provides no such service, which is every plain web profile (the row ships commented out in the bundle patch anyway).
+- The `@deepseek-ai/dsh-invariants` dev pin is dropped (the plugin pins and this pin had drifted apart, `0.2.1-alpha.1` vs `0.2.0-rc.2`), and `test/invariant.spec.ts` now loads the registry dynamically and skips its 23 cases when the host no longer ships the package, instead of failing at collection time.
+
+
 ## [0.12.14] - 2026-10-05
 
 ### Changed
