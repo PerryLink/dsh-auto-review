@@ -9,7 +9,6 @@ import { readFileSync } from 'node:fs'
 import { Context } from '@deepseek-ai/cordis'
 import { createToolResultMessage } from '@deepseek-ai/dsh-llm'
 import { CallId } from './call-id.ts'
-import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 import SessionStore from '@deepseek-ai/dsh-session'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
@@ -17,6 +16,19 @@ import { ApprovalRequestId } from '@deepseek-ai/dsh-user-approval'
 import { describe, expect, it } from 'vitest'
 import * as AutoReviewInvariant from '../src/invariant.ts'
 import { AutoReviewCircuitId, AutoReviewRejectionId, AutoReviewVerdictId } from '../src/index.ts'
+
+/**
+ * `@deepseek-ai/dsh-invariants` is a devDependency on the host lines that still
+ * ship it (through `0.2.0-rc.2`). The host REMOVED the package in
+ * `0.2.1-alpha.1`, so on those pins the registry does not exist to mount and
+ * the companion is inert by construction (`inject: ['invariants']` parks the
+ * fiber in PENDING). Loaded dynamically for exactly that reason: a static
+ * import would turn "the host deleted this package" into a collection error
+ * instead of a skip.
+ */
+const InvariantRegistry = await import('@deepseek-ai/dsh-invariants')
+  .then(module => module.default)
+  .catch(() => undefined)
 
 function fixtureEvents(name: string): unknown {
   const url = new URL(`../fixtures/sessions/${name}`, import.meta.url)
@@ -29,7 +41,8 @@ async function mount(fixture?: string): Promise<{ ctx: Context; session: Session
   const session = ctx.sessions.create(SessionId(`fixture-${fixture ?? 'empty'}`), {
     ...fixture !== undefined ? { seed: fixtureEvents(fixture) as never } : {},
   })
-  await ctx.plugin(InvariantRegistry, { enabled: true })
+  // Narrowed by the `describe.skipIf` guard below.
+  await ctx.plugin(InvariantRegistry as NonNullable<typeof InvariantRegistry>, { enabled: true })
   await ctx.plugin(AutoReviewInvariant)
   return { ctx, session }
 }
@@ -46,7 +59,7 @@ function appendToolResult(session: Session, callId: string, text: string): void 
   }, { surfaceOp: 'append' })
 }
 
-describe('auto-review invariants', () => {
+describe.skipIf(InvariantRegistry === undefined)('auto-review invariants', () => {
   it('replays a complete valid deny chain without failures', async () => {
     await expect(mount('valid-deny-verdict.json')).resolves.toBeDefined()
   })

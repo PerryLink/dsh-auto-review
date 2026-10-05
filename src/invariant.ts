@@ -15,14 +15,65 @@
  * @module dsh-auto-review/invariant
  */
 
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context, Inject } from '@deepseek-ai/cordis'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { sessionEvents } from './session-events.ts'
 import { readToolResult, toolResultText } from './session-message.ts'
-import type { InvariantFailure, InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 import { AUTO_REVIEW_FALLBACKS, CIRCUIT_MARKER_PATTERN, DENY_MARKER_PATTERN, FALLBACK_MARKER_PATTERN, NEVER_MARKER_PATTERN } from './events.ts'
 
 const PACKAGE_NAME = 'dsh-auto-review'
+
+/**
+ * Invariant-installer contract, declared locally instead of imported.
+ *
+ * `@deepseek-ai/dsh-invariants` was REMOVED from the host in `0.2.1-alpha.1`
+ * (official upgrade guide `remove-runtime-invariants`: no `dsh-invariants`
+ * package, no `InvariantRegistry`/`InvariantInstaller`/`InvariantFailure`, and
+ * no `<package>/invariant` subpath). Importing the types from it would make
+ * this package fail to typecheck on every host line from `0.2.1-alpha.1` on,
+ * even though the companion itself stays inert there: `inject: ['invariants']`
+ * simply parks the fiber in PENDING on a composition that provides no such
+ * service (the plain web profile never did — the row ships commented out).
+ *
+ * The shapes below mirror the removed package's published types exactly, so
+ * the module keeps working unchanged on the host lines that still ship the
+ * package (through `0.2.0-rc.2`) while staying compilable on the lines that do
+ * not. They are the only part of the removed contract this file consumes —
+ * keep them in step with the `register` signature if the seam is ever revived.
+ */
+
+/** Report one violated invariant; never returns. */
+export type InvariantFailure = (message: string) => never
+
+/** Install one package's checks into the registration's child context. */
+export interface InvariantInstaller {
+  /**
+   * Install the package contribution.
+   * @param ctx - child context owned by this invariant registration.
+   * @param fail - reporter bound to the registering package name.
+   * @returns nothing, or a promise settling after asynchronous checks finish.
+   */
+  (ctx: Context, fail: InvariantFailure): void | Promise<void>
+  /** Services the child installer fiber may access. */
+  readonly inject?: Inject
+}
+
+/** The service surface this companion consumes from the removed host package. */
+export interface InvariantService {
+  /**
+   * Register one package's invariant installer.
+   * @param packageName - full npm package name that owns the contribution.
+   * @param installer - startup-check installer for the child context.
+   * @returns an effect-scoped disposer for the registration.
+   */
+  register(packageName: string, installer: InvariantInstaller): () => void
+}
+
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    invariants: InvariantService
+  }
+}
 
 /** Cordis companion plugin name. */
 export const name = 'auto-review-invariant'
