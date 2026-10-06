@@ -26,6 +26,8 @@
 
 ---
 
+**📖 生态实测知识库**（实测数据，不是营销）：[插件开发指南 · 选型实测数据 · 维护取舍判据](https://perrylink.github.io/dsh-plugin-guide/)。
+
 <!-- star-cta -->
 ## ⭐ 如果它帮到了你
 
