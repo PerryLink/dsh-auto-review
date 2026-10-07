@@ -416,8 +416,8 @@ Evidencia estática: `dsh-plugin-doctor` K10–K13 dan `pass` en todas las compr
 
 This project is one of the **44 DeepSeek Harness plugins** maintained by [PerryLink](https://github.com/PerryLink). If this one helps you, the others likely will too:
 
-| Plugin | One-liner |
-|---|---|
+| Plugin | En una línea | Estado |
+|---|---|---|
 | **[dsh-auto-review](https://github.com/PerryLink/dsh-auto-review)** | Second-model auto-review on the approval chain, fail-closed by default | |
 | **[dsh-autotier](https://github.com/PerryLink/dsh-autotier)** | Automatic strong/cheap model-tier routing with deterministic risk guards and a `/tier` command | |
 | **[dsh-background-agents](https://github.com/PerryLink/dsh-background-agents)** | Durable background child agents with a Web UI sidebar, messaging and interrupt | 🚫 **RETIRADO** — ver la nota arriba |
