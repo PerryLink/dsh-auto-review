@@ -35,6 +35,14 @@
 
 *English:* part of a 40+ plugin family for DeepSeek Harness. If it is useful, **a star helps the next person find it** — nothing is gated behind it.
 
+## What is dsh-auto-review?
+
+DeepSeek Harness 的第二模型 AI 审批 —— 一个只读审查子代理在审批链上做出允许/拒绝决策，默认失败关闭。
+
+当某个动作越过沙箱边界时，第二模型读取证据并给出带有理由的裁决 —— 人类无需批准任何事，同时也没有任何不安全的东西蒙混过关。
+
+![dsh-auto-review 终端演示：dsh-auto-review — standalone MCP path: deterministic deny, then cache replay](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-demo.png)
+
 ## 兼容性
 
 | 方面 | 状态 |
@@ -66,8 +74,12 @@
 ## 快速开始
 
 ```sh
+dsh plugin --profile web add github:PerryLink/dsh-auto-review
+```
+
+```sh
 # 1. 将 bundle 安装到你的 profile
-dsh plugin --profile web add "github:PerryLink/dsh-auto-review#main"
+dsh plugin --profile web add github:PerryLink/dsh-auto-review
 
 # 或从 npm 安装（已发布版本）
 dsh plugin --profile web add dsh-auto-review
@@ -80,7 +92,7 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 
 ## 安装与卸载
 
-- **git 渠道**（最新 `main`）：`dsh plugin --profile web add "github:PerryLink/dsh-auto-review#main"` —— 隔离的 `prepare` 构建需要 `dsh` CLI 为 `dsh-auto-review` 打印出的那个 `allowBuilds: { esbuild: true }` 键。
+- **git 渠道**（最新 `main`）：`dsh plugin --profile web add github:PerryLink/dsh-auto-review` —— 隔离的 `prepare` 构建需要 `dsh` CLI 为 `dsh-auto-review` 打印出的那个 `allowBuilds: { esbuild: true }` 键。
 - **npm 渠道**（已发布版本）：`dsh plugin --profile web add dsh-auto-review`。
 - **1024 商店渠道**：先 `npm i -g dsh1024`，再 `dsh1024 plugin --profile web add dsh-auto-review`（计入 [deepseek1024.com](https://deepseek1024.com) 安装排行）。
 - **tarball 渠道**：在本仓库执行 `pnpm pack`，然后 `dsh plugin --profile web add ./dsh-auto-review-<version>.tgz`。

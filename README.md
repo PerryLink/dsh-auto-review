@@ -37,6 +37,14 @@
 *English:* part of a 40+ plugin family for DeepSeek Harness. If it is useful, **a star helps the next person find it** — nothing is gated behind it.
 
 
+## What is dsh-auto-review?
+
+Second-model AI approval for DeepSeek Harness — a read-only reviewer subagent decides allow/deny on the approval chain, fail-closed by default.
+
+When an action crosses the sandbox boundary, a second model reads the evidence and returns a verdict with a reason — so humans approve nothing while nothing unsafe slips through.
+
+![Terminal demo of dsh-auto-review: dsh-auto-review — standalone MCP path: deterministic deny, then cache replay](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-demo.png)
+
 ## Compatibility
 
 | Surface | Status |
@@ -68,8 +76,12 @@ Pattern-based auto-approvers decide before dispatch, with no evidence. `dsh-auto
 ## Quick start
 
 ```sh
+dsh plugin --profile web add github:PerryLink/dsh-auto-review
+```
+
+```sh
 # 1. install the bundle into your profile
-dsh plugin --profile web add "github:PerryLink/dsh-auto-review#main"
+dsh plugin --profile web add github:PerryLink/dsh-auto-review
 
 # or from npm (published releases)
 dsh plugin --profile web add dsh-auto-review
@@ -82,7 +94,7 @@ Out of the box the shipped patch AI-reviews `bash` and `write`; every other tool
 
 ## Install & uninstall
 
-- **git channel** (latest `main`): `dsh plugin --profile web add "github:PerryLink/dsh-auto-review#main"` — the isolated `prepare` build needs the single `allowBuilds: { esbuild: true }` key the `dsh` CLI prints for `dsh-auto-review`.
+- **git channel** (latest `main`): `dsh plugin --profile web add github:PerryLink/dsh-auto-review` — the isolated `prepare` build needs the single `allowBuilds: { esbuild: true }` key the `dsh` CLI prints for `dsh-auto-review`.
 - **npm channel** (published releases): `dsh plugin --profile web add dsh-auto-review`.
 - **1024 store channel**: `npm i -g dsh1024` once, then `dsh1024 plugin --profile web add dsh-auto-review` (counts toward the [deepseek1024.com](https://deepseek1024.com) install ranking).
 - **tarball channel**: `pnpm pack` in this repo, then `dsh plugin --profile web add ./dsh-auto-review-<version>.tgz`.

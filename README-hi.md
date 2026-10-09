@@ -35,6 +35,14 @@
 
 *English:* part of a 40+ plugin family for DeepSeek Harness. If it is useful, **a star helps the next person find it** — nothing is gated behind it.
 
+## What is dsh-auto-review?
+
+DeepSeek Harness के लिए द्वितीय-मॉडल AI अनुमोदन — एक केवल-पढ़ने वाला समीक्षक उप-एजेंट अनुमोदन श्रृंखला पर अनुमति/अस्वीकार का निर्णय करता है, डिफ़ॉल्ट रूप से विफल-बंद।
+
+जब कोई क्रिया सैंडबॉक्स सीमा पार करती है, तो दूसरा मॉडल साक्ष्य पढ़ता है और कारण सहित निर्णय लौटाता है — ताकि मनुष्य कुछ भी स्वीकृत न करें और कुछ भी असुरक्षित छूट न जाए।
+
+![dsh-auto-review का टर्मिनल डेमो: dsh-auto-review — standalone MCP path: deterministic deny, then cache replay](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-demo.png)
+
 ## अनुकूलता
 
 | सतह | स्थिति |
@@ -66,8 +74,12 @@
 ## त्वरित शुरुआत
 
 ```sh
+dsh plugin --profile web add github:PerryLink/dsh-auto-review
+```
+
+```sh
 # 1. अपने प्रोफ़ाइल में बंडल इंस्टॉल करें
-dsh plugin --profile web add "github:PerryLink/dsh-auto-review#main"
+dsh plugin --profile web add github:PerryLink/dsh-auto-review
 
 # या npm से (प्रकाशित रिलीज़)
 dsh plugin --profile web add dsh-auto-review
@@ -80,7 +92,7 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 
 ## इंस्टॉल और अनइंस्टॉल
 
-- **git चैनल** (नवीनतम `main`): `dsh plugin --profile web add "github:PerryLink/dsh-auto-review#main"` — पृथक `prepare` बिल्ड को वह एकल `allowBuilds: { esbuild: true }` कुंजी चाहिए जो `dsh` CLI `dsh-auto-review` के लिए छापता है।
+- **git चैनल** (नवीनतम `main`): `dsh plugin --profile web add github:PerryLink/dsh-auto-review` — पृथक `prepare` बिल्ड को वह एकल `allowBuilds: { esbuild: true }` कुंजी चाहिए जो `dsh` CLI `dsh-auto-review` के लिए छापता है।
 - **npm चैनल** (प्रकाशित रिलीज़): `dsh plugin --profile web add dsh-auto-review`।
 - **1024 स्टोर चैनल**: एक बार `npm i -g dsh1024`, फिर `dsh1024 plugin --profile web add dsh-auto-review` ([deepseek1024.com](https://deepseek1024.com) इंस्टॉल रैंकिंग में गिना जाता है)।
 - **tarball चैनल**: इस रेपो में `pnpm pack`, फिर `dsh plugin --profile web add ./dsh-auto-review-<version>.tgz`।
