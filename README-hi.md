@@ -43,6 +43,10 @@ DeepSeek Harness के लिए द्वितीय-मॉडल AI अन�
 
 ![dsh-auto-review का टर्मिनल डेमो: dsh-auto-review — standalone MCP path: deterministic deny, then cache replay](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-demo.png)
 
+![Animated terminal demo of dsh-auto-review](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-demo.gif)
+
+*वही रन, एनिमेटेड।*
+
 ## अनुकूलता
 
 | सतह | स्थिति |

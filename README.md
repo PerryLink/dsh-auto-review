@@ -45,6 +45,10 @@ When an action crosses the sandbox boundary, a second model reads the evidence a
 
 ![Terminal demo of dsh-auto-review: dsh-auto-review — standalone MCP path: deterministic deny, then cache replay](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-demo.png)
 
+![Animated terminal demo of dsh-auto-review](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-demo.gif)
+
+*The same run, animated.*
+
 ## Compatibility
 
 | Surface | Status |

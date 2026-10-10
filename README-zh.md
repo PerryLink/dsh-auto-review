@@ -43,6 +43,10 @@ DeepSeek Harness 的第二模型 AI 审批 —— 一个只读审查子代理在
 
 ![dsh-auto-review 终端演示：dsh-auto-review — standalone MCP path: deterministic deny, then cache replay](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-demo.png)
 
+![Animated terminal demo of dsh-auto-review](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-demo.gif)
+
+*同一次运行，动图版。*
+
 ## 兼容性
 
 | 方面 | 状态 |
