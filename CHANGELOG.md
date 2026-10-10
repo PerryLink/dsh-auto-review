@@ -2,6 +2,18 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [0.12.17] - 2026-10-10
+
+### Fixed
+
+- Publish with 
+pm publish instead of pnpm publish.
+
+  pnpm's publish does not send the README (or a gitHead) in the packument, so the
+  registry stored an empty readme and the npm package page showed no documentation
+  at all. Both symptoms are known upstream: pnpm#12966 and pnpm#3373.
+
+
 ## [0.12.16] - 2026-10-10
 
 ### Changed

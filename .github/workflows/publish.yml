@@ -84,7 +84,7 @@ jobs:
             # tag can miss it and hit E409 ("Cannot publish over previously staged version"). That
             # means the version already exists, so report it as done instead of failing the job.
             set +e
-            out="$(pnpm publish --no-git-checks --provenance 2>&1)"
+            out="$(npm publish --access public --provenance 2>&1)"
             status=$?
             set -e
             printf '%s\n' "$out"
