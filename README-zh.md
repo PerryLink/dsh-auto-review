@@ -421,7 +421,7 @@ pnpm pack                   # 发布产物
 
 ## PerryLink DSH Plugin Family
 
-本项目是 [PerryLink](https://github.com/PerryLink) 维护的 DeepSeek Harness 插件家族成员：**33 个活跃维护**，名册共 **42** 个，其中 **6 个已冻结**、**3 个已退役**——每一个都在下表保留自己的行，原因见「状态」列。如果它能帮到你，其他的也会：
+本项目是 [PerryLink](https://github.com/PerryLink) 维护的 DeepSeek Harness 插件家族成员：**34 个活跃维护**，名册共 **42** 个，其中 **5 个已冻结**、**3 个已退役**——每一个都在下表保留自己的行，原因见「状态」列。如果它能帮到你，其他的也会：
 
 | Plugin | 一句话 | 状态 |
 |---|---|---|
@@ -449,7 +449,7 @@ pnpm pack                   # 发布产物
 | **[dsh-lsp-actions](https://github.com/PerryLink/dsh-lsp-actions)** | LSP diagnostics, formatting, completion, code actions and rename over language servers | |
 | **[dsh-mask](https://github.com/PerryLink/dsh-mask)** | PII masking middleware: anonymize at the model boundary, restore at the display layer | |
 | **[dsh-mcp-panel](https://github.com/PerryLink/dsh-mcp-panel)** | Read-only MCP runtime panel: /mcp command + Settings tab with status, tools and errors | |
-| **[dsh-memento](https://github.com/PerryLink/dsh-memento)** | Approval-gated cross-session memory: ctx.memory seam + SQLite + memory tool | 🧊 已冻结 — 见仓库 README |
+| **[dsh-memento](https://github.com/PerryLink/dsh-memento)** | Approval-gated cross-session memory: ctx.memory seam + SQLite + memory tool | |
 | **[dsh-observe](https://github.com/PerryLink/dsh-observe)** | OpenTelemetry and Langfuse observability exporter for DeepSeek Harness. | |
 | **[dsh-output-styles](https://github.com/PerryLink/dsh-output-styles)** | Claude Code outputStyles-equivalent runtime style switching | |
 | **[dsh-permission-rules](https://github.com/PerryLink/dsh-permission-rules)** | Claude Code-style declarative allow/deny/ask permission rules with audit | |

@@ -279,7 +279,7 @@ dsh-eval eval/cases --model deepseek-flash --timeout-ms 240000 --out .eval-repor
 
 ## PerryLink DSH Plugin Family
 
-यह प्रोजेक्ट [PerryLink](https://github.com/PerryLink) के DeepSeek Harness प्लगइन परिवार का हिस्सा है — **33 सक्रिय रूप से अनुरक्षित**, कुल सूची **42** है जिसमें **6 फ़्रोज़न** और **3 सेवानिवृत्त** हैं; हर एक की पंक्ति नीचे बनी रहती है, कारण “स्थिति” कॉलम में है। अगर यह उपयोगी लगे, तो अन्य भी मददगार होंगे:
+यह प्रोजेक्ट [PerryLink](https://github.com/PerryLink) के DeepSeek Harness प्लगइन परिवार का हिस्सा है — **34 सक्रिय रूप से अनुरक्षित**, कुल सूची **42** है जिसमें **5 फ़्रोज़न** और **3 सेवानिवृत्त** हैं; हर एक की पंक्ति नीचे बनी रहती है, कारण “स्थिति” कॉलम में है। अगर यह उपयोगी लगे, तो अन्य भी मददगार होंगे:
 
 | Plugin | एक पंक्ति में | स्थिति |
 |---|---|---|
@@ -307,7 +307,7 @@ dsh-eval eval/cases --model deepseek-flash --timeout-ms 240000 --out .eval-repor
 | **[dsh-lsp-actions](https://github.com/PerryLink/dsh-lsp-actions)** | LSP diagnostics, formatting, completion, code actions and rename over language servers | |
 | **[dsh-mask](https://github.com/PerryLink/dsh-mask)** | PII masking middleware: anonymize at the model boundary, restore at the display layer | |
 | **[dsh-mcp-panel](https://github.com/PerryLink/dsh-mcp-panel)** | Read-only MCP runtime panel: /mcp command + Settings tab with status, tools and errors | |
-| **[dsh-memento](https://github.com/PerryLink/dsh-memento)** | Approval-gated cross-session memory: ctx.memory seam + SQLite + memory tool | 🧊 फ़्रोज़न — रिपॉज़िटरी README देखें |
+| **[dsh-memento](https://github.com/PerryLink/dsh-memento)** | Approval-gated cross-session memory: ctx.memory seam + SQLite + memory tool | |
 | **[dsh-observe](https://github.com/PerryLink/dsh-observe)** | OpenTelemetry and Langfuse observability exporter for DeepSeek Harness. | |
 | **[dsh-output-styles](https://github.com/PerryLink/dsh-output-styles)** | Claude Code outputStyles-equivalent runtime style switching | |
 | **[dsh-permission-rules](https://github.com/PerryLink/dsh-permission-rules)** | Claude Code-style declarative allow/deny/ask permission rules with audit | |
