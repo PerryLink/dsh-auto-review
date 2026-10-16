@@ -360,7 +360,7 @@ Claude Desktop（`claude_desktop_config.json`）配置示例：
 - **失败关闭。** 每条异常路径（provider 缺失、能力缺口、启动拒绝、超时、非 `completed` 停止原因、缺失/畸形裁决、审计关联失败）都经由 `fallbackPolicy` 处理，默认 `rejected` —— 且拒绝会向模型反馈一条可审计的理由。`allow-once` 是无条件放行；它只用于接受该风险的无值守部署。
 - **只读审查器。** 审查器的 `toolFilter` 白名单（`read`/`glob`/`grep`）无法写入、编辑、运行 bash、访问网络或委派（`maxDepth` = 自身深度）。其会话日志被持久化且可审计。
 - **上下文隔离的审查器。** 审查器子代理的每一步都在官方 `agent/pre-step` 接缝上被过滤：只有它自己的提示词与它自己的只读工具结果能够进入。工作区指令文件（`AGENTS.md` / `CLAUDE.md`）与注入上下文的插件会在该接缝处被丢弃；**宿主自己的运行时上下文快照会在 `agent/pre-step` 之后被循环重新接纳，防火墙无法移除它，因此审查器能看到该快照。**这在任一 subagent provider 下都成立——这些注入方会向任何新建的 agent 会话重新注入，因此关闭它们的是这道过滤，而不是 provider 的选择。白名单按消息来源判定，所以声明了新来源类型的插件同样会被丢弃。
-- **敏感参数会被脱敏**（按键名匹配：`token`、`password`、`api_key`、`Authorization`、凭据、私钥……）后才进入审查器提示词；该插件绝不会执行被审查的参数。脱敏是按键名而非内容 —— 不要把参数值经不起展示给模型的工具交给 AI 审查。
+- **敏感参数会被脱敏**（按键名匹配：`token`、`password`、`api_key`、`Authorization`、凭据、私钥……）后才进入审查器提示词；自由字符串参数还会额外经过一层内联启发式，掩掉 `KEY=VALUE` / `KEY: VALUE` / `--flag VALUE` 这几种写法以及 `Bearer`/`Basic` 方案 —— 而命令行里的密钥通常正是这样出现的。该插件绝不会执行被审查的参数。两层都是尽力而为，不是密钥扫描器：旁边没有键名的裸密钥仍然可见，所以不要把参数值经不起展示给模型的工具交给 AI 审查。
 - **硬禁用会自我解释。** `never` 工具或风险规则确定性拒绝，并记录一条仅日志的 `autoReview/rejection` 事件，然后把 `[auto-review-never]` 标记注入被拒绝的工具结果 —— 模型学会该操作已被硬禁用，而不是重试（invariant 校验：标记 ⟺ 事件）。
 - **拒绝熔断器。** 一轮内连续拒绝会触发熔断（`consecutiveDenies` / 窗口内的 `windowDenies`），记录为仅日志的 `autoReview/circuit` 事件；后续请求按其 `action`（`delegate` / `reject` / `abort-turn`）处理。
 - **审查上下文是已呈现的 transcript。** `contextBudget` 把已呈现的会话内容喂给审查器。默认同路由审查模型时该内容停留在单一 provider 内；仅当你接受把该 transcript 呈现给另一 provider 时，才把 `reviewerModel` 配成别的 provider。

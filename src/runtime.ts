@@ -28,7 +28,8 @@ import { hasAiPolicy, resolveConfig, riskExceeds } from './config.ts'
 import type { Config, ResolvedConfig, ToolReviewPolicy } from './config.ts'
 import { guardReviewerContext, ReviewerChildren } from './isolation.ts'
 import { messages } from './messages.ts'
-import { makeAutoReviewProjection } from './projection.ts'
+import { makeAutoReviewProjection, viewAutoReview } from './projection.ts'
+import type { AutoReviewProjection, AutoReviewProjectionState } from './projection-types.ts'
 import {
   activeOverride,
   autoReviewFailuresInOpenTurn,
@@ -63,6 +64,16 @@ import type { OverrideContext, ReviewFailure, ReviewResolution } from './review.
 export const name = 'auto-review'
 export const inject = ['approval', 'subagents', 'commands', 'tools']
 
+/**
+ * Local port patch (dsh 0.2.0-rc.2): the permission preset key that gates this
+ * plugin. Auto-review engages only while a session's effective preset is this
+ * key, so the switch lives in the permission dropdown instead of an always-on
+ * default. The matching preset row (`sandbox: workspace-write`,
+ * `approval: ask`) ships in this repo's `cordis.patch.yml`. A profile that
+ * composes no `permissionPresets` service falls back to `enableByDefault`.
+ */
+export const PRESET_GATE = 'review'
+
 /** How long an injected feedback text stays available for its tool result (bounded cleanup). */
 const FEEDBACK_TTL_MS = 5 * 60_000
 
@@ -94,6 +105,25 @@ interface MemoryOverride {
 }
 
 /**
+ * The PROCESS-lifetime review tally behind the panel's cumulative rows (local
+ * port patch). The per-turn counters in {@link SessionMemory} reset whenever
+ * the open turn advances, which makes them useless for a "what has this
+ * session done" panel; this one lives for the life of the mount. It is kept in
+ * {@link AutoReviewRuntime.tallies} keyed by session and re-attached to every
+ * fresh mirror by {@link AutoReviewRuntime.memoryFor}.
+ */
+interface MemoryTally {
+  allows: number
+  denies: number
+  fallbacks: number
+  rejections: number
+  /** The last {@link MEMORY_RECENT_CAP} verdicts, newest first. */
+  recent: MemoryVerdict[]
+  /** The last {@link MEMORY_DENIES_CAP} denials, newest first (the `approve` feed). */
+  recentDenies: MemoryDenial[]
+}
+
+/**
  * The in-memory audit mirror for one session, used when the host's
  * `Session.append` cannot stamp the `ignorable` envelope marker (the
  * rc.6 line): nothing is written to the session log, and every audit
@@ -119,10 +149,19 @@ interface SessionMemory {
   enabledOverride: boolean | undefined
   /** Pending single-use human overrides (bounded). */
   overrides: MemoryOverride[]
+  /**
+   * The process-lifetime tally behind the panel's cumulative rows. Optional
+   * because it is ATTACHED rather than built with the mirror — that is what
+   * lets it survive the open-turn reset and outlive any single turn.
+   */
+  tally?: MemoryTally
 }
 
 /** Cap on the in-memory denial feed (approve indexes are bounded by this). */
 const MEMORY_DENIES_CAP = 200
+
+/** Cap on the recent-verdict feed the panel's tally carries. */
+const MEMORY_RECENT_CAP = 10
 
 /** Cap on the in-memory override list (a session cannot meaningfully accumulate more). */
 const MEMORY_OVERRIDES_CAP = 50
@@ -194,6 +233,14 @@ export class AutoReviewRuntime {
 
   /** In-memory audit mirrors per session, used when the host cannot stamp audit events. */
   private readonly memory = new WeakMap<Session, SessionMemory>()
+
+  /**
+   * Local port patch: process-lifetime review tallies per session, which the
+   * per-turn mirror cannot carry. Keyed by session so a restarted turn (which
+   * rebuilds the mirror) keeps the panel's cumulative rows. A `WeakMap`, so a
+   * discarded session releases its tally with it.
+   */
+  private readonly tallies = new WeakMap<Session, MemoryTally>()
 
   /** The one-time warning that session-log audit was disabled was already logged. */
   private warnedUnmarked = false
@@ -286,7 +333,32 @@ export class AutoReviewRuntime {
       }
       this.memory.set(session, entry)
     }
+    // Local port patch: the turn reset above must not reset the panel's
+    // cumulative rows, so the tally is re-attached from its own store.
+    if (entry.tally === undefined) entry.tally = this.tallyFor(session)
     return entry
+  }
+
+  /**
+   * Local port patch: the process-lifetime tally behind the panel's cumulative
+   * rows, created on first use and kept for the life of the mount.
+   * @param session - the session the tally belongs to.
+   * @returns the session's tally, creating it when absent.
+   */
+  private tallyFor(session: Session): MemoryTally {
+    let tally = this.tallies.get(session)
+    if (tally === undefined) {
+      tally = {
+        allows: 0,
+        denies: 0,
+        fallbacks: 0,
+        rejections: 0,
+        recent: [],
+        recentDenies: [],
+      }
+      this.tallies.set(session, tally)
+    }
+    return tally
   }
 
   /** Record one settled review outcome in the in-memory mirror (audit-disabled hosts). */
@@ -296,6 +368,18 @@ export class AutoReviewRuntime {
     if (verdict.denial) {
       memory.denies.unshift({ id: verdict.id, toolName: verdict.toolName })
       if (memory.denies.length > MEMORY_DENIES_CAP) memory.denies.length = MEMORY_DENIES_CAP
+    }
+    // Local port patch: the same outcome also feeds the process-lifetime
+    // tally, which is what the panel's cumulative rows read.
+    const tally = memory.tally
+    if (tally === undefined) return
+    if (verdict.denial) tally.denies += 1
+    else tally.allows += 1
+    tally.recent.unshift({ id: verdict.id, toolName: verdict.toolName, denial: verdict.denial })
+    if (tally.recent.length > MEMORY_RECENT_CAP) tally.recent.length = MEMORY_RECENT_CAP
+    if (verdict.denial) {
+      tally.recentDenies.unshift({ id: verdict.id, toolName: verdict.toolName })
+      if (tally.recentDenies.length > MEMORY_DENIES_CAP) tally.recentDenies.length = MEMORY_DENIES_CAP
     }
   }
 
@@ -353,6 +437,121 @@ export class AutoReviewRuntime {
     }
   }
 
+  // --- Permission-preset gate and the live panel view (local port patch) ---
+
+  /**
+   * Local port patch: the live session whose id is `id`, or undefined when no
+   * live session matches. The projection fold carries the owning session id as
+   * plain text, so the runtime has to resolve it back to a `Session` before it
+   * can read the in-memory mirror. Read through `ctx.get` rather than
+   * injected: the projection view is a render-time convenience, and a missing
+   * service must only cost the mirror, never park this plugin in a pending
+   * fiber.
+   * @param id - the session id carried by the fold state.
+   * @returns the live session, or undefined.
+   */
+  private sessionById(id: string | undefined): Session | undefined {
+    if (id === undefined) return undefined
+    const sessions = this.ctx.get('sessions')
+    if (sessions === undefined) return undefined
+    for (const session of sessions.list()) if (String(session.id) === String(id)) return session
+    return undefined
+  }
+
+  /**
+   * Local port patch (dsh 0.2.0-rc.2): the panel view. The pure event fold can
+   * never carry this plugin's statistics on a host that refuses unmarked
+   * unknown event types (see {@link AutoReviewRuntime.auditMayAppend}), which
+   * is why the panel read an empty log and showed all zeros. On such a host
+   * this reads the in-memory mirror instead, so the panel reports the real
+   * switch state and the real activity; on a marker-aware host the fold stays
+   * authoritative and this returns it untouched.
+   * @param state - the fold state, which carries its session id.
+   * @returns the projection view the panel renders.
+   */
+  livePanelView(state: AutoReviewProjectionState): AutoReviewProjection {
+    const folded = viewAutoReview(state)
+    if (this.auditMayAppend()) return folded
+    const session = this.sessionById(state.sessionId)
+    if (session === undefined) return folded
+    const memory = this.memoryFor(session)
+    const tally = memory.tally ?? {
+      allows: 0,
+      denies: 0,
+      fallbacks: 0,
+      rejections: 0,
+      recent: [],
+      recentDenies: [],
+    }
+    return {
+      enabled: this.effectiveEnabled(session, memory),
+      verdictsUsed: memory.verdicts.length,
+      failuresUsed: memory.failures,
+      allows: tally.allows,
+      denies: tally.denies,
+      fallbacks: tally.fallbacks,
+      neverRejects: tally.rejections,
+      cacheHits: folded.cacheHits,
+      avgDurationMs: folded.avgDurationMs,
+      circuit: null,
+      recent: tally.recent.map(verdict => ({
+        reviewId: String(verdict.id),
+        toolName: verdict.toolName,
+        at: Date.now(),
+        durationMs: 0,
+        decision: verdict.denial ? 'deny' as const : 'allow' as const,
+      })),
+      recentDenies: tally.recentDenies.map(deny => ({
+        reviewId: String(deny.id),
+        toolName: deny.toolName,
+      })),
+    }
+  }
+
+  /**
+   * Local port patch (dsh 0.2.0-rc.2): resolve this session's auto-review
+   * switch. The permission preset is AUTHORITATIVE: while the session's preset
+   * is not {@link PRESET_GATE} the answerer never claims a request, whatever
+   * the panel switch says. Inside the preset the panel's `/auto-review on|off`
+   * acts as a temporary sub-switch (in-memory on this host, so a restart
+   * restores it). `permissionPresets` is read opportunistically through
+   * `ctx.get` rather than injected: a missing service must fall back to
+   * `enableByDefault` instead of parking this plugin in a pending fiber, which
+   * would block profile readiness.
+   * @param session - the session whose effective preset gates the feature.
+   * @param memory - the session's in-memory mirror of explicit overrides.
+   * @returns whether the answerer may claim this request.
+   */
+  effectiveEnabled(session: Session, memory: SessionMemory): boolean {
+    const gate = this.presetGateState(session)
+    if (gate.mounted && !gate.on) return false
+    const sticky = effectiveAutoReviewState(sessionEvents(session)) ?? memory.enabledOverride
+    if (sticky !== undefined) return sticky
+    return gate.mounted ? true : this.config.enableByDefault
+  }
+
+  /**
+   * Local port patch: whether the session's permission preset is the gate
+   * preset. The two "not review" states are deliberately NOT collapsed:
+   * `mounted: false` means this profile composes no `permissionPresets`
+   * service, so the plugin falls back to its own `enableByDefault` switch; a
+   * READ FAILURE on a mounted service means the preset is UNKNOWN and reports
+   * `mounted: true, on: false`, so the gate stays shut. Folding the failure
+   * into "unmounted" would fall through to the sticky override and let a stale
+   * in-memory `true` re-open a gate whose preset cannot be read.
+   * @param session - the session whose preset is read.
+   * @returns the gate state; never throws, and never fails open.
+   */
+  presetGateState(session: Session): { mounted: boolean; on: boolean } {
+    const presets = this.ctx.get('permissionPresets')
+    if (presets === undefined) return { mounted: false, on: false }
+    try {
+      return { mounted: true, on: presets.current(session) === PRESET_GATE }
+    } catch {
+      return { mounted: true, on: false }
+    }
+  }
+
   /**
    * The `approval/request` answerer. Claims a request ONLY when auto-review
    * is enabled for the session AND the policy for this tool/reason is `ai`
@@ -369,7 +568,7 @@ export class AutoReviewRuntime {
     if (this.reviewerSessions.has(request.agent.id)) return next()
     const session = request.agent.session
     const memory = this.memoryFor(session)
-    const enabled = effectiveAutoReviewState(sessionEvents(session)) ?? memory.enabledOverride ?? this.config.enableByDefault
+    const enabled = this.effectiveEnabled(session, memory)
     if (!enabled) return next()
     const needsArguments = this.config.riskRules.some(rule => rule.field === 'arguments')
     const argumentsText = needsArguments && request.callId !== undefined
@@ -433,6 +632,7 @@ export class AutoReviewRuntime {
       // Mirror of the event-mode semantics: a hard-disable rejection counts
       // toward the rejections stat but never toward the verdict breaker.
       memory.rejections += 1
+      if (memory.tally !== undefined) memory.tally.rejections += 1
     }
     const text = auditOk
       ? neverResultText(rejectionId, request.toolName, reason)
@@ -450,7 +650,7 @@ export class AutoReviewRuntime {
    * override, which changes the reviewer's evidence.
    * @param request - the pending approval request.
    * @returns the fingerprint, or undefined to skip the cache (fail-closed:
-   *   the request then runs the second model as before).
+   *   the request then runs the reviewer as before).
    */
   private fingerprintFor(request: ApprovalRequest): string | undefined {
     if (this.config.verdictCacheTtlMs <= 0) return undefined
@@ -590,7 +790,9 @@ export class AutoReviewRuntime {
         }, { ignorable: true })
         this.probeAuditResult(result)
       } else {
-        this.memoryFor(session).failures += 1
+        const fallbackMemory = this.memoryFor(session)
+        fallbackMemory.failures += 1
+        if (fallbackMemory.tally !== undefined) fallbackMemory.tally.fallbacks += 1
       }
       this.ctx.logger.warn(`auto-review fallback (${failure.fallback}) for ${request.toolName}: ${failure.error}`)
       // A fail-closed rejection is as model-visible as a reviewer deny: the
@@ -794,7 +996,7 @@ export class AutoReviewRuntime {
     const t = messages(this.config.language)
     const input = invocation.rawInput.trim().toLowerCase()
     if (input.startsWith('approve')) return this.approveCommand(invocation)
-    const current = effectiveAutoReviewState(sessionEvents(session)) ?? memory.enabledOverride ?? this.config.enableByDefault
+    const current = this.effectiveEnabled(session, memory)
     if (input === 'status' || input === '') {
       const auditOk = this.auditMayAppend()
       const stats = auditOk ? reviewStats(sessionEvents(session)) : this.memoryStats(memory)
@@ -833,6 +1035,13 @@ export class AutoReviewRuntime {
     const enabled = input === 'on'
     if (current === enabled) {
       return { kind: 'success', text: t.already(input.toUpperCase()) }
+    }
+    // Local port patch: while the permission-preset gate is closed the preset
+    // is authoritative, so `/auto-review on` refuses instead of recording an
+    // override the answerer would ignore for the rest of the session.
+    const gate = this.presetGateState(session)
+    if (enabled && gate.mounted && !gate.on) {
+      return { kind: 'error', text: t.presetGated(PRESET_GATE) }
     }
     if (this.auditMayAppend()) {
       const result = (session.append as unknown as StateAppend)('autoReview/state', { enabled }, { ignorable: true })
@@ -982,6 +1191,8 @@ export function apply(ctx: Context, config: Config): void {
     handler: invocation => runtime.command(invocation),
   })
   if (ctx.get('sessionProjections') !== undefined) {
-    ctx.inject(['sessionProjections'], scope => scope.sessionProjections.register(makeAutoReviewProjection(resolved.enableByDefault)))
+    ctx.inject(['sessionProjections'], scope => scope.sessionProjections.register(
+      makeAutoReviewProjection(resolved.enableByDefault, state => runtime.livePanelView(state)),
+    ))
   }
 }
