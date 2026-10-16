@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   AUTO_REVIEW_PROJECTION_SCHEMA,
+  AUTO_REVIEW_STATE_SCHEMA,
   applyAutoReview,
   initAutoReviewProjection,
   makeAutoReviewProjection,
@@ -27,7 +28,7 @@ function allow(reviewId: string, approvalId: string): unknown {
 
 describe('autoReview projection fold', () => {
   it('folds state, verdicts, budgets, circuit, and deny rows', () => {
-    let state = initAutoReviewProjection(true)
+    let state = initAutoReviewProjection(true, 's1')
     state = applyAutoReview(state, rawEvent('autoReview/state', { enabled: false }))
     expect(state.enabled).toBe(false)
     state = applyAutoReview(state, rawEvent('turn/start', { turn: 1 }))
@@ -68,13 +69,13 @@ describe('autoReview projection fold', () => {
   })
 
   it('returns the same reference for uninterested events', () => {
-    const state = initAutoReviewProjection(true)
+    const state = initAutoReviewProjection(true, 's1')
     expect(applyAutoReview(state, rawEvent('user/message', { content: [] }))).toBe(state)
     expect(applyAutoReview(state, rawEvent('autoReview/verdict', allow('r1', 'a1')))).not.toBe(state)
   })
 
   it('resets per-turn counters and the circuit at turn/start and closes at turn/end', () => {
-    let state = initAutoReviewProjection(true)
+    let state = initAutoReviewProjection(true, 's1')
     state = applyAutoReview(state, rawEvent('turn/start', { turn: 1 }))
     state = applyAutoReview(state, rawEvent('autoReview/verdict', allow('r1', 'a1')))
     state = applyAutoReview(state, rawEvent('turn/end', { turn: 1, reason: { kind: 'completed' } }))
@@ -86,7 +87,7 @@ describe('autoReview projection fold', () => {
   })
 
   it('caps the recent and deny rows', () => {
-    let state = initAutoReviewProjection(true)
+    let state = initAutoReviewProjection(true, 's1')
     for (let index = 0; index < 12; index += 1) {
       state = applyAutoReview(state, rawEvent('autoReview/verdict', {
         reviewId: `r${index}`, approvalId: `a${index}`, toolName: 'bash', provider: 'fork',
@@ -100,7 +101,7 @@ describe('autoReview projection fold', () => {
   })
 
   it('counts risk-policy escalations as denials for the approve list', () => {
-    let state = initAutoReviewProjection(true)
+    let state = initAutoReviewProjection(true, 's1')
     state = applyAutoReview(state, rawEvent('autoReview/verdict', {
       reviewId: 'r1', approvalId: 'a1', toolName: 'bash', provider: 'fork',
       durationMs: 1, decision: 'allow', reason: 'risky', riskLevel: 'high',
@@ -110,7 +111,7 @@ describe('autoReview projection fold', () => {
   })
 
   it('counts cached verdicts separately while they still count as decisions', () => {
-    let state = initAutoReviewProjection(true)
+    let state = initAutoReviewProjection(true, 's1')
     state = applyAutoReview(state, rawEvent('autoReview/verdict', {
       reviewId: 'r1', approvalId: 'a1', toolName: 'bash', provider: 'fork',
       durationMs: 0, decision: 'allow', reason: 'ok', outcome: 'allowed-once', cached: true,
@@ -123,8 +124,8 @@ describe('autoReview projection fold', () => {
   })
 
   it('starts at the mount-configured enableByDefault', () => {
-    expect(viewAutoReview(initAutoReviewProjection(true)).enabled).toBe(true)
-    expect(viewAutoReview(initAutoReviewProjection(false)).enabled).toBe(false)
+    expect(viewAutoReview(initAutoReviewProjection(true, 's1')).enabled).toBe(true)
+    expect(viewAutoReview(initAutoReviewProjection(false, 's1')).enabled).toBe(false)
     const enabled = makeAutoReviewProjection(true)
     const disabled = makeAutoReviewProjection(false)
     expect(enabled.key).toBe('autoReview')
@@ -134,9 +135,40 @@ describe('autoReview projection fold', () => {
     expect(viewAutoReview(disabled.init(header, 0 as never)).enabled).toBe(false)
   })
 
-  it('bumps stateVersion with the enabled-default change', () => {
-    expect(makeAutoReviewProjection(true).stateVersion).toBeGreaterThanOrEqual(3)
+  it('bumps stateVersion with the persisted-state change', () => {
+    // v4 added the owning `sessionId` to the PERSISTED state, which is what
+    // invalidates a v3 cache entry; v3 had added the cumulative `cacheHits`.
+    expect(makeAutoReviewProjection(true).stateVersion).toBe(4)
+    const unit = makeAutoReviewProjection(true)
+    const header = { version: 0, id: 'sess-42', createdAt: 0, isSeeded: false } as never
+    const seeded = unit.init(header, 0 as never)
+    expect(seeded.sessionId).toBe('sess-42')
+    expect(AUTO_REVIEW_STATE_SCHEMA.safeParse(seeded).success).toBe(true)
     // The wire schema still validates both init variants.
-    expect(AUTO_REVIEW_PROJECTION_SCHEMA.safeParse(viewAutoReview(initAutoReviewProjection(false))).success).toBe(true)
+    expect(AUTO_REVIEW_PROJECTION_SCHEMA.safeParse(viewAutoReview(initAutoReviewProjection(false, 's1'))).success).toBe(true)
+  })
+
+  it('serves the runtime live view when one is supplied', () => {
+    // The desktop port substitutes the wire `view` so the panel can read the
+    // in-memory mirror on hosts that cannot accept `autoReview/*` audit events.
+    const folded = makeAutoReviewProjection(true)
+    const live = makeAutoReviewProjection(true, () => ({
+      enabled: true,
+      verdictsUsed: 0,
+      failuresUsed: 0,
+      allows: 7,
+      denies: 2,
+      fallbacks: 1,
+      neverRejects: 0,
+      cacheHits: 0,
+      avgDurationMs: 0,
+      circuit: null,
+      recent: [],
+      recentDenies: [],
+    }))
+    const header = { version: 0, id: 'sess-42', createdAt: 0, isSeeded: false } as never
+    expect(viewAutoReview(folded.init(header, 0 as never)).allows).toBe(0)
+    expect(live.wire.view(live.init(header, 0 as never))).toMatchObject({ allows: 7, denies: 2 })
+    expect(live.stateVersion).toBe(4)
   })
 })
