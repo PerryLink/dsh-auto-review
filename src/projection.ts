@@ -233,7 +233,7 @@ export type AutoReviewLiveView = NonNullable<ProjectionDefinition<'autoReview', 
  * unit; the first mount's default wins, which only matters for a double
  * mount with conflicting `enableByDefault` values.
  *
- * Local port patch (dsh 0.2.0-rc.2): `liveView` substitutes the wire `view`
+ * `liveView` substitutes the wire `view`
  * with a runtime-aware one. The pure fold can only report what the session
  * log carries, and a host that refuses the unmarked `autoReview/*` events
  * writes none of them — which is why the panel used to read an empty log and

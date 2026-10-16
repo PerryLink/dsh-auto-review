@@ -64,16 +64,6 @@ import type { OverrideContext, ReviewFailure, ReviewResolution } from './review.
 export const name = 'auto-review'
 export const inject = ['approval', 'subagents', 'commands', 'tools']
 
-/**
- * Local port patch (dsh 0.2.0-rc.2): the permission preset key that gates this
- * plugin. Auto-review engages only while a session's effective preset is this
- * key, so the switch lives in the permission dropdown instead of an always-on
- * default. The matching preset row (`sandbox: workspace-write`,
- * `approval: ask`) ships in this repo's `cordis.patch.yml`. A profile that
- * composes no `permissionPresets` service falls back to `enableByDefault`.
- */
-export const PRESET_GATE = 'review'
-
 /** How long an injected feedback text stays available for its tool result (bounded cleanup). */
 const FEEDBACK_TTL_MS = 5 * 60_000
 
@@ -235,7 +225,7 @@ export class AutoReviewRuntime {
   private readonly memory = new WeakMap<Session, SessionMemory>()
 
   /**
-   * Local port patch: process-lifetime review tallies per session, which the
+   * Process-lifetime review tallies per session, which the
    * per-turn mirror cannot carry. Keyed by session so a restarted turn (which
    * rebuilds the mirror) keeps the panel's cumulative rows. A `WeakMap`, so a
    * discarded session releases its tally with it.
@@ -333,14 +323,14 @@ export class AutoReviewRuntime {
       }
       this.memory.set(session, entry)
     }
-    // Local port patch: the turn reset above must not reset the panel's
+    // The turn reset above must not reset the panel's
     // cumulative rows, so the tally is re-attached from its own store.
     if (entry.tally === undefined) entry.tally = this.tallyFor(session)
     return entry
   }
 
   /**
-   * Local port patch: the process-lifetime tally behind the panel's cumulative
+   * The process-lifetime tally behind the panel's cumulative
    * rows, created on first use and kept for the life of the mount.
    * @param session - the session the tally belongs to.
    * @returns the session's tally, creating it when absent.
@@ -369,7 +359,7 @@ export class AutoReviewRuntime {
       memory.denies.unshift({ id: verdict.id, toolName: verdict.toolName })
       if (memory.denies.length > MEMORY_DENIES_CAP) memory.denies.length = MEMORY_DENIES_CAP
     }
-    // Local port patch: the same outcome also feeds the process-lifetime
+    // The same outcome also feeds the process-lifetime
     // tally, which is what the panel's cumulative rows read.
     const tally = memory.tally
     if (tally === undefined) return
@@ -437,10 +427,10 @@ export class AutoReviewRuntime {
     }
   }
 
-  // --- Permission-preset gate and the live panel view (local port patch) ---
+  // --- Live panel view (the audit log cannot carry the statistics) ----------
 
   /**
-   * Local port patch: the live session whose id is `id`, or undefined when no
+   * The live session whose id is `id`, or undefined when no
    * live session matches. The projection fold carries the owning session id as
    * plain text, so the runtime has to resolve it back to a `Session` before it
    * can read the in-memory mirror. Read through `ctx.get` rather than
@@ -459,7 +449,7 @@ export class AutoReviewRuntime {
   }
 
   /**
-   * Local port patch (dsh 0.2.0-rc.2): the panel view. The pure event fold can
+   * The panel view. The pure event fold can
    * never carry this plugin's statistics on a host that refuses unmarked
    * unknown event types (see {@link AutoReviewRuntime.auditMayAppend}), which
    * is why the panel read an empty log and showed all zeros. On such a host
@@ -484,7 +474,7 @@ export class AutoReviewRuntime {
       recentDenies: [],
     }
     return {
-      enabled: this.effectiveEnabled(session, memory),
+      enabled: effectiveAutoReviewState(sessionEvents(session)) ?? memory.enabledOverride ?? this.config.enableByDefault,
       verdictsUsed: memory.verdicts.length,
       failuresUsed: memory.failures,
       allows: tally.allows,
@@ -509,50 +499,6 @@ export class AutoReviewRuntime {
   }
 
   /**
-   * Local port patch (dsh 0.2.0-rc.2): resolve this session's auto-review
-   * switch. The permission preset is AUTHORITATIVE: while the session's preset
-   * is not {@link PRESET_GATE} the answerer never claims a request, whatever
-   * the panel switch says. Inside the preset the panel's `/auto-review on|off`
-   * acts as a temporary sub-switch (in-memory on this host, so a restart
-   * restores it). `permissionPresets` is read opportunistically through
-   * `ctx.get` rather than injected: a missing service must fall back to
-   * `enableByDefault` instead of parking this plugin in a pending fiber, which
-   * would block profile readiness.
-   * @param session - the session whose effective preset gates the feature.
-   * @param memory - the session's in-memory mirror of explicit overrides.
-   * @returns whether the answerer may claim this request.
-   */
-  effectiveEnabled(session: Session, memory: SessionMemory): boolean {
-    const gate = this.presetGateState(session)
-    if (gate.mounted && !gate.on) return false
-    const sticky = effectiveAutoReviewState(sessionEvents(session)) ?? memory.enabledOverride
-    if (sticky !== undefined) return sticky
-    return gate.mounted ? true : this.config.enableByDefault
-  }
-
-  /**
-   * Local port patch: whether the session's permission preset is the gate
-   * preset. The two "not review" states are deliberately NOT collapsed:
-   * `mounted: false` means this profile composes no `permissionPresets`
-   * service, so the plugin falls back to its own `enableByDefault` switch; a
-   * READ FAILURE on a mounted service means the preset is UNKNOWN and reports
-   * `mounted: true, on: false`, so the gate stays shut. Folding the failure
-   * into "unmounted" would fall through to the sticky override and let a stale
-   * in-memory `true` re-open a gate whose preset cannot be read.
-   * @param session - the session whose preset is read.
-   * @returns the gate state; never throws, and never fails open.
-   */
-  presetGateState(session: Session): { mounted: boolean; on: boolean } {
-    const presets = this.ctx.get('permissionPresets')
-    if (presets === undefined) return { mounted: false, on: false }
-    try {
-      return { mounted: true, on: presets.current(session) === PRESET_GATE }
-    } catch {
-      return { mounted: true, on: false }
-    }
-  }
-
-  /**
    * The `approval/request` answerer. Claims a request ONLY when auto-review
    * is enabled for the session AND the policy for this tool/reason is `ai`
    * AND both per-turn budgets remain AND the rejection circuit breaker is
@@ -568,7 +514,7 @@ export class AutoReviewRuntime {
     if (this.reviewerSessions.has(request.agent.id)) return next()
     const session = request.agent.session
     const memory = this.memoryFor(session)
-    const enabled = this.effectiveEnabled(session, memory)
+    const enabled = effectiveAutoReviewState(sessionEvents(session)) ?? memory.enabledOverride ?? this.config.enableByDefault
     if (!enabled) return next()
     const needsArguments = this.config.riskRules.some(rule => rule.field === 'arguments')
     const argumentsText = needsArguments && request.callId !== undefined
@@ -996,7 +942,7 @@ export class AutoReviewRuntime {
     const t = messages(this.config.language)
     const input = invocation.rawInput.trim().toLowerCase()
     if (input.startsWith('approve')) return this.approveCommand(invocation)
-    const current = this.effectiveEnabled(session, memory)
+    const current = effectiveAutoReviewState(sessionEvents(session)) ?? memory.enabledOverride ?? this.config.enableByDefault
     if (input === 'status' || input === '') {
       const auditOk = this.auditMayAppend()
       const stats = auditOk ? reviewStats(sessionEvents(session)) : this.memoryStats(memory)
@@ -1035,13 +981,6 @@ export class AutoReviewRuntime {
     const enabled = input === 'on'
     if (current === enabled) {
       return { kind: 'success', text: t.already(input.toUpperCase()) }
-    }
-    // Local port patch: while the permission-preset gate is closed the preset
-    // is authoritative, so `/auto-review on` refuses instead of recording an
-    // override the answerer would ignore for the rest of the session.
-    const gate = this.presetGateState(session)
-    if (enabled && gate.mounted && !gate.on) {
-      return { kind: 'error', text: t.presetGated(PRESET_GATE) }
     }
     if (this.auditMayAppend()) {
       const result = (session.append as unknown as StateAppend)('autoReview/state', { enabled }, { ignorable: true })
