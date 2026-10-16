@@ -40,7 +40,7 @@ export interface AutoReviewProjection {
   readonly fallbacks: number
   /** Hard-disable (`never` policy) rejections — no reviewer ran for these. */
   readonly neverRejects: number
-  /** Cumulative verdicts replayed from the same-fingerprint cache (no second model ran). */
+  /** Cumulative verdicts replayed from the same-fingerprint cache (no reviewer ran). */
   readonly cacheHits: number
   /** Mean duration of decision-carrying verdicts, rounded; 0 without any. */
   readonly avgDurationMs: number
@@ -61,8 +61,16 @@ export interface AutoReviewProjection {
  * (the persisted-cache precondition). It carries the internal counters the
  * wire value derives `avgDurationMs` from (`durationSum`/`decided`) and the
  * open-turn gate (`turnOpen`) that the client never needs.
+ *
+ * Since state version 4 it also carries the owning session id. The fold is
+ * pure and cannot resolve a live session on its own; a host that refuses the
+ * `autoReview/*` audit events falls back to an in-memory view, and that view
+ * needs to know which session it is serving. The id is part of the PERSISTED
+ * state, so the version bump is what invalidates a v3 cache entry.
  */
 export interface AutoReviewProjectionState {
+  /** The session this fold belongs to (state version 4). */
+  readonly sessionId: string
   readonly enabled: boolean
   readonly turnOpen: boolean
   readonly verdictsUsed: number
