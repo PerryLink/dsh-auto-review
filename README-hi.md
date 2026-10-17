@@ -113,6 +113,7 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 | `toolsPolicy.overrides` | `{}` | प्रति-टूल नीति: `ai` / `human` / `never` |
 | `riskRules` | `[]` | टूल तालिका से पहले मिलाया गया `{pattern, policy, field?}`; `field` चुनता है `reason` (डिफ़ॉल्ट), `toolName` या `arguments` |
 | `reviewerProvider` | `fork` | समीक्षक का उप-एजेंट प्रदाता (इन-प्रोसेस fork बैकएंड) |
+| `reviewerPreset` | *(none)* | केवल-पढ़ने वाला Agent Preset id; जब होस्ट केवल `startActivation` (0.2.1+) देता है तब आवश्यक |
 | `reviewerModel` | *(विरासत)* | समीक्षक मॉडल id; खाली होने पर सत्र एजेंट का मार्ग लेता है |
 | `reviewerTimeoutMs` | `60000` | निर्णय की समय-सीमा; समाप्ति पर fallback नीति लागू होती है |
 | `reviewerTools` | `[read, glob, grep]` | समीक्षक चाइल्ड की टूल अनुमति-सूची (गैर-रिक्त होनी चाहिए) |

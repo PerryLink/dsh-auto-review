@@ -113,6 +113,7 @@ Todos os ajustes são campos Schemastery `Config` (alteráveis no cordis.yml). U
 | `toolsPolicy.overrides` | `{}` | Política por ferramenta: `ai` / `human` / `never` |
 | `riskRules` | `[]` | `{pattern, policy, field?}` emparelhado antes da tabela de ferramentas; `field` escolhe `reason` (padrão), `toolName` ou `arguments` |
 | `reviewerProvider` | `fork` | Provedor de subagente do revisor (backend fork em processo) |
+| `reviewerPreset` | *(none)* | Id do Agent Preset somente leitura; obrigatório quando o host expõe apenas `startActivation` (0.2.1+) |
 | `reviewerModel` | *(herdado)* | Id do modelo revisor; se vazio, herda a rota do agente da sessão |
 | `reviewerTimeoutMs` | `60000` | Prazo do veredito; ao expirar, aplica-se a política de fallback |
 | `reviewerTools` | `[read, glob, grep]` | Lista de permissões de ferramentas do filho revisor (deve ser não vazia) |
