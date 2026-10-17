@@ -957,7 +957,18 @@ export function apply(ctx: Context, config: Config): void {
   // consumers (the dsh-eval engine) read the exact mounted configuration
   // instead of re-resolving a second, driftable copy.
   ctx.provide('autoReviewRuntime', runtime)
-  ctx.on('approval/request', (request, next) => runtime.answer(request, next))
+  // `prepend: true` puts the answerer at the HEAD of the `approval/request`
+  // waterfall. Listeners run in registration order and the first one to claim
+  // wins, so an answerer registered earlier would settle the request (and, in
+  // the web composition, raise the human dialog) before this one is asked:
+  // auto-review would be silently bypassed rather than fail. That is not
+  // hypothetical — the web app bundle mounts the approval forwarder
+  // (`@deepseek-ai/dsh-api-remotes`) before any profile plugin, so on dsh
+  // 0.2.1 every request was answered by the client and this answerer never
+  // ran. Prepending keeps the documented contract intact: every path that does
+  // not claim (gate off, `human`/`never` policy, budget exhausted, circuit
+  // open) still delegates with `next()` to the same chain.
+  ctx.on('approval/request', (request, next) => runtime.answer(request, next), { prepend: true })
   ctx.on('tools/post-execute', (exec, result, next) => runtime.injectDenyReason(exec, result, next))
   // `prepend: true` puts the firewall OUTSIDE every pre-step listener already
   // registered, so it sees the final message list and removes injected
