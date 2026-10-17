@@ -8,7 +8,7 @@ import { vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CommandDefinition } from '@deepseek-ai/dsh-commands'
-import type { UserMessage } from '@deepseek-ai/dsh-llm'
+import type { FinishReason, GenerateOptions, StreamChunk, UserMessage } from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
@@ -38,12 +38,32 @@ export interface ScriptedReview {
    * driver uses to wake the child's loop. Reviewer-child races belong here.
    */
   readonly onStart?: (request: SubagentStartRequest) => Promise<void>
+  /**
+   * Final text the tool-less reviewer returns (defaults to the JSON form of
+   * {@link verdict}). Only the `llm` seam reads this.
+   */
+  readonly llmText?: string
+  /** Terminal finish kind the mock `llm` emits (default `stop`). */
+  readonly llmFinish?: 'stop' | 'tool-calls' | 'max-tokens' | 'error' | 'aborted'
+  /** Failure detail carried by an `error`/`aborted` finish. */
+  readonly llmFailure?: { code?: string; message?: string }
+  /** Delay before the mock `llm` finishes (for timeout tests). */
+  readonly llmDelayMs?: number
+  /** Throw out of the mock `llm` stream instead of finishing (transport failure). */
+  readonly llmThrow?: Error
+  /** End the mock `llm` stream with no `finish` chunk at all. */
+  readonly llmNoFinish?: boolean
 }
 
 /** Mock `ctx.subagents` service recording every start request. */
 export interface MockSubagents {
   getProvider(name: string): object | undefined
-  start(name: string, request: SubagentStartRequest): Promise<SubagentRun>
+  /**
+   * The one-shot child seam. ABSENT when the host is scripted as
+   * 0.2.1-style ({@link makeSubagents} with `withStart: false`), where the host
+   * replaced it with `startActivation` and the reviewer must not use it.
+   */
+  start?(name: string, request: SubagentStartRequest): Promise<SubagentRun>
   readonly starts: { name: string; request: SubagentStartRequest }[]
 }
 
@@ -82,9 +102,13 @@ export function makeAgent(session: Session, injected: UserMessage[] = []): Agent
 }
 
 /** Build the scripted subagent service. */
-export function makeSubagents(script: () => ScriptedReview, capabilities?: object): MockSubagents {
+export function makeSubagents(
+  script: () => ScriptedReview,
+  capabilities?: object,
+  options: { readonly withStart?: boolean } = {},
+): MockSubagents {
   const starts: { name: string; request: SubagentStartRequest }[] = []
-  return {
+  const service: MockSubagents = {
     getProvider(name: string): object | undefined {
       return name === 'mock' ? (capabilities ?? {}) : undefined
     },
@@ -124,6 +148,53 @@ export function makeSubagents(script: () => ScriptedReview, capabilities?: objec
     },
     starts,
   }
+  // The 0.2.1 host: the service is there, the one-shot `start` is not.
+  if (options.withStart === false) delete service.start
+  return service
+}
+
+/** Mock `ctx.llm` service: one scripted, tool-less reviewer answer per call. */
+export interface MockLlm {
+  stream(options: GenerateOptions): AsyncIterable<StreamChunk>
+  /** Every `GenerateOptions` the plugin passed, in call order. */
+  readonly calls: GenerateOptions[]
+}
+
+/**
+ * Build the scripted `llm` service the tool-less reviewer path streams from.
+ * @param script - the same script the subagent mock reads, so one behavior
+ *   description drives either seam.
+ * @returns the mock service and the recorded calls.
+ */
+export function makeLlm(script: () => ScriptedReview): MockLlm {
+  const calls: GenerateOptions[] = []
+  return {
+    calls,
+    async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+      const behavior = script()
+      calls.push(options)
+      if (behavior.llmThrow !== undefined) throw behavior.llmThrow
+      if (behavior.llmDelayMs !== undefined) {
+        await new Promise<void>(resolve => setTimeout(resolve, behavior.llmDelayMs))
+      }
+      if (behavior.llmNoFinish === true) return
+      const text = behavior.llmText
+        ?? JSON.stringify(behavior.verdict ?? { decision: 'allow', reason: 'looks safe' })
+      yield { type: 'block-start', index: 0, blockType: 'text' } as StreamChunk
+      yield { type: 'text-delta', index: 0, text } as StreamChunk
+      yield { type: 'block-end', index: 0, block: { type: 'text', text } } as StreamChunk
+      yield { type: 'finish', reason: finishReasonOf(behavior) } as StreamChunk
+    },
+  }
+}
+
+/** Map the script's `llmFinish` onto a real {@link FinishReason}. */
+function finishReasonOf(behavior: ScriptedReview): FinishReason {
+  const kind = behavior.llmFinish ?? 'stop'
+  if (kind === 'error' || kind === 'aborted') {
+    return { kind, failure: behavior.llmFailure ?? { code: 'TRANSPORT', message: 'connection reset' } } as FinishReason
+  }
+  return { kind } as FinishReason
 }
 
 /** Build the capturing commands service. */
@@ -145,9 +216,23 @@ export interface Harness {
   readonly agent: Agent
   readonly injected: UserMessage[]
   readonly subagents: MockSubagents
+  readonly llm: MockLlm
   readonly commands: MockCommands
   /** Everything the mount logged through `ctx.logger.warn`, in order. */
   readonly warnings: string[]
+}
+
+/**
+ * Append the `request/header` row a real host writes inside the step, before
+ * dispatch — the route the tool-less reviewer resolves.
+ * @param session - the session that will ask for approval.
+ * @param route - the provider/model the turn is running on.
+ */
+export function appendRequestHeader(session: Session, route: { provider: string; model: string }): void {
+  session.append('request/header', {
+    header: { config: { provider: route.provider, model: route.model } },
+    reason: 'initial',
+  })
 }
 
 /** Mount our plugin with real approval service, real session, scripted reviewer. */
@@ -156,6 +241,12 @@ export async function mountHarness(
   script: () => ScriptedReview = () => ({ verdict: { decision: 'allow', reason: 'looks safe' } }),
   approvalConfig: Record<string, unknown> = {},
   providerCapabilities?: object,
+  /**
+   * Which reviewer seam the host is scripted to offer: `subagent` (the
+   * `toolFilter`-capable one-shot child, dsh <= 0.2.1-alpha) or `inline` (the
+   * 0.2.1 host, where `subagents.start` is gone and only `llm` remains).
+   */
+  seam: 'subagent' | 'inline' = 'subagent',
 ): Promise<Harness> {
   const ctx = new Context()
   // Captured (and silenced) from before the mount: the config warnings this
@@ -168,9 +259,11 @@ export async function mountHarness(
   const session = ctx.sessions.create(SessionId('harness-session'))
   session.append('turn/start', { turn: 1 })
   await ctx.plugin(ApprovalService, approvalConfig)
-  const subagents = makeSubagents(script, providerCapabilities)
+  const subagents = makeSubagents(script, providerCapabilities, { withStart: seam === 'subagent' })
+  const llm = makeLlm(script)
   const commands = makeCommands()
   ctx.provide('subagents', subagents as never)
+  ctx.provide('llm', llm as never)
   ctx.provide('commands', commands as never)
   ctx.provide('tools', {})
   const plugin = await import('../src/index.ts')
@@ -180,7 +273,7 @@ export async function mountHarness(
   })
   const injected: UserMessage[] = []
   const agent = makeAgent(session, injected)
-  return { ctx, session, agent, injected, subagents, commands, warnings }
+  return { ctx, session, agent, injected, subagents, llm, commands, warnings }
 }
 
 /** Dispatch the `approval/request` waterfall with a downstream answerer. */
