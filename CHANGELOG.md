@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.13.0] - 2026-10-18
+
+### Added
+
+- **Reviewer activation on 0.2.1+ (`startActivation`).** The review and eval paths now detect `subagents.startActivation` and use it with `delivery: "caller"`; on hosts that still expose `start()` the old path is unchanged. Because `startActivation` has no `toolFilter`, the new path requires `reviewerPreset` (a read-only Agent Preset) and fails closed without one, rather than giving the reviewer the parent's full tool surface. This closes the functional failure where every AI approval on 0.2.1 was rejected.
+
+### Fixed
+
+- `reviewerPreset` added to config/ResolvedConfig and the eval review config.
+
 ## [0.12.18] - 2026-10-17
 
 ### Fixed

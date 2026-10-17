@@ -21,6 +21,28 @@ import type { AutoReviewFallback } from './events.ts'
 import { AutoReviewCircuitId, AutoReviewRejectionId, AutoReviewVerdictId, findPresentedCall } from './events.ts'
 import type { ContextBudgetConfig, ResolvedConfig, RiskLevel } from './config.ts'
 import type { ReviewerChildren } from './isolation.ts'
+/** Minimal shape of the 0.2.1+ startActivation surface (alpha hosts lack it). */
+interface ReviewerActivationService {
+  startActivation?: (spec: {
+    provider: string
+    label: string
+    request: {
+      prompt: ContentBlock[]
+      parent: unknown
+      outputSchema: ObjectJsonSchema
+      maxDepth: number
+      agentOptions?: Record<string, unknown>
+      agentPreset: string
+    }
+    signal: AbortSignal
+    delivery: 'caller'
+  }) => Promise<{
+    childId: SessionId
+    result: Promise<{ stopReason: string; structured?: unknown }>
+    dispose(): Promise<void>
+  }>
+}
+
 
 /** A reviewer verdict, validated against the closed decision vocabulary. */
 export interface ReviewerVerdict {
@@ -395,20 +417,49 @@ export async function runReview(
     ...model !== undefined ? { model } : {},
   })
   try {
-    run = await ctx.subagents.start(provider, {
-      label: `auto-review: ${request.toolName}`,
-      prompt,
-      parent: request.agent,
-      signal: controller.signal,
-      toolFilter: { allow: config.reviewerTools },
-      outputSchema: VERDICT_SCHEMA,
-      // The cap equals the reviewer's OWN computed depth (parent depth + 1):
-      // the reviewer may run, but any child it tries to spawn would exceed it.
-      maxDepth: (request.agent.session.header.delegationDepth ?? 0) + 1,
-      ...config.reviewerModel !== undefined ? { agentOptions: { model: config.reviewerModel } } : {},
-    })
-    reviewerSessionId = run.id
-    reviewerSessions.add(run.id)
+    const activationService = ctx.subagents as unknown as ReviewerActivationService
+    if (typeof activationService.startActivation === 'function') {
+      // Host 0.2.1+ removed start()/toolFilter. The only read-only face is an
+      // Agent Preset that scopes tools itself, so refuse to migrate without one
+      // rather than handing the reviewer the parent's full tool surface.
+      if (config.reviewerPreset === undefined) {
+        return failure('unavailable', 'this host uses subagents.startActivation; set reviewerPreset to a read-only Agent Preset (reviewerProvider fork cannot scope tools here)')
+      }
+      const activation = await activationService.startActivation({
+        provider,
+        label: `auto-review: ${request.toolName}`,
+        request: {
+          prompt,
+          parent: request.agent,
+          outputSchema: VERDICT_SCHEMA,
+          maxDepth: (request.agent.session.header.delegationDepth ?? 0) + 1,
+          agentPreset: config.reviewerPreset,
+          ...config.reviewerModel !== undefined ? { agentOptions: { model: config.reviewerModel } } : {},
+        },
+        signal: controller.signal,
+        delivery: 'caller',
+      })
+      run = activation as unknown as typeof run
+      reviewerSessionId = activation.childId
+    } else {
+      run = await ctx.subagents.start(provider, {
+        label: `auto-review: ${request.toolName}`,
+        prompt,
+        parent: request.agent,
+        signal: controller.signal,
+        toolFilter: { allow: config.reviewerTools },
+        outputSchema: VERDICT_SCHEMA,
+        // The cap equals the reviewer's OWN computed depth (parent depth + 1):
+        // the reviewer may run, but any child it tries to spawn would exceed it.
+        maxDepth: (request.agent.session.header.delegationDepth ?? 0) + 1,
+        ...config.reviewerModel !== undefined ? { agentOptions: { model: config.reviewerModel } } : {},
+      })
+      reviewerSessionId = run.id
+    }
+    if (run === undefined || reviewerSessionId === undefined) {
+      return failure('unavailable', 'reviewer did not publish a session id')
+    }
+    reviewerSessions.add(reviewerSessionId)
     model = config.reviewerModel
     const result = await run.result
     if (timedOut) {

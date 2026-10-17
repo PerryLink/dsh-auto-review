@@ -148,6 +148,7 @@ export function evalReviewConfig(config: ResolvedConfig): EvalReviewConfig {
     reviewerProvider: config.reviewerProvider,
     reviewerModel: config.reviewerModel,
     reviewerTimeoutMs: config.reviewerTimeoutMs,
+    reviewerPreset: config.reviewerPreset,
     reviewerTools: config.reviewerTools,
   }
 }

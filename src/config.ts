@@ -136,6 +136,8 @@ export interface Config {
   riskRules?: RiskRuleConfig[]
   /** Subagent provider name for the reviewer (default `fork`, the in-process fork backend). */
   reviewerProvider?: string
+  /** Reviewer Agent Preset id; required when the host only exposes startActivation. */
+  reviewerPreset?: string
   /** Reviewer model id; when unset the reviewer inherits the session agent's route. */
   reviewerModel?: string
   /** Verdict deadline in milliseconds. Default 60000. */
@@ -210,6 +212,7 @@ export interface ResolvedConfig {
   readonly toolsPolicy: ToolsPolicyConfig
   readonly riskRules: readonly ResolvedRiskRule[]
   readonly reviewerProvider: string
+  readonly reviewerPreset?: string | undefined
   readonly reviewerModel: string | undefined
   readonly reviewerTimeoutMs: number
   readonly reviewerTools: readonly string[]
@@ -262,6 +265,7 @@ export const Config: z<Config> = z.object({
     field: FIELD.default('reason'),
   })).default([]),
   reviewerProvider: z.string().default('fork'),
+  reviewerPreset: z.string(),
   reviewerModel: z.string(),
   reviewerTimeoutMs: z.number().default(60_000),
   reviewerTools: z.array(z.string()).default(['read', 'glob', 'grep']),
@@ -387,6 +391,7 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     },
     riskRules,
     reviewerProvider: config.reviewerProvider ?? 'fork',
+    reviewerPreset: config.reviewerPreset,
     reviewerModel: config.reviewerModel,
     reviewerTimeoutMs: config.reviewerTimeoutMs ?? 60_000,
     reviewerTools,

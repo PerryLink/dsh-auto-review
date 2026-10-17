@@ -21,6 +21,28 @@ import { assertObjectJsonSchema, type ObjectJsonSchema } from '@deepseek-ai/dsh-
 import type { EvalCase } from './dsl.ts'
 import type { CaseTrace } from './trace.ts'
 import { renderToolCall } from './trace.ts'
+/** Minimal 0.2.1+ activation surface (alpha hosts expose start() instead). */
+interface EvalActivationService {
+  startActivation?: (spec: {
+    provider: string
+    label: string
+    request: {
+      prompt: ContentBlock[]
+      parent: Agent
+      outputSchema: ObjectJsonSchema
+      maxDepth: number
+      agentOptions?: Record<string, unknown>
+      agentPreset: string
+    }
+    signal: AbortSignal
+    delivery: 'caller'
+  }) => Promise<{
+    childId: SessionId
+    result: Promise<{ stopReason: string; structured?: unknown }>
+    dispose(): Promise<void>
+  }>
+}
+
 
 /** A second-model evaluation verdict. */
 export interface EvalReviewVerdict {
@@ -70,6 +92,8 @@ export interface EvalReviewConfig {
   readonly reviewerTimeoutMs: number
   /** Reviewer tool allow-list (read-only tools). */
   readonly reviewerTools: readonly string[]
+  /** Reviewer Agent Preset id, used by the startActivation path. */
+  readonly reviewerPreset?: string | undefined
 }
 
 /**
@@ -180,17 +204,41 @@ export async function runEvalReview(
     ...reviewerModel !== undefined ? { model: reviewerModel } : {},
   })
   try {
-    run = await ctx.subagents.start(provider, {
-      label: `eval-review: ${caze.id}`,
-      prompt,
-      parent,
-      signal: controller.signal,
-      toolFilter: { allow: config.reviewerTools },
-      outputSchema: EVAL_VERDICT_SCHEMA,
-      maxDepth: (parent.session.header.delegationDepth ?? 0) + 1,
-      ...reviewerModel !== undefined ? { agentOptions: { model: reviewerModel } } : {},
-    })
-    reviewerSessionId = run.id
+    const activationService = ctx.subagents as unknown as EvalActivationService
+    if (typeof activationService.startActivation === 'function') {
+      if (config.reviewerPreset === undefined) {
+        return failure('unavailable', 'this host uses subagents.startActivation; set reviewerPreset to a read-only Agent Preset')
+      }
+      const activation = await activationService.startActivation({
+        provider,
+        label: `eval-review: ${caze.id}`,
+        request: {
+          prompt,
+          parent,
+          outputSchema: EVAL_VERDICT_SCHEMA,
+          maxDepth: (parent.session.header.delegationDepth ?? 0) + 1,
+          agentPreset: config.reviewerPreset,
+          ...reviewerModel !== undefined ? { agentOptions: { model: reviewerModel } } : {},
+        },
+        signal: controller.signal,
+        delivery: 'caller',
+      })
+      run = activation as unknown as typeof run
+      reviewerSessionId = activation.childId
+    } else {
+      run = await ctx.subagents.start(provider, {
+        label: `eval-review: ${caze.id}`,
+        prompt,
+        parent,
+        signal: controller.signal,
+        toolFilter: { allow: config.reviewerTools },
+        outputSchema: EVAL_VERDICT_SCHEMA,
+        maxDepth: (parent.session.header.delegationDepth ?? 0) + 1,
+        ...reviewerModel !== undefined ? { agentOptions: { model: reviewerModel } } : {},
+      })
+      reviewerSessionId = run.id
+    }
+    if (run === undefined || reviewerSessionId === undefined) return failure('unavailable', 'reviewer did not publish a session id')
     const result = await run.result
     if (timedOut) return failure('timeout', `reviewer exceeded ${config.reviewerTimeoutMs} ms`)
     if (signal.aborted) return failure('cancelled', 'the eval run was cancelled while the reviewer ran')

@@ -116,6 +116,7 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 | `toolsPolicy.overrides` | `{}` | Per-tool policy: `ai` / `human` / `never` |
 | `riskRules` | `[]` | `{pattern, policy, field?}` matched before the tool table; `field` selects `reason` (default), `toolName`, or `arguments` |
 | `reviewerProvider` | `fork` | Subagent provider for the reviewer (in-process fork backend) |
+| `reviewerPreset` | *(none)* | Read-only Agent Preset id; required when the host exposes `startActivation` (0.2.1+) instead of `toolFilter` |
 | `reviewerModel` | *(inherit)* | Reviewer model id; unset inherits the session agent's route |
 | `reviewerTimeoutMs` | `60000` | Verdict deadline; on expiry the fallback policy applies |
 | `reviewerTools` | `[read, glob, grep]` | The reviewer child's tool allow-list (must be non-empty) |
