@@ -44,6 +44,12 @@ pm publish instead of pnpm publish.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Auto-review was silently bypassed on `dsh 0.2.1`: the answerer never saw a request.** `approval/request` is a Cordis waterfall resolved in registration order, and the web app bundle mounts its approval forwarder (`@deepseek-ai/dsh-api-remotes`) before any profile plugin. The forwarder claims the request and raises the human dialog, so an answerer registered later is never asked — no error, no warning, just an approval that auto-review did not review. The answerer now registers with `prepend: true`, which puts it at the head of the chain. Every path that does not claim (switch off, `human`/`never` policy, budget exhausted, circuit open) still delegates with `next()` to the same downstream chain, so what happens after it is unchanged.
+
+- **The reviewer failed on every request once `dsh 0.2.1` removed `ctx.subagents.start`.** `0.2.1` replaced the one-shot child with `startActivation`, whose spawn provider no longer accepts a `toolFilter`; a child without the read-only allow-list is exactly the reviewer face this plugin refuses to publish. The reviewer therefore falls back to one tool-less `ctx.llm.stream` call on the delegating turn's route (the latest `request/header`'s provider/model, `temperature: 0`), with the same prompt and the same verdict validation — no agent, no tools, and no child session to isolate. Both seams are feature-detected at call time instead of being declared in `inject`, so a host that still offers `subagents.start` keeps the isolated-child reviewer and does not have to mount `llm`.
+
 ## [0.12.13] - 2026-10-05
 
 undefined
