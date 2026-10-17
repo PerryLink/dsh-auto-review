@@ -179,3 +179,7 @@ describe('plugin module contract', () => {
     expect(unwrapped.inject).toEqual(['approval', 'subagents', 'commands', 'tools'])
   })
 })
+
+  it('reports the offending risk-rule index for an invalid pattern', () => {
+    expect(() => resolveConfig({ riskRules: [{ pattern: '(?i)rm', policy: 'ai' }] })).toThrow(/riskRules\[0\]/)
+  })

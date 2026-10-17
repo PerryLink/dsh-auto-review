@@ -143,7 +143,7 @@ Exemplo (forma completa anotada: `fixtures/config/config-full.yaml`):
         toolsPolicy:
           overrides: { bash: ai, write: ai }
         riskRules:
-          - pattern: '(?i)(rm\s+(-[a-z]+\s+)*/|git\s+push\s+--force)'
+          - pattern: '([Rr][Mm]\s+(-[a-z]+\s+)*/|[Gg][Ii][Tt]\s+push\s+--force)'
             policy: never
           - pattern: 'write'
             policy: never

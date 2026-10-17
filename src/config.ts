@@ -372,14 +372,14 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
   if (reviewerTools.length === 0) {
     throw new TypeError('reviewerTools must name at least one tool: an empty allow-list would leave the reviewer with no tool face')
   }
-  const riskRules = (config.riskRules ?? []).map((rule): ResolvedRiskRule => {
+  const riskRules = (config.riskRules ?? []).map((rule, index): ResolvedRiskRule => {
     let regex: RegExp
     try {
       // Flags are stripped: a global flag would make repeated .test() calls
       // stateful (lastIndex), and other flags would silently change semantics.
       regex = new RegExp(rule.pattern, 'u')
     } catch (error: unknown) {
-      throw new TypeError(`risk rule pattern ${JSON.stringify(rule.pattern)} is not a valid regular expression: ${String(error)}`)
+      throw new TypeError(`riskRules[${index}]: pattern ${JSON.stringify(rule.pattern)} is not a valid regular expression: ${String(error)}`)
     }
     return { pattern: rule.pattern, regex, policy: rule.policy, field: rule.field ?? 'reason' }
   })

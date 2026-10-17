@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.13.1] - 2026-10-18
+
+### Fixed
+
+- **Risk-rule examples are valid JavaScript regexes, and an invalid pattern names its index.** The READMEs used the PCRE inline flag `(?i)`, which `new RegExp(..., "u")` rejects; examples now spell the case-insensitive character classes out. Config errors read `riskRules[0]: pattern …` instead of an unlocated message (issue #59).
+
 ## [0.13.0] - 2026-10-18
 
 ### Added
