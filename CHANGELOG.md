@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.18] - 2026-10-17
+
+### Fixed
+
+- **Windows default no longer silently does nothing (issue #30).** The shipped defaults now cover `pwsh` and `powershell` as `ai`, not only `bash`/`write`.
+- **The context-firewall docs no longer claim the runtime-context snapshot is dropped.** The host re-admits `runtimeContext.project(...)` after `agent/pre-step`; `README` (en/zh/es/pt), `AGENTS.md` and `isolation.ts` now state that the reviewer still sees it. Workspace instruction files and third-party injections remain filtered.
+- Compatibility: `engines.dsh` -> `>=0.2.1-0 <0.3.0`; devDependencies to `0.2.1-rc.2`; add `@deepseek-ai/dsh-working-directory`; remove the deleted `@deepseek-ai/dsh-invariants` peer.
+
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
 ## [0.12.17] - 2026-10-10

@@ -2,10 +2,11 @@
  * The reviewer child's context firewall.
  *
  * The reviewer is an ordinary agent, so the harness composes its steps the
- * ordinary way: the loop's own runtime-context snapshot, the workspace
- * instruction files (`AGENTS.md` / `CLAUDE.md`, injected by
- * `dsh-agent-instructions`), and every context-injecting plugin the user
- * happens to have installed all enter the child ABOVE the reviewer prompt.
+ * ordinary way: the workspace instruction files (`AGENTS.md` / `CLAUDE.md`,
+ * injected by `dsh-agent-instructions`) and every context-injecting plugin the
+ * user happens to have installed enter the child ABOVE the reviewer prompt.
+ * The loop's own runtime-context snapshot is re-admitted AFTER this seam, so
+ * this firewall does not claim to remove it.
  * None of that is evidence about the reviewed call, and the workspace half is
  * authored by whoever can write to the repository under review — a teammate, a
  * PR branch, a dependency shipping its own `AGENTS.md` — which puts
@@ -47,10 +48,10 @@ import type { SessionId } from '@deepseek-ai/dsh-session'
  * - `tool` — the results of the read-only tools the reviewer called; dropping
  *   these would blind the reviewer to its own `read`/`glob`/`grep` output.
  *
- * Everything else is injected context: `plugin` covers the loop's
- * runtime-context snapshot and third-party injections, and out-of-repo
- * producers (the workspace instruction loader among them) declare their own
- * merge-extended `kind`. All of it is dropped.
+ * Everything else is injected context: `plugin` covers third-party injections,
+ * and out-of-repo producers (the workspace instruction loader among them)
+ * declare their own merge-extended `kind`. The loop's runtime-context snapshot
+ * is re-admitted after this seam and is NOT removed here.
  */
 export const REVIEWER_MESSAGE_SOURCES: ReadonlySet<string> = new Set(['user', 'tool'])
 

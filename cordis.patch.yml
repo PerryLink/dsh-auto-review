@@ -19,6 +19,8 @@
           overrides:
             bash: ai
             write: ai
+            pwsh: ai
+            powershell: ai
     # OPTIONAL invariant companion — uncomment and add to YOUR profile patch
     # layer only in compositions that provide the `invariants` service
     # (agent-spine apps such as headless/ACP). The plain web profile has no

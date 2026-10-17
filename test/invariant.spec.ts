@@ -26,7 +26,8 @@ import { AutoReviewCircuitId, AutoReviewRejectionId, AutoReviewVerdictId } from 
  * import would turn "the host deleted this package" into a collection error
  * instead of a skip.
  */
-const InvariantRegistry = await import('@deepseek-ai/dsh-invariants')
+const INVARIANTS_SPEC = '@deepseek-ai/dsh-invariants'
+const InvariantRegistry = await import(INVARIANTS_SPEC)
   .then(module => module.default)
   .catch(() => undefined)
 
