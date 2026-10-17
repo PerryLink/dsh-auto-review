@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.13.2] - 2026-10-18
+
+### Changed
+
+- Add a 1280×720 hero and a 960×540, 4-second terminal GIF rendered from the test run; `screenshots.json` is an object array and `capture.json` records the command.
+
 ## [0.13.1] - 2026-10-18
 
 ### Fixed

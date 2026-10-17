@@ -1,5 +1,14 @@
-{
-  "screenshots": [
-    "docs/assets/dsh-auto-review-demo.png"
-  ]
-}
+[
+  {
+    "path": "docs/assets/dsh-auto-review-hero.png",
+    "kind": "hero",
+    "alt": "dsh-auto-review terminal output",
+    "caption": "Real dsh-auto-review test run; 280 tests passed."
+  },
+  {
+    "path": "docs/assets/dsh-auto-review-demo.gif",
+    "kind": "demo",
+    "alt": "Animated dsh-auto-review terminal session",
+    "caption": "The same run, assembled line by line."
+  }
+]

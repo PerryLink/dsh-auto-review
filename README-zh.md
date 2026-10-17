@@ -41,7 +41,7 @@ DeepSeek Harness 的第二模型 AI 审批 —— 一个只读审查子代理在
 
 当某个动作越过沙箱边界时，第二模型读取证据并给出带有理由的裁决 —— 人类无需批准任何事，同时也没有任何不安全的东西蒙混过关。
 
-![dsh-auto-review 终端演示：dsh-auto-review — standalone MCP path: deterministic deny, then cache replay](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-demo.png)
+![dsh-auto-review 终端演示：dsh-auto-review — standalone MCP path: deterministic deny, then cache replay](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-hero.png)
 
 ![Animated terminal demo of dsh-auto-review](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-demo.gif)
 

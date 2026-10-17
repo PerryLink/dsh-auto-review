@@ -41,7 +41,7 @@ Aprobación con IA de segundo modelo para DeepSeek Harness: un subagente revisor
 
 Cuando una acción cruza el límite del sandbox, un segundo modelo lee la evidencia y devuelve un veredicto con su razón — para que los humanos no aprueben nada y nada inseguro se cuele.
 
-![Demostración de terminal de dsh-auto-review: dsh-auto-review — standalone MCP path: deterministic deny, then cache replay](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-demo.png)
+![Demostración de terminal de dsh-auto-review: dsh-auto-review — standalone MCP path: deterministic deny, then cache replay](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-hero.png)
 
 ![Animated terminal demo of dsh-auto-review](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-demo.gif)
 

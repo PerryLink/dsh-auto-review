@@ -1,0 +1,16 @@
+{
+  "schema": "dsh-capture/v1",
+  "repository": "dsh-auto-review",
+  "storyboard": [
+    "$ pnpm test"
+  ],
+  "commands": [
+    "pnpm test"
+  ],
+  "renderer": "plugins/_archive/growth/2026-10-17/asset-tools/render.mjs",
+  "size": {
+    "hero": "1280x720",
+    "gif": "960x540",
+    "gifSeconds": 4
+  }
+}
