@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.13.4] - 2026-10-18
+
+### Changed
+
+- Move `tsdown`/`typescript` (and `@types/react` where present) from runtime dependencies to devDependencies. Git installs still build: pnpm installs devDependencies for a git dependency and runs `prepare`; npm tarballs ship the built `lib/`. The runtime tree no longer carries the build chain.
+
 ## [0.13.3] - 2026-10-18
 
 ### Fixed
