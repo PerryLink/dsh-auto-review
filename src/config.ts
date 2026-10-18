@@ -140,6 +140,8 @@ export interface Config {
   reviewerPreset?: string
   /** Reviewer model id; when unset the reviewer inherits the session agent's route. */
   reviewerModel?: string
+  /** LLM provider route for {@link reviewerModel}; unset inherits the session agent's provider. */
+  reviewerModelProvider?: string
   /** Verdict deadline in milliseconds. Default 60000. */
   reviewerTimeoutMs?: number
   /**
@@ -214,6 +216,7 @@ export interface ResolvedConfig {
   readonly reviewerProvider: string
   readonly reviewerPreset?: string | undefined
   readonly reviewerModel: string | undefined
+  readonly reviewerModelProvider: string | undefined
   readonly reviewerTimeoutMs: number
   readonly reviewerTools: readonly string[]
   readonly fallbackPolicy: FallbackPolicy
@@ -267,6 +270,7 @@ export const Config: z<Config> = z.object({
   reviewerProvider: z.string().default('fork'),
   reviewerPreset: z.string(),
   reviewerModel: z.string(),
+  reviewerModelProvider: z.string(),
   reviewerTimeoutMs: z.number().default(60_000),
   reviewerTools: z.array(z.string()).default(['read', 'glob', 'grep']),
   fallbackPolicy: FALLBACK.default('rejected'),
@@ -393,6 +397,7 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     reviewerProvider: config.reviewerProvider ?? 'fork',
     reviewerPreset: config.reviewerPreset,
     reviewerModel: config.reviewerModel,
+    reviewerModelProvider: config.reviewerModelProvider,
     reviewerTimeoutMs: config.reviewerTimeoutMs ?? 60_000,
     reviewerTools,
     fallbackPolicy: config.fallbackPolicy ?? 'rejected',

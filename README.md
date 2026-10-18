@@ -123,6 +123,7 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 | `reviewerProvider` | `fork` | Subagent provider for the reviewer (in-process fork backend) |
 | `reviewerPreset` | *(none)* | Read-only Agent Preset id; required when the host exposes `startActivation` (0.2.1+) instead of `toolFilter` |
 | `reviewerModel` | *(inherit)* | Reviewer model id; unset inherits the session agent's route |
+| `reviewerModelProvider` | *(inherit)* | LLM provider route for `reviewerModel`; unset inherits the session agent's provider |
 | `reviewerTimeoutMs` | `60000` | Verdict deadline; on expiry the fallback policy applies |
 | `reviewerTools` | `[read, glob, grep]` | The reviewer child's tool allow-list (must be non-empty) |
 | `fallbackPolicy` | `rejected` | Reviewer failure: `rejected` (fail closed) / `delegate` / `allow-once` |

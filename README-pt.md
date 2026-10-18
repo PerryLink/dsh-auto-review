@@ -120,6 +120,7 @@ Todos os ajustes são campos Schemastery `Config` (alteráveis no cordis.yml). U
 | `reviewerProvider` | `fork` | Provedor de subagente do revisor (backend fork em processo) |
 | `reviewerPreset` | *(none)* | Id do Agent Preset somente leitura; obrigatório quando o host expõe apenas `startActivation` (0.2.1+) |
 | `reviewerModel` | *(herdado)* | Id do modelo revisor; se vazio, herda a rota do agente da sessão |
+| `reviewerModelProvider` | *(herdado)* | Rota do provedor LLM para `reviewerModel`; se vazio, herda o provedor do agente da sessão |
 | `reviewerTimeoutMs` | `60000` | Prazo do veredito; ao expirar, aplica-se a política de fallback |
 | `reviewerTools` | `[read, glob, grep]` | Lista de permissões de ferramentas do filho revisor (deve ser não vazia) |
 | `fallbackPolicy` | `rejected` | Falha do revisor: `rejected` (falha fechada) / `delegate` / `allow-once` |

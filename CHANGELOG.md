@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.13.7] - 2026-10-19
+
+### Fixed
+
+- **`reviewerModelProvider` routes the reviewer to a second LLM provider (issue #60).** `reviewerModel` only set `agentOptions.model`, so the child/activation stayed on the session provider. A new optional `reviewerModelProvider` is passed as `agentOptions.provider` on both reviewer seams and as the tool-less `llm.stream` provider; unset keeps the previous inherit-the-session-route behavior. Config docs added in all five READMEs; tests cover both the inline route and config resolution.
+
 ## [0.13.6] - 2026-10-19
 
 ### Fixed

@@ -120,6 +120,7 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 | `reviewerProvider` | `fork` | समीक्षक का उप-एजेंट प्रदाता (इन-प्रोसेस fork बैकएंड) |
 | `reviewerPreset` | *(none)* | केवल-पढ़ने वाला Agent Preset id; जब होस्ट केवल `startActivation` (0.2.1+) देता है तब आवश्यक |
 | `reviewerModel` | *(विरासत)* | समीक्षक मॉडल id; खाली होने पर सत्र एजेंट का मार्ग लेता है |
+| `reviewerModelProvider` | *(विरासत)* | `reviewerModel` के लिए LLM प्रदाता मार्ग; खाली होने पर सत्र एजेंट का प्रदाता लेता है |
 | `reviewerTimeoutMs` | `60000` | निर्णय की समय-सीमा; समाप्ति पर fallback नीति लागू होती है |
 | `reviewerTools` | `[read, glob, grep]` | समीक्षक चाइल्ड की टूल अनुमति-सूची (गैर-रिक्त होनी चाहिए) |
 | `fallbackPolicy` | `rejected` | समीक्षक विफलता: `rejected` (विफल-बंद) / `delegate` / `allow-once` |
