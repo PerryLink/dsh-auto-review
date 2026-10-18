@@ -36,9 +36,9 @@ dsh plugin --profile <name> add dsh-auto-review
 <!-- star-cta -->
 ## ⭐ 如果它帮到了你
 
-这个插件是 [DSH 插件家族](https://github.com/PerryLink)的一员（40+ 个，全部 Apache-2.0）。如果你在用，**给个 star** —— 它不会解锁任何功能，但会让下一个人在搜索里更容易找到它。
+这个插件是 [DSH 插件家族](https://github.com/PerryLink)的一员（95 个，全部 Apache-2.0）。如果你在用，**给个 star** —— 它不会解锁任何功能，但会让下一个人在搜索里更容易找到它。
 
-*English:* part of a 40+ plugin family for DeepSeek Harness. If it is useful, **a star helps the next person find it** — nothing is gated behind it.
+*English:* part of a 95 plugin family for DeepSeek Harness. If it is useful, **a star helps the next person find it** — nothing is gated behind it.
 
 ## What is dsh-auto-review?
 
@@ -56,7 +56,7 @@ DeepSeek Harness 的第二模型 AI 审批 —— 一个只读审查子代理在
 
 | 方面 | 状态 |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.2.1-alpha.1`（2026-09-24 已核验）。双线 npm 支持：dev 钉号与运行时依赖均为 `0.1.7-rc.2`、peer 范围 `>=0.1.2-rc.1 <0.2.0 \|\| >=0.1.5-alpha.1 <0.2.0 \|\| >=0.1.6-0 <0.2.0 \|\| >=0.1.7-0 <0.2.0 \|\| >=0.1.7-0 <0.2.0` —— 插件代码兼容各已发布宿主线（特性探测），各线均跑完整门禁链；运行时依赖钉号随宿主线，避免 profile 安装遮蔽宿主自带树。`pnpm-workspace.yaml` 把整张 `@deepseek-ai/dsh-*` 图钉到该线：否则 `autoInstallPeers` 会用缺少 0.1.7 包所需导出的预览版填补已冻结的 `dsh-agent-spine-demo` 子图的 `^0.1.1-rc.2` peer。alpha.2 线上 eval 夹具钉 `deepseek-flash`（已移除的 `deepseek-v4-flash` 不再出现在 `eval/`）。 |
+| 宿主 | DeepSeek Harness `dsh-v0.2.1-rc.2`（2026-10-18 验证）：`engines.dsh >=0.2.1-0 <0.3.0`；P0 兼容路径已有回归测试。 |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | 平台 | 全部（宿主 answerer；可选 Web 审查面板，依赖会话投影能力） |
 | 模型 | 任意（审查器默认继承会话代理的路由；`reviewerModel` 可覆盖） |

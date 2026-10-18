@@ -44,9 +44,9 @@ dsh plugin --profile <name> add dsh-auto-review
 
 ## ⭐ 如果它帮到了你
 
-यह प्लगइन [DSH प्लगइन परिवार](https://github.com/PerryLink) का हिस्सा है (40+ प्लगइन, सभी Apache-2.0)। अगर यह उपयोगी लगे, तो **एक स्टार दें** — इससे कोई सुविधा अनलॉक नहीं होती, पर अगला व्यक्ति इसे खोज में आसानी से पा लेता है।
+यह प्लगइन [DSH प्लगइन परिवार](https://github.com/PerryLink) का हिस्सा है (95 प्लगइन, सभी Apache-2.0)। अगर यह उपयोगी लगे, तो **एक स्टार दें** — इससे कोई सुविधा अनलॉक नहीं होती, पर अगला व्यक्ति इसे खोज में आसानी से पा लेता है।
 
-*English:* part of a 40+ plugin family for DeepSeek Harness. If it is useful, **a star helps the next person find it** — nothing is gated behind it.
+*English:* part of a 95 plugin family for DeepSeek Harness. If it is useful, **a star helps the next person find it** — nothing is gated behind it.
 
 ## What is dsh-auto-review?
 
@@ -64,7 +64,7 @@ DeepSeek Harness के लिए द्वितीय-मॉडल AI अन�
 
 | सतह | स्थिति |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.2.1-alpha.1` (2026-09-25 को सत्यापित)। दोहरी-लाइन npm समर्थन: dev पिन और रनटाइम निर्भरताएँ `0.1.7-rc.2`, peers `>=0.1.2-rc.1 <0.2.0 \|\| >=0.1.5-alpha.1 <0.2.0 \|\| >=0.1.6-0 <0.2.0 \|\| >=0.1.7-0 <0.2.0 \|\| >=0.1.7-0 <0.2.0` — प्लगइन कोड प्रकाशित होस्ट लाइनों को फ़ीचर-डिटेक्ट करता है और हर लाइन पूरी गेट श्रृंखला चलाती है; रनटाइम निर्भरताएँ होस्ट लाइन का पालन करती हैं ताकि प्रोफ़ाइल इंस्टॉल होस्ट के अपने ट्री को शैडो न करें। `pnpm-workspace.yaml` पूरे `@deepseek-ai/dsh-*` ग्राफ़ को उस लाइन पर पिन करता है, क्योंकि अन्यथा `autoInstallPeers` फ़्रोज़न `dsh-agent-spine-demo` सबग्राफ़ के `^0.1.1-rc.2` peers को ऐसे प्रीव्यू से भर देता है जिनमें 0.1.7 पैकेज जिन निर्यातों को import करते हैं वे नहीं हैं। alpha.2 लाइन पर eval फ़िक्स्चर `deepseek-flash` पिन करते हैं (हटाया गया `deepseek-v4-flash` अब `eval/` में नहीं है)। |
+| हारनेस | DeepSeek Harness `dsh-v0.2.1-rc.2` (2026-10-18 सत्यापित): `engines.dsh >=0.2.1-0 <0.3.0`; P0 संगतता पथ के रिग्रेशन परीक्षण हैं। |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | प्लेटफ़ॉर्म | सभी (होस्ट answerer; सत्र-प्रोजेक्शन क्षमता के ज़रिए वैकल्पिक वेब समीक्षा पैनल) |
 | मॉडल | कोई भी (समीक्षक सत्र एजेंट का मार्ग विरासत में लेता है; `reviewerModel` उसे बदल देता है) |

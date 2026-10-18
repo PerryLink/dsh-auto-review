@@ -46,7 +46,7 @@ dsh plugin --profile <name> add dsh-auto-review
 
 Este plugin forma parte de la [familia de plugins DSH](https://github.com/PerryLink) (más de 40, todos Apache-2.0). Si te resulta útil, **dale una estrella**: no desbloquea nada, pero ayuda a que la siguiente persona lo encuentre antes.
 
-*English:* part of a 40+ plugin family for DeepSeek Harness. If it is useful, **a star helps the next person find it** — nothing is gated behind it.
+*English:* part of a 95 plugin family for DeepSeek Harness. If it is useful, **a star helps the next person find it** — nothing is gated behind it.
 
 ## What is dsh-auto-review?
 
@@ -64,7 +64,7 @@ Cuando una acción cruza el límite del sandbox, un segundo modelo lee la eviden
 
 | Superficie | Estado |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.2.1-alpha.1` (verificado el 2026-09-25). Soporte npm de doble línea: pins de desarrollo y dependencias de runtime `0.1.7-rc.2`, peers `>=0.1.2-rc.1 <0.2.0 \|\| >=0.1.5-alpha.1 <0.2.0 \|\| >=0.1.6-0 <0.2.0 \|\| >=0.1.7-0 <0.2.0 \|\| >=0.1.7-0 <0.2.0` — el código del plugin detecta las líneas de host publicadas (detección de características) y cada línea ejecuta la cadena completa de gates; las dependencias de runtime siguen la línea del host para que una instalación en un perfil nunca sombree el árbol del host. `pnpm-workspace.yaml` fija todo el grafo `@deepseek-ai/dsh-*` a esa línea, porque `autoInstallPeers` si no rellena los peers `^0.1.1-rc.2` del subgrafo congelado `dsh-agent-spine-demo` con previews que carecen de las exportaciones que importan los paquetes 0.1.7. En la línea alpha.2 los fixtures de eval fijan `deepseek-flash` (el id eliminado `deepseek-v4-flash` ya no aparece en `eval/`). |
+| Harness | DeepSeek Harness `dsh-v0.2.1-rc.2` (verificado 2026-10-18): `engines.dsh >=0.2.1-0 <0.3.0`; las rutas de compatibilidad P0 tienen pruebas de regresión. |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | Plataformas | Todas (answerer de host; panel web opcional mediante la capacidad de proyección de sesión) |
 | Modelo | Cualquiera (el revisor hereda la ruta del agente de sesión; `reviewerModel` la reemplaza) |
