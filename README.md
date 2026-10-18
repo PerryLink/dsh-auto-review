@@ -537,6 +537,8 @@ This project is one of the **87 actively maintained** DeepSeek Harness plugins f
 
 </details>
 
+</details>
+
 ### Install from the DSH Desktop Market
 
 All PerryLink plugins are browsable in the built-in DSH Desktop Market: **Market → Sources → add source → paste** `https://perrylink-dsh-catalog.perrylink.workers.dev/catalog-source.json` **→ select it**. Installation still goes through the Market's npm-identity verification and your confirmation.
