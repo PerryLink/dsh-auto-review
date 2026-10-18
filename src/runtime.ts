@@ -965,7 +965,9 @@ export class AutoReviewRuntime {
           t.verdictsLine(verdictsUsed, this.config.maxReviewsPerTurn),
           t.failuresLine(failuresUsed, this.config.maxFailuresPerTurn),
           ...circuit === undefined ? [] : [t.circuitLine(circuit.trip.kind, circuit.trip.count, circuit.action)],
-          t.allTimeLine(stats.allows, stats.denies, stats.fallbacks, stats.rejections, stats.avgDurationMs),
+          auditOff
+            ? t.memoryStatsLine(stats.allows, stats.denies, stats.fallbacks, stats.rejections, stats.avgDurationMs)
+            : t.allTimeLine(stats.allows, stats.denies, stats.fallbacks, stats.rejections, stats.avgDurationMs),
           ...recent,
           ...auditOff ? [t.auditDisabledNotice] : [],
           t.usage,

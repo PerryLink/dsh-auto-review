@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.13.6] - 2026-10-19
+
+### Fixed
+
+- **`/auto-review status` no longer calls the audit-disabled in-memory tally “All-time” (issue #50).** On a host where session-log audit is fail-closed, the numbers come from the per-turn memory mirror; the line is now labeled “This turn (audit disabled; in-memory)” / “本轮（审计已停用，内存统计）”, so a 0 after a turn with real verdicts is not presented as a lifetime total.
+
 ## [0.13.4] - 2026-10-18
 
 ### Changed
