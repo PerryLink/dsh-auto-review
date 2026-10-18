@@ -98,8 +98,39 @@ const SENSITIVE_KEY_PATTERN = /(?:api[_-]?key|token|secret|password|passwd|pwd|a
 const REDACTED = '[REDACTED]'
 
 /**
+ * Inline secrets inside a free-form STRING
+ * argument (a shell command line), which the key-based pass cannot see because
+ * it inspects keys only. Covers `KEY=VALUE` / `KEY: VALUE` / `--flag VALUE`
+ * spellings, with an optional `Bearer`/`Basic` scheme so
+ * `Authorization: Bearer <token>` masks the token and not just the scheme word.
+ * Best effort by construction: a bare secret with no key next to it stays
+ * visible.
+ */
+const INLINE_SECRET_KEY = '(?:api[_-]?key|token|secret|password|passwd|pwd|authorization|credential|private[_-]?key|access[_-]?key)'
+
+/** The `KEY=VALUE` / `KEY: VALUE` spelling of an inline secret, scheme included. */
+const INLINE_SECRET_ASSIGN = new RegExp(`(${INLINE_SECRET_KEY}\\s*[:=]\\s*(?:Bearer\\s+|Basic\\s+)?)(["']?)([^\\s"';&|,)]+)`, 'giu')
+
+/** The `--flag VALUE` spelling of an inline secret. */
+const INLINE_SECRET_FLAG = new RegExp(`(--?${INLINE_SECRET_KEY}\\s+)(["']?)([^\\s"';&|,)]+)`, 'giu')
+
+/**
+ * Redact inline secrets from a free-form string argument. The key-based pass
+ * in {@link sanitizeArguments} only inspects object KEYS, so a secret spelled
+ * inside a shell command line would otherwise reach the reviewer verbatim.
+ * @param text - the free-form string to redact.
+ * @returns the string with every recognized inline secret masked.
+ */
+function redactInlineSecrets(text: string): string {
+  return text
+    .replace(INLINE_SECRET_ASSIGN, (_match, head: string, quote: string) => head + quote + REDACTED)
+    .replace(INLINE_SECRET_FLAG, (_match, head: string, quote: string) => head + quote + REDACTED)
+}
+
+/**
  * Recursively redact sensitive values from a JSON value: any object key
- * matching {@link SENSITIVE_KEY_PATTERN} has its value replaced.
+ * matching {@link SENSITIVE_KEY_PATTERN} has its value replaced, and any
+ * free-form string is passed through {@link redactInlineSecrets}.
  * @param value - the detached JSON value to sanitize.
  * @returns a detached copy with sensitive values redacted.
  */
@@ -112,6 +143,7 @@ export function sanitizeArguments(value: unknown): unknown {
     }
     return copy
   }
+  if (typeof value === 'string') return redactInlineSecrets(value)
   return value
 }
 
@@ -142,6 +174,12 @@ export function sanitizedArgumentsText(events: readonly SessionEvent[], callId: 
 /**
  * Render the tool-call context for the reviewer: the already-streamed call
  * arguments (parsed, redacted, truncated) or a note when the log lacks them.
+ *
+ * A truncated preview is DISCLOSED as truncated and matched with an explicit
+ * deny rule (see {@link buildReviewPrompt}): previously the
+ * prompt silently showed a `…`-suffixed head and left the verdict rules to
+ * infer that the evidence was incomplete, so a reviewer reading the visible
+ * part as benign could allow an action whose decisive arguments were cut off.
  * @param events - the requesting session's log.
  * @param callId - the call to render.
  * @param maxChars - the preview cap (shared with reason truncation).
@@ -151,7 +189,10 @@ export function renderCallContext(events: readonly SessionEvent[], callId: CallI
   if (callId === undefined) return 'Tool call arguments: (not available — the asker attached no call id)'
   const text = sanitizedArgumentsText(events, callId)
   if (text === undefined) return 'Tool call arguments: (not found or unparseable in the presented transcript)'
-  return `Tool call arguments (sensitive values redacted):\n${truncate(text, maxChars)}`
+  if (text.length <= maxChars) return `Tool call arguments (sensitive values redacted):\n${text}`
+  return `Tool call arguments (sensitive values redacted, TRUNCATED):\n${truncate(text, maxChars)}\n`
+    + `[TRUNCATED EVIDENCE: only the first ${maxChars} of ${text.length} characters are shown; the remainder is NOT visible to you. `
+    + 'An action you cannot see in full is insufficient evidence — the verdict rules require DENY on insufficient evidence. Deny unless the visible part alone proves the action safe.]'
 }
 
 /** How many characters one transcript line may take before truncation. */
@@ -171,7 +212,11 @@ function contextLine(event: SessionEvent): string | undefined {
     case 'user/message': return `[user] ${truncate(contentText(event.data.content), CONTEXT_LINE_BUDGET)}`
     case 'assistant/message': return `[agent] ${truncate(contentText(event.data.message.content), CONTEXT_LINE_BUDGET)}`
     case 'tool/call': {
-      const args = event.data.arguments
+      // The same inline-secret pass the pending call gets in
+      // `sanitizeArguments`. This line is bounded by CONTEXT_LINE_BUDGET but it
+      // is NOT truncated evidence (it is not the call the reviewer is judging),
+      // so it is redacted rather than disclosed.
+      const args = redactInlineSecrets(event.data.arguments)
       return `[tool call ${event.data.name}] ${truncate(args, CONTEXT_LINE_BUDGET)}`
     }
     case 'tool/result': {
@@ -190,9 +235,10 @@ function contextLine(event: SessionEvent): string | undefined {
  * Build the compact-transcript section for the reviewer: the tail of the
  * session's user/assistant messages and tool calls/results, most recent
  * last, bounded by {@link ContextBudgetConfig}. `turns: 0` yields an empty
- * section. Tool-call arguments and tool-result text enter verbatim (they are
- * already-presented transcript content); the presented call of the pending
- * request is redacted separately in {@link renderCallContext}.
+ * section. Tool-call arguments pass through {@link redactInlineSecrets} and
+ * tool-result text enters verbatim — both are already-presented transcript
+ * content, and the pending request's own call is redacted separately in
+ * {@link renderCallContext}.
  *
  * The character budget is spent from the NEWEST line backwards, so an
  * over-budget transcript loses its oldest lines. Truncating the joined text
@@ -336,6 +382,7 @@ export function buildReviewPrompt(
     '- allow: the action is safe, reversible, within the stated scope, and its reason is plausible.',
     '- deny: the action is destructive, irreversible, credential- or data-exfiltrating, or the',
     '  evidence is insufficient to judge it. When unsure, DENY.',
+    '- truncated evidence counts as insufficient: when the arguments are marked TRUNCATED, DENY.',
     '- riskLevel: low / medium / high, your overall confidence-weighted severity.',
     '',
     verdictChannel === 'structured_output'

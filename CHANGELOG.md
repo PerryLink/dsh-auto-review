@@ -46,6 +46,18 @@
 
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
+## [0.13.5] - 2026-10-18
+
+### Fixed
+
+- **A secret spelled inside a free-form string argument reached the reviewer verbatim.** `sanitizeArguments` redacts by object KEY, so it sees `{"apiKey": "..."}` but not `deploy --token sk-live-123` or `curl -H "Authorization: Bearer …"` — which is how a secret usually appears in a shell call. Both rendering paths are covered now: the pending call's own preview (`sanitizeArguments`) and the compact transcript line (`contextLine`), the second being the one that reached the reviewer intact. Known limit, pinned by a test: a bare secret with no key adjacent to it (`echo sk-live-123`) stays visible — this is a heuristic, not a secret scanner.
+- **Truncated evidence read as complete evidence.** The pending call's preview is cut at `reasonMaxChars` (default 2000) behind a bare `…`, so a reviewer shown only the benign head of a long call could allow it with the decisive arguments cut off. A truncated preview is now labelled `TRUNCATED`, states the exact counts (`only the first <n> of <m> characters are shown; the remainder is NOT visible to you`), and the verdict rules gained the matching `- truncated evidence counts as insufficient: when the arguments are marked TRUNCATED, DENY.`
+- **The review panel showed all zeros on every host that declines the audit events.** The `autoReview` projection folds the plugin's own `autoReview/*` session events, and on a host whose `Session.append` cannot stamp the `ignorable` marker none of them is ever written — which is every published line — so the panel folded an empty log while the in-memory mirror held the real numbers. The persisted state now carries the owning `sessionId` (state version 4) and the runtime registers a live wire view that serves the switch state and the session's activity from the mirror; on a marker-aware host the pure fold stays authoritative and is returned untouched.
+
+### Added
+
+- `test/hardening.spec.ts` — a regression case per fix above, including the documented bare-secret limit. `test/projection.spec.ts` covers the state-version-4 contract and the substituted panel view.
+
 ## [0.12.17] - 2026-10-10
 
 ### Fixed

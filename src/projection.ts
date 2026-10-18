@@ -68,10 +68,19 @@ type Mutable<T> = { -readonly [K in keyof T]: T[K] }
  * State for the empty log. `enabled` starts at the resolved
  * `enableByDefault` — the projection cannot know the plugin config on its
  * own, so the unit is built per mount by {@link makeAutoReviewProjection}.
+ *
+ * `sessionId` is part of the state since state version 4: the fold records
+ * which session it belongs to so a host that cannot accept the
+ * `autoReview/*` audit events can serve the panel from the live in-memory
+ * mirror instead (see `AutoReviewRuntime.livePanelView`). The pure fold
+ * cannot resolve a session on its own, so the id is supplied by the caller
+ * that knows the log header.
  * @param enabledByDefault - the resolved `enableByDefault` config value.
+ * @param sessionId - the owning session id, as text.
  */
-export function initAutoReviewProjection(enabledByDefault: boolean): AutoReviewProjectionState {
+export function initAutoReviewProjection(enabledByDefault: boolean, sessionId: string): AutoReviewProjectionState {
   return {
+    sessionId,
     enabled: enabledByDefault,
     turnOpen: false,
     verdictsUsed: 0,
@@ -187,6 +196,7 @@ export function viewAutoReview(state: AutoReviewProjectionState): AutoReviewProj
 
 /** Strict state schema — validates the persisted fold state before it seeds a fold. */
 export const AUTO_REVIEW_STATE_SCHEMA = z.object({
+  sessionId: z.string(),
   enabled: z.boolean(),
   turnOpen: z.boolean(),
   verdictsUsed: z.number().int().nonnegative(),
@@ -212,6 +222,9 @@ type AutoReviewProjectionUnit = Omit<ProjectionDefinition<'autoReview', AutoRevi
   wire: NonNullable<ProjectionDefinition<'autoReview', AutoReviewProjectionState>['wire']>
 }
 
+/** The wire-side `view` function this unit accepts (state → wire payload). */
+export type AutoReviewLiveView = NonNullable<ProjectionDefinition<'autoReview', AutoReviewProjectionState>['wire']>['view']
+
 /**
  * Build the registered unit for one mount. The unit's initial `enabled` is
  * the mount's resolved `enableByDefault` (the pure `init` cannot see plugin
@@ -219,23 +232,33 @@ type AutoReviewProjectionUnit = Omit<ProjectionDefinition<'autoReview', AutoRevi
  * the answerer applies. Registrants sharing the `autoReview` key share one
  * unit; the first mount's default wins, which only matters for a double
  * mount with conflicting `enableByDefault` values.
+ *
+ * `liveView` substitutes the wire `view`
+ * with a runtime-aware one. The pure fold can only report what the session
+ * log carries, and a host that refuses the unmarked `autoReview/*` events
+ * writes none of them — which is why the panel used to read an empty log and
+ * show all zeros. The runtime passes `AutoReviewRuntime.livePanelView`, which
+ * falls back to the in-memory mirror on such a host and to the fold
+ * everywhere else. Omitted (or `undefined`) keeps the pure fold.
  * @param enabledByDefault - the resolved `enableByDefault` config value.
+ * @param liveView - an optional runtime-aware wire view.
  * @returns the projection unit for `ctx.sessionProjections.register`.
  */
-export function makeAutoReviewProjection(enabledByDefault: boolean): AutoReviewProjectionUnit {
+export function makeAutoReviewProjection(enabledByDefault: boolean, liveView?: AutoReviewLiveView): AutoReviewProjectionUnit {
   return {
     key: 'autoReview',
     // zod v4's `.optional()` output carries `| undefined`, which exact-optional
     // property types reject; the runtime validation is what matters on the wire.
     stateSchema: AUTO_REVIEW_STATE_SCHEMA as unknown as ProjectionDefinition<'autoReview', AutoReviewProjectionState>['stateSchema'],
-    init: (_header: SessionHeader) => initAutoReviewProjection(enabledByDefault),
+    init: (header: SessionHeader) => initAutoReviewProjection(enabledByDefault, String(header.id)),
     apply: applyAutoReview,
     wire: {
       viewSchema: AUTO_REVIEW_PROJECTION_SCHEMA as unknown as NonNullable<ProjectionDefinition<'autoReview', AutoReviewProjectionState>['wire']>['viewSchema'],
-      view: viewAutoReview,
+      view: liveView === undefined ? viewAutoReview : liveView,
     },
-    // v3: the wire gained the cumulative `cacheHits` counter (same-fingerprint
-    // verdict cache replays).
-    stateVersion: 3,
+    // v4: the persisted state gained the owning `sessionId`, so a v3 cache
+    // entry can no longer seed this fold. v3 had gained the cumulative
+    // `cacheHits` counter (same-fingerprint verdict cache replays).
+    stateVersion: 4,
   }
 }
