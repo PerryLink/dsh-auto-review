@@ -1,6 +1,6 @@
 {
   "name": "dsh-auto-review",
-  "version": "0.13.3",
+  "version": "0.13.4",
   "packageManager": "pnpm@11.7.0",
   "description": "Second-model AI auto-review for DeepSeek Harness approval requests: a read-only reviewer subagent decides allow/deny on the approval answerer chain, with fail-closed fallback and full session-log audit.",
   "private": false,
@@ -191,8 +191,6 @@
     "@deepseek-ai/dsh-subprocess-local": "0.2.1-alpha.1",
     "@deepseek-ai/dsh-tool-fs": "0.2.1-alpha.1",
     "@deepseek-ai/dsh-tool-fs-search": "0.2.1-alpha.1",
-    "tsdown": "^0.23.0",
-    "typescript": "^7.0.2",
     "yaml": "^2.8.2",
     "zod": "^4.4.3"
   },
@@ -226,7 +224,9 @@
     "react": "19.3.0",
     "react-dom": "19.2.8",
     "vitest": "^5.0.0",
-    "@deepseek-ai/dsh-working-directory": "0.2.1-rc.2"
+    "@deepseek-ai/dsh-working-directory": "0.2.1-rc.2",
+    "tsdown": "^0.23.0",
+    "typescript": "^7.0.2"
   },
   "scripts": {
     "build": "node scripts/prepare.mjs",
