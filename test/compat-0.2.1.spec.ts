@@ -151,6 +151,16 @@ describe('tool-less reviewer on a host without subagents.start', () => {
     expect(harness.llm.calls[0]).toMatchObject({ model: 'deepseek-reasoner' })
   })
 
+  it('honours reviewerModelProvider over the session provider', async () => {
+    const harness = await mountInline(allowVerdict, { reviewerModel: 'other-model', reviewerModelProvider: 'other-provider' })
+    await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+      reason: 'escalate sandbox',
+    }, next)
+    expect(harness.llm.calls[0]).toMatchObject({ provider: 'other-provider', model: 'other-model' })
+  })
+
   it('asks the tool-less reviewer for a bare JSON answer, not for a tool call', async () => {
     const harness = await mountInline()
     await dispatchAskedApproval(harness.ctx, harness.session, {

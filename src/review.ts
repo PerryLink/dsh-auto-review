@@ -461,6 +461,15 @@ export async function runReview(
   return runReviewStructured(ctx, config, request, reviewerSessions, override)
 }
 
+/** Agent options for the reviewer child/activation: model and LLM provider when configured. */
+function reviewerAgentOptions(config: ResolvedConfig): { agentOptions?: { model?: string; provider?: string } } {
+  const options = {
+    ...config.reviewerModel === undefined ? {} : { model: config.reviewerModel },
+    ...config.reviewerModelProvider === undefined ? {} : { provider: config.reviewerModelProvider },
+  }
+  return Object.keys(options).length === 0 ? {} : { agentOptions: options }
+}
+
 /**
  * The structured reviewer path: one-shot child on the configured provider with
  * a read-only tool allow-list and the verdict schema as its structured output.
@@ -537,7 +546,7 @@ async function runReviewStructured(
           outputSchema: VERDICT_SCHEMA,
           maxDepth: (request.agent.session.header.delegationDepth ?? 0) + 1,
           agentPreset: config.reviewerPreset,
-          ...config.reviewerModel !== undefined ? { agentOptions: { model: config.reviewerModel } } : {},
+          ...reviewerAgentOptions(config),
         },
         signal: controller.signal,
         delivery: 'caller',
@@ -555,7 +564,7 @@ async function runReviewStructured(
         // The cap equals the reviewer's OWN computed depth (parent depth + 1):
         // the reviewer may run, but any child it tries to spawn would exceed it.
         maxDepth: (request.agent.session.header.delegationDepth ?? 0) + 1,
-        ...config.reviewerModel !== undefined ? { agentOptions: { model: config.reviewerModel } } : {},
+        ...reviewerAgentOptions(config),
       })
       reviewerSessionId = run.id
     }
@@ -640,7 +649,7 @@ async function runReviewInline(
     const assembler = new BlockAssembler()
     let finish: Extract<StreamChunk, { type: 'finish' }> | undefined
     for await (const chunk of llm.stream({
-      provider: route.provider,
+      provider: config.reviewerModelProvider ?? route.provider,
       model,
       system: REVIEW_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: [{ type: 'text', text: promptText }] }],

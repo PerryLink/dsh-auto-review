@@ -120,6 +120,7 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 | `reviewerProvider` | `fork` | 审查器的子代理 provider（进程内 fork 后端） |
 | `reviewerPreset` | *(none)* | 只读 Agent Preset id；宿主只提供 `startActivation`（0.2.1+）时必填 |
 | `reviewerModel` | *(继承)* | 审查器模型 id；不设置则继承会话代理的路由 |
+| `reviewerModelProvider` | *(继承)* | `reviewerModel` 的 LLM provider 路由；不设置则继承会话代理的 provider |
 | `reviewerTimeoutMs` | `60000` | 裁决截止时间；超时后应用 fallback 策略 |
 | `reviewerTools` | `[read, glob, grep]` | 审查器子代理的工具白名单（必须非空） |
 | `fallbackPolicy` | `rejected` | 审查器失败时的策略：`rejected`（失败关闭）/ `delegate` / `allow-once` |

@@ -31,6 +31,12 @@ describe('config resolution', () => {
     expect(resolved.reviewerModel).toBeUndefined()
   })
 
+  it('resolves an explicit reviewer model provider', () => {
+    const resolved = resolveConfig({ reviewerModel: 'other-model', reviewerModelProvider: 'other-provider' })
+    expect(resolved.reviewerModel).toBe('other-model')
+    expect(resolved.reviewerModelProvider).toBe('other-provider')
+  })
+
   it('defaults maxFailuresPerTurn to maxReviewsPerTurn when only the latter is set', () => {
     expect(resolveConfig({ maxReviewsPerTurn: 3 }).maxFailuresPerTurn).toBe(3)
     expect(resolveConfig({ maxFailuresPerTurn: 2 }).maxFailuresPerTurn).toBe(2)
