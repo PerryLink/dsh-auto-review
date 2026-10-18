@@ -1,15 +1,17 @@
 /**
- * The reviewer subagent: one-shot in-process child with a read-only tool
- * allow-list and a structured verdict schema, raced against the configured
- * timeout and the request's cancellation signal. Any failure resolves to a
- * {@link ReviewFailure} — the caller applies the fallback policy, never a
- * grant (fail closed by default).
+ * The reviewer: one-shot judging of a pending approval request, raced against
+ * the configured timeout and the request's cancellation signal. Two seams, one
+ * contract — a structured verdict, or a {@link ReviewFailure} the caller maps
+ * through the fallback policy (never a grant; fail closed by default). On hosts
+ * that still take a `toolFilter` the reviewer is an isolated child of the
+ * delegating session; on hosts where that seam is gone it is a single tool-less
+ * model call on the same route.
  * @module dsh-auto-review/review
  */
 
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
-import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import { BlockAssembler, type ContentBlock, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { CallId } from './call-id.ts'
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import { sessionEvents } from './session-events.ts'
@@ -261,9 +263,18 @@ export function truncate(text: string, maxChars: number): string {
  * @param request - the pending approval request.
  * @param config - resolved config (rules, guidance, budgets).
  * @param override - a pending human one-shot override, when one applies.
+ * @param verdictChannel - how the reviewer is expected to answer: the
+ *   `structured_output` tool (the isolated child has one) or a bare JSON text
+ *   (the tool-less call has no tools at all, so naming a tool would ask for
+ *   something the model cannot do).
  * @returns the exact prompt text block.
  */
-export function buildReviewPrompt(request: ApprovalRequest, config: ResolvedConfig, override?: OverrideContext): string {
+export function buildReviewPrompt(
+  request: ApprovalRequest,
+  config: ResolvedConfig,
+  override?: OverrideContext,
+  verdictChannel: 'structured_output' | 'text' = 'structured_output',
+): string {
   const workspace = request.agent.session.header.cwd ?? '(unknown)'
   const rules = config.riskRules.length > 0
     ? config.riskRules.map(rule => `- ${rule.field === 'reason' ? 'reason' : rule.field} matches /${rule.pattern}/u → ${rule.policy}`).join('\n')
@@ -327,7 +338,9 @@ export function buildReviewPrompt(request: ApprovalRequest, config: ResolvedConf
     '  evidence is insufficient to judge it. When unsure, DENY.',
     '- riskLevel: low / medium / high, your overall confidence-weighted severity.',
     '',
-    'Report your decision by calling the structured_output tool EXACTLY ONCE with:',
+    verdictChannel === 'structured_output'
+      ? 'Report your decision by calling the structured_output tool EXACTLY ONCE with:'
+      : 'Report your decision by returning EXACTLY ONE JSON object and nothing else — no prose, no markdown fence — with:',
     '{ "decision": "allow" | "deny", "reason": "<one or two sentences>", "riskLevel": "low" | "medium" | "high" }',
   ].join('\n')
 }
@@ -357,11 +370,11 @@ export function parseVerdict(value: unknown, reasonMaxChars: number): ReviewerVe
 }
 
 /**
- * Run one review attempt: start a one-shot reviewer child on the configured
- * provider, await its structured verdict, and race both the configured
- * timeout and the request signal. Every failure path resolves to a
- * {@link ReviewFailure} — never to a grant.
- * @param ctx - the plugin context (`ctx.subagents` and the request's parent agent).
+ * Run one review attempt through whichever seam the host offers: the isolated
+ * structured-capture child, or — when the host no longer takes a `toolFilter` —
+ * the tool-less model call. Both resolve to a {@link ReviewResolution}, and
+ * every failure path resolves to a {@link ReviewFailure}: never a grant.
+ * @param ctx - the plugin context (`ctx.subagents`, and `ctx.llm` feature-detected).
  * @param config - resolved config (provider, timeout, tools, model, budgets).
  * @param request - the pending approval request (parent, signal, and evidence).
  * @param reviewerSessions - the mount's reviewer-child registry, so the
@@ -371,6 +384,49 @@ export function parseVerdict(value: unknown, reasonMaxChars: number): ReviewerVe
  * @returns the verdict or the failure.
  */
 export async function runReview(
+  ctx: Context,
+  config: ResolvedConfig,
+  request: ApprovalRequest,
+  reviewerSessions: ReviewerChildren,
+  override?: OverrideContext,
+): Promise<ReviewResolution> {
+  // Two reviewer seams, because the host moved: dsh <= 0.2.1-alpha still exposes
+  // the one-shot child (`ctx.subagents.start`, structured capture + tool
+  // allow-list), while 0.2.1 replaced it with `startActivation`, whose spawn
+  // provider no longer accepts a `toolFilter`. Reviving the old call there is
+  // not an option — a child without a tool allow-list is exactly the reviewer
+  // face this plugin refuses to publish — so the fallback is a plain model
+  // call: no agent, no tools, no reachable side effect at all.
+  //
+  // Both seams are detected at call time rather than declared in `inject`: a
+  // host that offers the child seam never needs `llm` mounted, and making it a
+  // hard dependency would stop the plugin from loading there at all.
+  if (typeof ctx.subagents.start !== 'function') {
+    const llm = ctx.get('llm')
+    if (llm === undefined) {
+      return {
+        fallback: 'unavailable',
+        error: 'auto-review: the host offers neither subagents.start nor llm, so the reviewer cannot run',
+      }
+    }
+    return runReviewInline(llm, config, request, override)
+  }
+  return runReviewStructured(ctx, config, request, reviewerSessions, override)
+}
+
+/**
+ * The structured reviewer path: one-shot child on the configured provider with
+ * a read-only tool allow-list and the verdict schema as its structured output.
+ * @param ctx - the plugin context (`ctx.subagents` and the request's parent agent).
+ * @param config - resolved config (provider, timeout, tools, model, budgets).
+ * @param request - the pending approval request (parent, signal, and evidence).
+ * @param reviewerSessions - the mount's reviewer-child registry, so the
+ *   answerer can refuse the child's own approval asks while the review runs
+ *   and the context firewall knows whose steps to strip.
+ * @param override - a pending human one-shot override, when one applies.
+ * @returns the verdict or the failure.
+ */
+async function runReviewStructured(
   ctx: Context,
   config: ResolvedConfig,
   request: ApprovalRequest,
@@ -495,6 +551,129 @@ export async function runReview(
     clearTimeout(timer)
     request.signal?.removeEventListener('abort', onAbort)
   }
+}
+
+/**
+ * The tool-less reviewer path, for hosts whose subagent seam no longer takes a
+ * `toolFilter`: one `ctx.llm.stream` call on the same route the delegating turn
+ * used, `temperature: 0`, the same prompt, and the same verdict validation. No
+ * child session exists, so there is nothing to isolate and no id to record; the
+ * absence of tools is the isolation. Every failure still resolves to a
+ * {@link ReviewFailure}.
+ * @param llm - the host's `llm` service (feature-detected, never injected).
+ * @param config - resolved config (model override, timeout, reason cap).
+ * @param request - the pending approval request (parent session, signal, evidence).
+ * @param override - a pending human one-shot override, when one applies.
+ * @returns the verdict or the failure.
+ */
+async function runReviewInline(
+  llm: Context['llm'],
+  config: ResolvedConfig,
+  request: ApprovalRequest,
+  override?: OverrideContext,
+): Promise<ReviewResolution> {
+  const route = latestReviewerRoute(request.agent.session)
+  if (route === undefined) {
+    return { fallback: 'unavailable', error: 'auto-review: no request-header route is available for the reviewer' }
+  }
+  const model = config.reviewerModel ?? route.model
+  const promptText = buildReviewPrompt(request, config, override, 'text')
+  const controller = new AbortController()
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, config.reviewerTimeoutMs)
+  const onAbort = (): void => {
+    controller.abort()
+  }
+  request.signal?.addEventListener('abort', onAbort, { once: true })
+  const failure = (fallback: AutoReviewFallback, error: string): ReviewFailure => ({ fallback, error, model })
+  try {
+    const assembler = new BlockAssembler()
+    let finish: Extract<StreamChunk, { type: 'finish' }> | undefined
+    for await (const chunk of llm.stream({
+      provider: route.provider,
+      model,
+      system: REVIEW_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: [{ type: 'text', text: promptText }] }],
+      temperature: 0,
+      signal: controller.signal,
+    })) {
+      assembler.push(chunk)
+      if (chunk.type === 'finish') {
+        finish = chunk
+        break
+      }
+    }
+    if (finish === undefined) return failure('unavailable', 'reviewer stream ended without a terminal finish')
+    const reason = finish.reason
+    if (reason.kind === 'error' || reason.kind === 'aborted') {
+      const detail = reason.failure ?? {}
+      return failure('unavailable', `reviewer ended with ${reason.kind} ${String(detail.code ?? '')}: ${String(detail.message ?? '')}`)
+    }
+    if (reason.kind !== 'stop') return failure('unavailable', `reviewer ended with ${String(reason.kind)}`)
+    const last = assembler.blocks().at(-1)
+    if (last === undefined || last.type !== 'text') return failure('schema', 'reviewer returned no final text block')
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(extractReviewerJson(last.text))
+    } catch {
+      return failure('schema', 'reviewer returned text that is not a JSON object')
+    }
+    const verdict = parseVerdict(parsed, config.reasonMaxChars)
+    if (verdict === undefined) return failure('schema', 'reviewer returned no valid structured verdict')
+    return { ...verdict, model }
+  } catch (error: unknown) {
+    if (timedOut) return failure('timeout', `reviewer exceeded ${config.reviewerTimeoutMs} ms`)
+    if (request.signal?.aborted === true) {
+      return failure('cancelled', 'approval request was cancelled while the reviewer ran')
+    }
+    return failure('unavailable', `reviewer call failed: ${error instanceof Error ? error.message : String(error)}`)
+  } finally {
+    clearTimeout(timer)
+    request.signal?.removeEventListener('abort', onAbort)
+  }
+}
+
+/**
+ * Route the tool-less reviewer uses: the provider/model of the most recent
+ * `request/header` in the delegating session, i.e. the same model the turn that
+ * asked for approval is running on. The host writes one header per request, so
+ * the last row is the live route.
+ * @param session - the session that is asking for approval.
+ * @returns the route, or undefined when no complete header exists yet.
+ */
+function latestReviewerRoute(session: ApprovalRequest['agent']['session']): { provider: string; model: string } | undefined {
+  const events = sessionEvents(session)
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event === undefined) continue
+    if (event.type !== 'request/header') continue
+    const config = (event.data as { header?: { config?: { provider?: unknown; model?: unknown } } } | undefined)?.header?.config
+    if (config === undefined) continue
+    const { provider, model } = config
+    if (typeof provider !== 'string' || provider.length === 0) continue
+    if (typeof model !== 'string' || model.length === 0) continue
+    return { provider, model }
+  }
+  return undefined
+}
+
+/** System instruction for the tool-less reviewer call: the message carries the rules, the answer is one JSON object. */
+const REVIEW_SYSTEM_PROMPT = 'You are a read-only safety reviewer for a coding agent. Follow the verdict rules in the user message exactly. Return exactly one JSON object and nothing else.'
+
+/**
+ * Take the single JSON object out of a reviewer answer, tolerating stray prose
+ * or a markdown fence around it.
+ * @param text - the reviewer's final text block.
+ * @returns the JSON substring, or the trimmed text when no braces are present.
+ */
+function extractReviewerJson(text: string): string {
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start === -1 || end === -1 || end <= start) return text.trim()
+  return text.slice(start, end + 1)
 }
 
 /**
