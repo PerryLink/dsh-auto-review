@@ -22,6 +22,11 @@
 
 [English](README.md) · [简体中文](README-zh.md) · [Español](README-es.md) · [Português](README-pt.md) · [हिन्दी](README-hi.md)
 
+```sh
+dsh plugin --profile <name> add dsh-auto-review
+```
+
+
 </div>
 
 ---
@@ -29,6 +34,14 @@
 **📖 Base de conocimiento del ecosistema** — datos medidos, no marketing: [guía de desarrollo · datos de selección · criterios de mantenimiento](https://perrylink.github.io/dsh-plugin-guide/).
 
 <!-- star-cta -->
+## Instalación y desinstalación
+
+- **Canal git** (último `main`): `dsh plugin --profile web add github:PerryLink/dsh-auto-review` — la compilación aislada de `prepare` necesita la única clave `allowBuilds: { esbuild: true }` que imprime el CLI de `dsh` para `dsh-auto-review`.
+- **Canal npm** (versiones publicadas): `dsh plugin --profile web add dsh-auto-review`.
+- **Canal 1024 store**: `npm i -g dsh1024` una vez, luego `dsh1024 plugin --profile web add dsh-auto-review` (cuenta para el ranking de instalaciones de [deepseek1024.com](https://deepseek1024.com)).
+- **Canal tarball**: `pnpm pack` en este repo y luego `dsh plugin --profile web add ./dsh-auto-review-<version>.tgz`.
+- **Desinstalación**: `dsh plugin --profile web remove dsh-auto-review` (o elimina la fila del parche de perfil).
+
 ## ⭐ 如果它帮到了你
 
 Este plugin forma parte de la [familia de plugins DSH](https://github.com/PerryLink) (más de 40, todos Apache-2.0). Si te resulta útil, **dale una estrella**: no desbloquea nada, pero ayuda a que la siguiente persona lo encuentre antes.
@@ -93,14 +106,6 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 ```
 
 De fábrica, el parche incluido revisa con IA `bash` y `write`; todas las demás herramientas (incluido `edit` — modificación in situ) delegan a la cadena humana. Añade `edit: ai` explícitamente si aceptas ediciones in situ sin un humano en el bucle.
-
-## Instalación y desinstalación
-
-- **Canal git** (último `main`): `dsh plugin --profile web add github:PerryLink/dsh-auto-review` — la compilación aislada de `prepare` necesita la única clave `allowBuilds: { esbuild: true }` que imprime el CLI de `dsh` para `dsh-auto-review`.
-- **Canal npm** (versiones publicadas): `dsh plugin --profile web add dsh-auto-review`.
-- **Canal 1024 store**: `npm i -g dsh1024` una vez, luego `dsh1024 plugin --profile web add dsh-auto-review` (cuenta para el ranking de instalaciones de [deepseek1024.com](https://deepseek1024.com)).
-- **Canal tarball**: `pnpm pack` en este repo y luego `dsh plugin --profile web add ./dsh-auto-review-<version>.tgz`.
-- **Desinstalación**: `dsh plugin --profile web remove dsh-auto-review` (o elimina la fila del parche de perfil).
 
 ## Configuración
 

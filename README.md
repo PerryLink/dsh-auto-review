@@ -23,6 +23,11 @@
 
 [English](README.md) · [简体中文](README-zh.md) · [Español](README-es.md) · [Português](README-pt.md) · [हिन्दी](README-hi.md)
 
+```sh
+dsh plugin --profile <name> add dsh-auto-review
+```
+
+
 </div>
 
 ---
@@ -30,6 +35,15 @@
 **📖 Ecosystem knowledge base** — measured data, not marketing: [plugin development guide · plugin-selection data · maintenance criteria](https://perrylink.github.io/dsh-plugin-guide/).
 
 <!-- star-cta -->
+## Install & uninstall
+
+- **git channel** (latest `main`): `dsh plugin --profile web add github:PerryLink/dsh-auto-review` — the isolated `prepare` build needs the single `allowBuilds: { esbuild: true }` key the `dsh` CLI prints for `dsh-auto-review`.
+- **npm channel** (published releases): `dsh plugin --profile web add dsh-auto-review`.
+- **1024 store channel**: `npm i -g dsh1024` once, then `dsh1024 plugin --profile web add dsh-auto-review` (counts toward the [deepseek1024.com](https://deepseek1024.com) install ranking).
+- **tarball channel**: `pnpm pack` in this repo, then `dsh plugin --profile web add ./dsh-auto-review-<version>.tgz`.
+- **uninstall**: `dsh plugin --profile web remove dsh-auto-review` (or remove the row from the profile patch).
+- **native build scripts**: when `dsh plugin add` stops at `ERR_PNPM_IGNORED_BUILDS` for `koffi` / `node-pty` (pulled in by the eval harness), run `pnpm approve-builds` to approve those build scripts.
+
 ## ⭐ 如果它帮到了你
 
 这个插件是 [DSH 插件家族](https://github.com/PerryLink)的一员（40+ 个，全部 Apache-2.0）。如果你在用，**给个 star** —— 它不会解锁任何功能，但会让下一个人在搜索里更容易找到它。
@@ -95,15 +109,6 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 ```
 
 Out of the box the shipped patch AI-reviews `bash` and `write`; every other tool (including `edit` — in-place modification) delegates to the human chain. Add `edit: ai` explicitly if you accept in-place edits without a human in the loop.
-
-## Install & uninstall
-
-- **git channel** (latest `main`): `dsh plugin --profile web add github:PerryLink/dsh-auto-review` — the isolated `prepare` build needs the single `allowBuilds: { esbuild: true }` key the `dsh` CLI prints for `dsh-auto-review`.
-- **npm channel** (published releases): `dsh plugin --profile web add dsh-auto-review`.
-- **1024 store channel**: `npm i -g dsh1024` once, then `dsh1024 plugin --profile web add dsh-auto-review` (counts toward the [deepseek1024.com](https://deepseek1024.com) install ranking).
-- **tarball channel**: `pnpm pack` in this repo, then `dsh plugin --profile web add ./dsh-auto-review-<version>.tgz`.
-- **uninstall**: `dsh plugin --profile web remove dsh-auto-review` (or remove the row from the profile patch).
-- **native build scripts**: when `dsh plugin add` stops at `ERR_PNPM_IGNORED_BUILDS` for `koffi` / `node-pty` (pulled in by the eval harness), run `pnpm approve-builds` to approve those build scripts.
 
 ## Configuration
 
