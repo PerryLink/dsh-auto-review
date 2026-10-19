@@ -389,7 +389,9 @@ dsh-eval eval/cases --model deepseek-flash --timeout-ms 240000 --out .eval-repor
 | **[dsh-session-pin](https://github.com/PerryLink/dsh-session-pin)** | 🚫 सेवानिवृत्त — रिपॉज़िटरी README देखें |
 | **[dsh-team-rooms](https://github.com/PerryLink/dsh-team-rooms)** | 🚫 सेवानिवृत्त — रिपॉज़िटरी README देखें |
 
-</details>## MCP सर्वर (स्टैंडअलोन)
+</details>
+
+## MCP सर्वर (स्टैंडअलोन)
 
 `dsh-auto-review` एक stdio **MCP सर्वर** (`dsh-auto-review-mcp`) भी देता है ताकि बाहरी MCP क्लाइंट (Claude, Codex, …) बिना harness के एक निर्धारक समीक्षा पथ का उपयोग कर सकें। यह newline-delimited JSON (NDJSON) पर JSON-RPC 2.0 बोलता है — प्रति पंक्ति एक JSON ऑब्जेक्ट, कोई `Content-Length` फ़्रेमिंग नहीं।
 
