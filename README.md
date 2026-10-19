@@ -116,7 +116,20 @@ These are the plugin's real entry points; install once, then call one.
 
 #### Detailed example
 
-- `/auto-review`
+**Command**
+
+~~~sh
+/auto-review status
+~~~
+
+**Output**
+
+~~~text
+All-time: 1 allows, 0 denies, 1 fallbacks, 1 never rejects (avg 10 ms per verdict).
+Recent verdicts: write: fallback(timeout), bash: allow
+~~~
+
+*Observed from `test/command.spec.ts:123-160 (assertions at :158-159)`*
 
 #### Brief examples
 

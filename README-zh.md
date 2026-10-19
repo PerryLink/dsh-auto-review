@@ -114,7 +114,20 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 
 #### 详细示例
 
-- `/auto-review`
+**命令**
+
+~~~sh
+/auto-review status
+~~~
+
+**输出**
+
+~~~text
+All-time: 1 allows, 0 denies, 1 fallbacks, 1 never rejects (avg 10 ms per verdict).
+Recent verdicts: write: fallback(timeout), bash: allow
+~~~
+
+*来源 `test/command.spec.ts:123-160 (assertions at :158-159)`*
 
 #### 简短示例
 

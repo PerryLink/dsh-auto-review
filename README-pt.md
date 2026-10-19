@@ -114,7 +114,20 @@ São os pontos de entrada reais; instale e chame um.
 
 #### Exemplo detalhado
 
-- `/auto-review`
+**Comando**
+
+~~~sh
+/auto-review status
+~~~
+
+**Saída**
+
+~~~text
+All-time: 1 allows, 0 denies, 1 fallbacks, 1 never rejects (avg 10 ms per verdict).
+Recent verdicts: write: fallback(timeout), bash: allow
+~~~
+
+*Observado em `test/command.spec.ts:123-160 (assertions at :158-159)`*
 
 #### Exemplos breves
 
