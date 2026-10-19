@@ -46,9 +46,10 @@ Aprovação por IA de segundo modelo para o DeepSeek Harness — um subagente re
 
 Quando uma ação cruza a fronteira do sandbox, um segundo modelo lê as evidências e devolve um veredito com a razão — para que humanos não aprovem nada e nada inseguro passe despercebido.
 
-![Demonstração de terminal do dsh-auto-review: dsh-auto-review — standalone MCP path: deterministic deny, then cache replay](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-hero.png)
+![Diagrama de fluxo de dsh-auto-review: solicitação → política/revisão → veredito.](docs/assets/dsh-auto-review-flow.svg)
 
-![Animated terminal demo of dsh-auto-review](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-demo.gif)
+*Visão geral do fluxo: solicitação → política/revisão → veredito. Os exemplos abaixo usam a superfície real de comandos.*
+
 
 *A mesma execução, animada.*
 
@@ -106,6 +107,19 @@ Pronto para uso, o patch enviado revisa com IA `bash` e `write`; todas as outras
 - **Canal 1024 store**: `npm i -g dsh1024` uma vez, depois `dsh1024 plugin --profile web add dsh-auto-review` (conta para o ranking de instalações do [deepseek1024.com](https://deepseek1024.com)).
 - **Canal tarball**: `pnpm pack` neste repo e depois `dsh plugin --profile web add ./dsh-auto-review-<version>.tgz`.
 - **Desinstalar**: `dsh plugin --profile web remove dsh-auto-review` (ou remova a linha do patch de perfil).
+
+### Exemplos
+
+São os pontos de entrada reais; instale e chame um.
+
+#### Exemplo detalhado
+
+- `/auto-review`
+
+#### Exemplos breves
+
+- `auto-review`
+- `dsh-eval`
 
 ## Configuração
 
