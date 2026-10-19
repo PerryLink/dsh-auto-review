@@ -46,9 +46,10 @@ DeepSeek Harness 的第二模型 AI 审批 —— 一个只读审查子代理在
 
 当某个动作越过沙箱边界时，第二模型读取证据并给出带有理由的裁决 —— 人类无需批准任何事，同时也没有任何不安全的东西蒙混过关。
 
-![dsh-auto-review 终端演示：dsh-auto-review — standalone MCP path: deterministic deny, then cache replay](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-hero.png)
+![dsh-auto-review 工作流图：请求 → 策略/复核 → 判定。](docs/assets/dsh-auto-review-flow.svg)
 
-![Animated terminal demo of dsh-auto-review](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-demo.gif)
+*工作流概览：请求 → 策略/复核 → 判定。下面的示例使用实际命令面。*
+
 
 *同一次运行，动图版。*
 
@@ -106,6 +107,19 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 - **1024 商店渠道**：先 `npm i -g dsh1024`，再 `dsh1024 plugin --profile web add dsh-auto-review`（计入 [deepseek1024.com](https://deepseek1024.com) 安装排行）。
 - **tarball 渠道**：在本仓库执行 `pnpm pack`，然后 `dsh plugin --profile web add ./dsh-auto-review-<version>.tgz`。
 - **卸载**：`dsh plugin --profile web remove dsh-auto-review`（或从 profile 补丁中删除该行）。
+
+### 示例
+
+以下为插件真实入口；安装后调用一个即可。
+
+#### 详细示例
+
+- `/auto-review`
+
+#### 简短示例
+
+- `auto-review`
+- `dsh-eval`
 
 ## 配置
 

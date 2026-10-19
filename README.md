@@ -57,11 +57,11 @@ Second-model AI approval for DeepSeek Harness — a read-only reviewer subagent 
 
 When an action crosses the sandbox boundary, a second model reads the evidence and returns a verdict with a reason — so humans approve nothing while nothing unsafe slips through.
 
-![Terminal demo of dsh-auto-review: dsh-auto-review — standalone MCP path: deterministic deny, then cache replay](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-hero.png)
+![Workflow diagram for dsh-auto-review: request → policy / review → verdict.](docs/assets/dsh-auto-review-flow.svg)
 
-![Animated terminal demo of dsh-auto-review](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-demo.gif)
+*Workflow overview: request → policy / review → verdict. The examples below use the real command surface.*
 
-*The same run, animated.*
+
 
 ## Compatibility
 
@@ -109,6 +109,19 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 ```
 
 Out of the box the shipped patch AI-reviews `bash` and `write`; every other tool (including `edit` — in-place modification) delegates to the human chain. Add `edit: ai` explicitly if you accept in-place edits without a human in the loop.
+
+### Examples
+
+These are the plugin's real entry points; install once, then call one.
+
+#### Detailed example
+
+- `/auto-review`
+
+#### Brief examples
+
+- `auto-review`
+- `dsh-eval`
 
 ## Configuration
 

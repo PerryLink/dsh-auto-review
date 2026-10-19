@@ -54,9 +54,10 @@ DeepSeek Harness के लिए द्वितीय-मॉडल AI अन�
 
 जब कोई क्रिया सैंडबॉक्स सीमा पार करती है, तो दूसरा मॉडल साक्ष्य पढ़ता है और कारण सहित निर्णय लौटाता है — ताकि मनुष्य कुछ भी स्वीकृत न करें और कुछ भी असुरक्षित छूट न जाए।
 
-![dsh-auto-review का टर्मिनल डेमो: dsh-auto-review — standalone MCP path: deterministic deny, then cache replay](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-hero.png)
+![dsh-auto-review कार्यप्रवाह आरेख: अनुरोध → नीति/समीक्षा → निर्णय।](docs/assets/dsh-auto-review-flow.svg)
 
-![Animated terminal demo of dsh-auto-review](https://raw.githubusercontent.com/PerryLink/dsh-auto-review/main/docs/assets/dsh-auto-review-demo.gif)
+*कार्यप्रवाह: अनुरोध → नीति/समीक्षा → निर्णय। नीचे के उदाहरण वास्तविक कमांड सतह का उपयोग करते हैं।*
+
 
 *वही रन, एनिमेटेड।*
 
@@ -106,6 +107,19 @@ dsh --profile web --dump-config | grep -A4 'id: auto-review'
 ```
 
 डिफ़ॉल्ट रूप से शिप किया गया पैच `bash` और `write` की AI समीक्षा करता है; बाकी सभी टूल (`edit` — इन-प्लेस संशोधन — सहित) मानव श्रृंखला को सौंप देते हैं। यदि आप लूप में बिना मानव के इन-प्लेस संपादन स्वीकार करते हैं तो स्पष्ट रूप से `edit: ai` जोड़ें।
+
+### उदाहरण
+
+ये वास्तविक प्रवेश बिंदु हैं; इंस्टॉल के बाद एक चलाएँ।
+
+#### विस्तृत उदाहरण
+
+- `/auto-review`
+
+#### संक्षिप्त उदाहरण
+
+- `auto-review`
+- `dsh-eval`
 
 ## कॉन्फ़िगरेशन
 
