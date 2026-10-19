@@ -131,6 +131,22 @@ Recent verdicts: write: fallback(timeout), bash: allow
 
 *Observed from `test/command.spec.ts:123-160 (assertions at :158-159)`*
 
+#### Failure branch
+
+**Input**
+
+~~~text
+/auto-review approve 2
+~~~
+
+**Output**
+
+~~~text
+No recent denial #2 in this session (0 recorded).
+~~~
+
+*Observed from `plugins/dsh-auto-review/src/messages.ts:53; plugins/dsh-auto-review/src/runtime.ts:1039; plugins/dsh-auto-review/test/command.spec.ts:109-113`*
+
 #### Brief examples
 
 - `auto-review`

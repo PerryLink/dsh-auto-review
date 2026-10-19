@@ -129,6 +129,22 @@ Recent verdicts: write: fallback(timeout), bash: allow
 
 *स्रोत `test/command.spec.ts:123-160 (assertions at :158-159)`*
 
+#### विफलता शाखा
+
+**इनपुट**
+
+~~~text
+/auto-review approve 2
+~~~
+
+**आउटपुट**
+
+~~~text
+No recent denial #2 in this session (0 recorded).
+~~~
+
+*स्रोत `plugins/dsh-auto-review/src/messages.ts:53; plugins/dsh-auto-review/src/runtime.ts:1039; plugins/dsh-auto-review/test/command.spec.ts:109-113`*
+
 #### संक्षिप्त उदाहरण
 
 - `auto-review`

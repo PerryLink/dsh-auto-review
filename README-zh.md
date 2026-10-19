@@ -129,6 +129,22 @@ Recent verdicts: write: fallback(timeout), bash: allow
 
 *来源 `test/command.spec.ts:123-160 (assertions at :158-159)`*
 
+#### 失败分支
+
+**输入**
+
+~~~text
+/auto-review approve 2
+~~~
+
+**输出**
+
+~~~text
+No recent denial #2 in this session (0 recorded).
+~~~
+
+*来源 `plugins/dsh-auto-review/src/messages.ts:53; plugins/dsh-auto-review/src/runtime.ts:1039; plugins/dsh-auto-review/test/command.spec.ts:109-113`*
+
 #### 简短示例
 
 - `auto-review`
