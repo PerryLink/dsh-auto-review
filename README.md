@@ -425,6 +425,8 @@ Static evidence: `dsh-plugin-doctor` K10–K13 report `pass` for every check on 
 
 ## Contributors
 
+- [@daveycodez](https://github.com/daveycodez) — isolated reviewer context and transcript-by-default (#22).
+
 - [@PerryLink](https://github.com/PerryLink) — creator and maintainer: the approval answerer, the reviewer subagent, risk policy and circuit breaker, the session-projection review panel, the invariant companion, dsh-eval, and the five-language docs.
 - [@weipeng1999](https://github.com/weipeng1999) — proposed independent reviewer provider/model routing ([#11](https://github.com/PerryLink/dsh-auto-review/issues/11), [discussion #12](https://github.com/PerryLink/dsh-auto-review/discussions/12)), which shipped as `reviewerProvider` / `reviewerModel`.
 - [@alexchenzl](https://github.com/alexchenzl) — listed the plugin on the DSH plugin directory ([#10](https://github.com/PerryLink/dsh-auto-review/issues/10)).
