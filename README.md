@@ -425,6 +425,7 @@ Static evidence: `dsh-plugin-doctor` K10–K13 report `pass` for every check on 
 
 ## Contributors
 
+- [@renleihaokun](https://github.com/renleihaokun) — shell-argument secrets, truncated evidence, empty review panel (#65), and the 0.2.1 activation restoration (#71); fixes shipped in 0.13.4/0.13.5.
 - [@daveycodez](https://github.com/daveycodez) — isolated reviewer context and transcript-by-default (#22).
 
 - [@PerryLink](https://github.com/PerryLink) — creator and maintainer: the approval answerer, the reviewer subagent, risk policy and circuit breaker, the session-projection review panel, the invariant companion, dsh-eval, and the five-language docs.
