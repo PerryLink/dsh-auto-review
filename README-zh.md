@@ -426,7 +426,7 @@ pnpm pack                   # 发布产物
 
 静态证据：`dsh-plugin-doctor` 的 K10–K13 在本仓全部为 `pass`。
 
-## PerryLink DSH 插件家族
+## PerryLink DSH Plugin Family
 
 本项目是 [PerryLink](https://github.com/PerryLink) 维护的 DeepSeek Harness 插件家族成员。完整名单默认折叠，避免每个 README 的首屏被长表淹没；点击展开可查看每一行及其状态。
 
