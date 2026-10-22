@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.13.8] - 2026-10-22
+
+### Fixed
+
+- **Installing the plugin no longer hoists the `0.2.1-alpha.1` host implementation line into the DSH profile (issue #74).** The package declared 14 `@deepseek-ai/dsh-*` host packages (app-boot, credentials, fs/sandbox, subprocess, session persistence, subagent drivers, tool-fs) as runtime `dependencies`. In a pnpm `hoisted` profile those were installed at the profile root, where they shadowed the host's `0.2.1-rc.2` providers: `credentials`, `fs`, `subprocess`, `sandbox`, `sandboxPolicy`, `sessionPersistence` and `connection` never activated and the app failed to boot. They now live in `devDependencies` (the line the test suite runs); a consumer install adds zero `@deepseek-ai/dsh-*` packages. The node faces already leave every `@deepseek-ai/` specifier external (`neverBundle`), so they resolve from the host profile; `dsh-eval` follows the same rule and a standalone global install no longer carries its own host copy.
+
 ## [0.13.7] - 2026-10-19
 
 ### Fixed
