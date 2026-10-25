@@ -23,6 +23,106 @@ export type ToolReviewPolicy = 'ai' | 'human' | 'never'
 /** Risk levels the reviewer may attach to a verdict. */
 export type RiskLevel = 'low' | 'medium' | 'high'
 
+/**
+ * Which engine answers an `ai`-policy review:
+ *
+ * - `'agent'` — the generative reviewer (an isolated read-only child, or a
+ *   tool-less `llm` call on hosts that dropped `subagents.start`).
+ * - `'phocinae'` — the local non-generative Phocinae decision service
+ *   (`POST /v1/systemone`). It answers one typed question per review and never
+ *   generates text, so it needs no API key, no subagent seam and no `llm`
+ *   service: an offline, deterministic, millisecond-scale reviewer.
+ *
+ * Unset resolves from {@link Config.reviewerModel}: a model name starting with
+ * `Phocinae` selects `'phocinae'`, anything else keeps `'agent'`. That makes
+ * `reviewerModel: Phocinae-Largha-150M-v1` work without a second knob.
+ */
+export type ReviewerBackend = 'agent' | 'phocinae'
+
+/**
+ * The question a Phocinae review asks, mirroring the sibling `dsh-phocinae`
+ * gate (whose measured recall on a 53-command labelled set is quoted here):
+ *
+ * - `'harm'` (default) — "How harmful is this tool call if it runs?" with
+ *   `harmless` / `risky` / `destructive`. Recall **0.97** on destructive
+ *   commands: only a `harmless` answer can allow.
+ * - `'tri-state'` — "Should this tool call run, be reviewed, or be blocked?"
+ *   with `allow` / `ask` / `deny`. Recall **0.74**; `ask` is settled as a deny
+ *   (auto-review has no "hand to a human" verdict of its own — the fallback
+ *   policy already owns that decision).
+ * - `'noul'` — the boolean "Should this tool call be blocked for safety?"
+ *   question. Recall **0.00** in that measurement; kept only for parity with
+ *   the sibling plugin so an operator can compare against old traffic.
+ */
+export type PhocinaeQuestionMode = 'harm' | 'tri-state' | 'noul'
+
+/**
+ * The local Phocinae decision service (`phocinae-server`, model
+ * `Phocinae-Largha-150M-v1`). The model answers typed decisions — boolean,
+ * option index, 2..10 level — and never emits tokens, so a review costs one
+ * forward pass instead of a generation. Every default matches the sibling
+ * `dsh-phocinae` plugin so one running server serves both.
+ */
+export interface PhocinaeConfig {
+  /** Decision-service URL. Loopback only unless {@link allowRemoteEndpoint}. */
+  endpoint?: string
+  /** Served model name; the server answers 422 for any other value. */
+  model?: string
+  /**
+   * Per-request HTTP timeout in milliseconds. One attempt, no retry: a retry
+   * would multiply the reviewer's already-dominant latency on this path.
+   */
+  timeoutMs?: number
+  /**
+   * Calibrated-confidence floor for an `allow` answer. A `deny` always stands;
+   * an allow below this floor is NOT a verdict and resolves through
+   * `fallbackPolicy` (default fail-closed rejection). The model's confidence is
+   * compressed — measured tri-state allows ran 0.27–0.54 — so this default
+   * matches the sibling gate's 0.45 rather than demanding a high bar that
+   * would turn every routine command into a failure.
+   */
+  minConfidence?: number
+  /** Which typed question to ask (see {@link PhocinaeQuestionMode}). */
+  mode?: PhocinaeQuestionMode
+  /** Cap on the rendered decision state, in characters (head is kept). */
+  maxStateChars?: number
+  /**
+   * Permit a non-loopback {@link endpoint}. Default `false`: the decision state
+   * carries the reviewed tool call's text, so a remote endpoint would be an
+   * egress decision this plugin must not make silently.
+   */
+  allowRemoteEndpoint?: boolean
+}
+
+/** The published model id served by `phocinae-server`. */
+export const PHOCINAE_DEFAULT_MODEL = 'Phocinae-Largha-150M-v1'
+
+/** The sibling plugin's default endpoint: `phocinae-server` on loopback port 8155. */
+export const PHOCINAE_DEFAULT_ENDPOINT = 'http://127.0.0.1:8155/v1/systemone'
+
+/** One CPU forward pass is ~1.5 s single-threaded; 5 s is a full-request budget. */
+export const PHOCINAE_DEFAULT_TIMEOUT_MS = 5000
+
+/** The confidence floor an allow must reach; see {@link PhocinaeConfig.minConfidence}. */
+export const PHOCINAE_DEFAULT_MIN_CONFIDENCE = 0.45
+
+/** State cap shared with the sibling plugin's tool-call renderer. */
+export const PHOCINAE_DEFAULT_MAX_STATE_CHARS = 4096
+
+/** Hosts treated as loopback: the decision service is a local process by design. */
+const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
+
+/**
+ * Whether a reviewer model id names the Phocinae decision model. Used only to
+ * infer the backend when `reviewerBackend` is unset: `Phocinae-…`,
+ * `phocinae:…` and a bare `phocinae` all select the local service.
+ * @param model - the configured `reviewerModel`, if any.
+ * @returns true when the name belongs to the Phocinae family.
+ */
+export function isPhocinaeModelName(model: string | undefined): boolean {
+  return typeof model === 'string' && /^phocinae(?:[-_/ :]|$)/iu.test(model.trim())
+}
+
 /** The risk-level ordering, low first — the comparison base of {@link RiskPolicyConfig}. */
 export const RISK_ORDER: readonly RiskLevel[] = ['low', 'medium', 'high']
 
@@ -142,6 +242,18 @@ export interface Config {
   reviewerModel?: string
   /** LLM provider route for {@link reviewerModel}; unset inherits the session agent's provider. */
   reviewerModelProvider?: string
+  /**
+   * Which engine answers an `ai`-policy review (see {@link ReviewerBackend}).
+   * Unset infers from {@link reviewerModel}: a `Phocinae…` name selects the
+   * local decision service, everything else keeps the generative reviewer.
+   */
+  reviewerBackend?: ReviewerBackend
+  /**
+   * Local Phocinae decision-service settings
+   * (see {@link PhocinaeConfig}). Relevant only when the resolved backend is
+   * `'phocinae'`; the defaults match the sibling `dsh-phocinae` plugin.
+   */
+  phocinae?: Partial<PhocinaeConfig>
   /** Verdict deadline in milliseconds. Default 60000. */
   reviewerTimeoutMs?: number
   /**
@@ -217,6 +329,10 @@ export interface ResolvedConfig {
   readonly reviewerPreset?: string | undefined
   readonly reviewerModel: string | undefined
   readonly reviewerModelProvider: string | undefined
+  /** The resolved reviewer engine (see {@link ReviewerBackend}). */
+  readonly reviewerBackend: ReviewerBackend
+  /** The resolved Phocinae settings; relevant only when {@link reviewerBackend} is `'phocinae'`. */
+  readonly phocinae: ResolvedPhocinaeConfig
   readonly reviewerTimeoutMs: number
   readonly reviewerTools: readonly string[]
   readonly fallbackPolicy: FallbackPolicy
@@ -245,11 +361,24 @@ export interface ResolvedRiskRule {
   readonly field: RiskRuleField
 }
 
+/** A {@link PhocinaeConfig} with every default applied. */
+export interface ResolvedPhocinaeConfig {
+  readonly endpoint: string
+  readonly model: string
+  readonly timeoutMs: number
+  readonly minConfidence: number
+  readonly mode: PhocinaeQuestionMode
+  readonly maxStateChars: number
+  readonly allowRemoteEndpoint: boolean
+}
+
 const POLICY = z.union(['ai', 'human', 'never'] as const)
 const FALLBACK = z.union(['rejected', 'delegate', 'allow-once'] as const)
 const RISK = z.union(['low', 'medium', 'high'] as const)
 const FIELD = z.union(['reason', 'toolName', 'arguments'] as const)
 const CIRCUIT_ACTION = z.union(['delegate', 'reject', 'abort-turn'] as const)
+const REVIEWER_BACKEND = z.union(['agent', 'phocinae'] as const)
+const PHOCINAE_MODE = z.union(['harm', 'tri-state', 'noul'] as const)
 
 /** Default anti-circumvention guidance appended to every injected deny reason. */
 export const DEFAULT_DENY_GUIDANCE = 'Do not attempt to work around this denial. '
@@ -271,6 +400,16 @@ export const Config: z<Config> = z.object({
   reviewerPreset: z.string(),
   reviewerModel: z.string(),
   reviewerModelProvider: z.string(),
+  reviewerBackend: REVIEWER_BACKEND,
+  phocinae: z.object({
+    endpoint: z.string(),
+    model: z.string(),
+    timeoutMs: z.number(),
+    minConfidence: z.number(),
+    mode: PHOCINAE_MODE,
+    maxStateChars: z.number(),
+    allowRemoteEndpoint: z.boolean(),
+  }),
   reviewerTimeoutMs: z.number().default(60_000),
   reviewerTools: z.array(z.string()).default(['read', 'glob', 'grep']),
   fallbackPolicy: FALLBACK.default('rejected'),
@@ -325,6 +464,80 @@ export function riskExceeds(level: RiskLevel, cap: RiskLevel): boolean {
 }
 
 /**
+ * Validate and complete the Phocinae decision-service settings. Every illegal
+ * value throws here, at load time: a security-relevant reviewer must not
+ * degrade silently at run time (a bad endpoint would otherwise read as
+ * "service unavailable", which is safe but indistinguishable from a killed
+ * server, and a negative timeout would disarm the deadline).
+ * @param raw - partial `phocinae` config.
+ * @param reviewerModel - `reviewerModel`, so a Phocinae model id selects the
+ *   served model name without repeating it under `phocinae.model`.
+ * @returns the resolved settings.
+ */
+export function resolvePhocinaeConfig(
+  raw: Partial<PhocinaeConfig> | undefined,
+  reviewerModel?: string,
+): ResolvedPhocinaeConfig {
+  if (raw !== undefined && (typeof raw !== 'object' || raw === null || Array.isArray(raw))) {
+    throw new TypeError(`phocinae must be an object, got ${JSON.stringify(raw)}`)
+  }
+  const allowRemoteEndpoint = raw?.allowRemoteEndpoint ?? false
+  if (typeof allowRemoteEndpoint !== 'boolean') {
+    throw new TypeError(`phocinae.allowRemoteEndpoint must be a boolean, got ${JSON.stringify(raw?.allowRemoteEndpoint)}`)
+  }
+  const rawEndpoint = raw?.endpoint ?? PHOCINAE_DEFAULT_ENDPOINT
+  if (typeof rawEndpoint !== 'string' || rawEndpoint.trim() === '') {
+    throw new TypeError(`phocinae.endpoint must be a non-empty URL string, got ${JSON.stringify(raw?.endpoint)}`)
+  }
+  let url: URL
+  try {
+    url = new URL(rawEndpoint)
+  } catch {
+    throw new TypeError(`phocinae.endpoint must be an absolute URL, got ${JSON.stringify(rawEndpoint)}`)
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new TypeError(`phocinae.endpoint must use http or https, got ${JSON.stringify(url.protocol)}`)
+  }
+  if (!allowRemoteEndpoint && !LOOPBACK_HOSTS.has(url.hostname)) {
+    throw new TypeError(
+      `phocinae.endpoint host ${JSON.stringify(url.hostname)} is not loopback. The decision state carries the `
+      + 'reviewed tool call\'s text, so a remote endpoint would leak it; set phocinae.allowRemoteEndpoint: true '
+      + 'if that egress is intended.',
+    )
+  }
+  const rawModel = raw?.model ?? (isPhocinaeModelName(reviewerModel) ? reviewerModel?.trim() : undefined)
+  const model = rawModel ?? PHOCINAE_DEFAULT_MODEL
+  if (typeof model !== 'string' || model.trim() === '') {
+    throw new TypeError(`phocinae.model must be a non-empty string, got ${JSON.stringify(raw?.model)}`)
+  }
+  const timeoutMs = raw?.timeoutMs ?? PHOCINAE_DEFAULT_TIMEOUT_MS
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+    throw new TypeError(`phocinae.timeoutMs must be a positive safe integer, got ${String(raw?.timeoutMs)}`)
+  }
+  const minConfidence = raw?.minConfidence ?? PHOCINAE_DEFAULT_MIN_CONFIDENCE
+  if (typeof minConfidence !== 'number' || !Number.isFinite(minConfidence) || minConfidence < 0 || minConfidence > 1) {
+    throw new TypeError(`phocinae.minConfidence must be a number in [0, 1], got ${JSON.stringify(raw?.minConfidence)}`)
+  }
+  const mode = raw?.mode ?? 'harm'
+  if (mode !== 'harm' && mode !== 'tri-state' && mode !== 'noul') {
+    throw new TypeError(`phocinae.mode must be one of "harm", "tri-state", "noul", got ${JSON.stringify(raw?.mode)}`)
+  }
+  const maxStateChars = raw?.maxStateChars ?? PHOCINAE_DEFAULT_MAX_STATE_CHARS
+  if (!Number.isSafeInteger(maxStateChars) || maxStateChars <= 0) {
+    throw new TypeError(`phocinae.maxStateChars must be a positive safe integer, got ${String(raw?.maxStateChars)}`)
+  }
+  return {
+    endpoint: url.toString(),
+    model,
+    timeoutMs,
+    minConfidence,
+    mode,
+    maxStateChars,
+    allowRemoteEndpoint,
+  }
+}
+
+/**
  * Validate raw values and compile the resolved config. Defaults are applied
  * HERE — the explicit resolution step — so a partially-specified config from
  * a direct `ctx.plugin` mount behaves like the loader-filled one.
@@ -372,6 +585,15 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
   if (config.allowUnmarkedAudit !== undefined && typeof config.allowUnmarkedAudit !== 'boolean') {
     throw new TypeError(`allowUnmarkedAudit must be a boolean, got ${String(config.allowUnmarkedAudit)}`)
   }
+  const rawBackend = config.reviewerBackend
+  if (rawBackend !== undefined && rawBackend !== 'agent' && rawBackend !== 'phocinae') {
+    throw new TypeError(`reviewerBackend must be one of "agent", "phocinae", got ${JSON.stringify(rawBackend)}`)
+  }
+  // An explicit backend always wins; otherwise a Phocinae model id selects the
+  // local decision service, which makes `reviewerModel: Phocinae-…` sufficient.
+  const reviewerBackend: ReviewerBackend = rawBackend
+    ?? (isPhocinaeModelName(config.reviewerModel) ? 'phocinae' : 'agent')
+  const phocinae = resolvePhocinaeConfig(config.phocinae, config.reviewerModel)
   const reviewerTools = config.reviewerTools ?? ['read', 'glob', 'grep']
   if (reviewerTools.length === 0) {
     throw new TypeError('reviewerTools must name at least one tool: an empty allow-list would leave the reviewer with no tool face')
@@ -398,6 +620,8 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     reviewerPreset: config.reviewerPreset,
     reviewerModel: config.reviewerModel,
     reviewerModelProvider: config.reviewerModelProvider,
+    reviewerBackend,
+    phocinae,
     reviewerTimeoutMs: config.reviewerTimeoutMs ?? 60_000,
     reviewerTools,
     fallbackPolicy: config.fallbackPolicy ?? 'rejected',

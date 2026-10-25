@@ -25,6 +25,16 @@ riskRules:
 
 reviewerProvider: fork        # the in-process fork subagent backend
 reviewerModel: null           # omit or null: inherit the session agent's route
+reviewerModelProvider: null    # LLM provider route for reviewerModel (omit: inherit the session agent's provider)
+reviewerBackend: agent         # agent | phocinae (omit: inferred from reviewerModel — a Phocinae id selects the local service)
+# phocinae:                    # local non-generative Phocinae-Largha-150M-v1 decision service (used when reviewerBackend: phocinae)
+#   endpoint: http://127.0.0.1:8155/v1/systemone   # loopback only unless allowRemoteEndpoint is true
+#   model: Phocinae-Largha-150M-v1
+#   timeoutMs: 5000            # one attempt, no retry; bounded by reviewerTimeoutMs
+#   minConfidence: 0.45        # an allow below this calibrated floor resolves through fallbackPolicy
+#   mode: harm                 # harm | tri-state | noul
+#   maxStateChars: 4096        # a truncated state can deny but never allow
+#   allowRemoteEndpoint: false
 reviewerTimeoutMs: 60000
 reviewerTools: [read, glob, grep]   # read-only allow-list for the reviewer child
 fallbackPolicy: rejected      # fail closed on reviewer failure (delegate | allow-once)

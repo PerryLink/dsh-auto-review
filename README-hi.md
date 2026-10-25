@@ -68,7 +68,7 @@ DeepSeek Harness के लिए द्वितीय-मॉडल AI अन�
 | हारनेस | DeepSeek Harness `dsh-v0.2.1-rc.2` (2026-10-18 सत्यापित): `engines.dsh >=0.2.1-0 <0.3.0`; P0 संगतता पथ के रिग्रेशन परीक्षण हैं। |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | प्लेटफ़ॉर्म | सभी (होस्ट answerer; सत्र-प्रोजेक्शन क्षमता के ज़रिए वैकल्पिक वेब समीक्षा पैनल) |
-| मॉडल | कोई भी (समीक्षक सत्र एजेंट का मार्ग विरासत में लेता है; `reviewerModel` उसे बदल देता है) |
+| मॉडल | कोई भी जनरेटिव मॉडल (समीक्षक सत्र एजेंट का मार्ग विरासत में लेता है; `reviewerModel` उसे बदल देता है), या स्थानीय गैर-जनरेटिव `Phocinae-Largha-150M-v1` निर्णय मॉडल (`reviewerBackend: phocinae`) |
 
 ## आपको क्या मिलता है
 
@@ -164,6 +164,14 @@ No recent denial #2 in this session (0 recorded).
 | `reviewerPreset` | *(none)* | केवल-पढ़ने वाला Agent Preset id; जब होस्ट केवल `startActivation` (0.2.1+) देता है तब आवश्यक |
 | `reviewerModel` | *(विरासत)* | समीक्षक मॉडल id; खाली होने पर सत्र एजेंट का मार्ग लेता है |
 | `reviewerModelProvider` | *(विरासत)* | `reviewerModel` के लिए LLM प्रदाता मार्ग; खाली होने पर सत्र एजेंट का प्रदाता लेता है |
+| `reviewerBackend` | `agent` | समीक्षक इंजन: `agent` (जनरेटिव समीक्षक) या `phocinae` (स्थानीय गैर-जनरेटिव निर्णय सेवा)। खाली होने पर `reviewerModel` से अनुमान: `Phocinae…` id `phocinae` चुनता है |
+| `phocinae.endpoint` | `http://127.0.0.1:8155/v1/systemone` | Phocinae निर्णय-सेवा URL; `phocinae.allowRemoteEndpoint` के बिना केवल loopback |
+| `phocinae.model` | `Phocinae-Largha-150M-v1` | परोसा गया मॉडल नाम; Phocinae `reviewerModel` इसे स्वतः चुनता है |
+| `phocinae.timeoutMs` | `5000` | प्रति-अनुरोध HTTP समय-सीमा (एक प्रयास, कोई retry नहीं), `reviewerTimeoutMs` से सीमित |
+| `phocinae.minConfidence` | `0.45` | `allow` के लिए कैलिब्रेटेड कॉन्फ़िडेंस की न्यूनतम सीमा; अनिश्चित allow अनुमति देने के बजाय `fallbackPolicy` से जाता है |
+| `phocinae.mode` | `harm` | पूछा गया प्रश्न: `harm` (विनाशकारी कमांड पर मापा गया recall 0.97), `tri-state` (0.74), `noul` (0.00; केवल समानता) |
+| `phocinae.maxStateChars` | `4096` | रेंडर किए गए निर्णय-स्थिति की सीमा; कटी हुई स्थिति अस्वीकार कर सकती है पर कभी अनुमति नहीं दे सकती |
+| `phocinae.allowRemoteEndpoint` | `false` | गैर-loopback endpoint की अनुमति। स्थिति में समीक्षित कॉल का टेक्स्ट होता है, इसलिए यह स्पष्ट डेटा-निर्यात निर्णय है |
 | `reviewerTimeoutMs` | `60000` | निर्णय की समय-सीमा; समाप्ति पर fallback नीति लागू होती है |
 | `reviewerTools` | `[read, glob, grep]` | समीक्षक चाइल्ड की टूल अनुमति-सूची (गैर-रिक्त होनी चाहिए) |
 | `fallbackPolicy` | `rejected` | समीक्षक विफलता: `rejected` (विफल-बंद) / `delegate` / `allow-once` |
@@ -181,6 +189,24 @@ No recent denial #2 in this session (0 recorded).
 | `verdictCacheMaxEntries` | `256` | सबसे पुराने को निकालने से पहले कैश किए गए फ़िंगरप्रिंट की अधिकतम संख्या |
 | `language` | `en` | `/auto-review` कमांड आउटपुट की UI भाषा (`en` \| `zh`) |
 | `allowUnmarkedAudit` | `false` | `ignorable` मार्कर छोड़ने वाले होस्ट पर सत्र-लॉग ऑडिट बलपूर्वक चालू करें (खतरनाक: बिना मार्कर वाली घटनाएँ अन्य होस्ट पर सत्र अप्राप्य बनाती हैं); डिफ़ॉल्ट पहचान-और-डिग्रेड है (2026-09-02 को अनुकूलित, 2026-09-11 को `0.1.5-rc.2` के विरुद्ध पुनः सत्यापित) |
+
+### स्थानीय निर्णय-मॉडल समीक्षक (Phocinae, वैकल्पिक)
+
+`reviewerBackend: phocinae` जनरेटिव समीक्षक की जगह स्थानीय, गैर-जनरेटिव **Phocinae-Largha-150M-v1** निर्णय मॉडल लेता है, जो [`phocinae-server`](https://github.com/Phocinae/phocinae-server) द्वारा परोसा जाता है (`POST /v1/systemone`)। मॉडल एक टाइप्ड प्रश्न का उत्तर देता है —"यह टूल कॉल चले तो कितना हानिकारक है?"— और कभी टेक्स्ट नहीं बनाता, इसलिए समीक्षा के लिए **API कुंजी, `subagents`/`llm` सीम, या नेटवर्क की ज़रूरत नहीं**: एक फ़ॉरवर्ड (GPU पर गर्म ≈21 ms, CPU सिंगल-थ्रेड ≈1.5 s) कैलिब्रेटेड कॉन्फ़िडेंस के साथ `harmless` / `risky` / `destructive` लौटाता है।
+
+```yaml
+config:
+  toolsPolicy: { overrides: { bash: ai } }
+  reviewerModel: Phocinae-Largha-150M-v1   # केवल यही Phocinae बैकएंड चुनता है
+  phocinae:
+    endpoint: http://127.0.0.1:8155/v1/systemone
+    minConfidence: 0.45
+    mode: harm
+```
+
+केवल `harmless` और `answer_confidence >= minConfidence` ही अनुमति देता है। `risky` और `destructive` अस्वीकार करते हैं (मध्यम / उच्च जोखिम); `tri-state` में `ask` अस्वीकार है; अनिश्चित या कॉन्फ़िडेंस-रहित allow `fallbackPolicy` से जाता है (विफल-बंद); कटा हुआ state अस्वीकार कर सकता है पर कभी अनुमति नहीं दे सकता। एंडपॉइंट केवल loopback है जब तक `phocinae.allowRemoteEndpoint: true` न हो, और साक्ष्य उसी कुंजी-स्तरीय व इनलाइन-सीक्रेट रिडैक्शन से गुज़रता है जो जनरेटिव प्रॉम्प्ट में है — कारण भी रिडैक्ट होता है क्योंकि यह state प्रोसेस से बाहर जाता है। यह बैकएंड केवल अनुमोदन समीक्षाओं पर लागू होता है; `dsh-eval` की समीक्षा परत अभी भी जनरेटिव मॉडल वापस करती है।
+
+सेवा एक बार शुरू करें: `pip install phocinae-server` (या चेकआउट चलाएँ), मॉडल कार्ड से वेट्स डाउनलोड करें, फिर `PHOC_MODEL_DIR=<weights-dir> python -m phocinae.main` — यह `127.0.0.1:8155` पर सुनता है; `curl http://127.0.0.1:8155/health` से जाँचें।
 
 उदाहरण (टिप्पणी-युक्त पूर्ण रूप: `fixtures/config/config-full.yaml`):
 

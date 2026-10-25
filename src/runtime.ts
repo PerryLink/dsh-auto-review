@@ -251,6 +251,16 @@ export class AutoReviewRuntime {
   // --- Audit-host capability (ignorable envelope marker) --------------------
 
   /**
+   * The `provider` recorded in the verdict audit event: the subagent provider
+   * on the generative path, or `phocinae` when the local decision service
+   * answered. The audit must not claim a subagent ran when none did.
+   * @returns the provider label for this mount's reviewer backend.
+   */
+  private reviewerProviderName(): string {
+    return this.config.reviewerBackend === 'phocinae' ? 'phocinae' : this.config.reviewerProvider
+  }
+
+  /**
    * Whether the session-log audit may append now: enabled when the host
    * stamps the `ignorable` marker (peer-version pre-check, then the append
    * probe) or when `allowUnmarkedAudit` opts back in. Degrades to the
@@ -662,7 +672,7 @@ export class AutoReviewRuntime {
         approvalId,
         toolName: request.toolName,
         ...request.callId !== undefined ? { callId: request.callId } : {},
-        provider: this.config.reviewerProvider,
+        provider: this.reviewerProviderName(),
         ...resolution.model !== undefined ? { model: resolution.model } : {},
         ...resolution.reviewerSessionId !== undefined ? { reviewerSessionId: resolution.reviewerSessionId } : {},
         durationMs,
@@ -726,7 +736,7 @@ export class AutoReviewRuntime {
           approvalId,
           toolName: request.toolName,
           ...request.callId !== undefined ? { callId: request.callId } : {},
-          provider: this.config.reviewerProvider,
+          provider: this.reviewerProviderName(),
           ...failure.model !== undefined ? { model: failure.model } : {},
           ...failure.reviewerSessionId !== undefined ? { reviewerSessionId: failure.reviewerSessionId } : {},
           durationMs,
@@ -962,6 +972,10 @@ export class AutoReviewRuntime {
         kind: 'success',
         text: [
           t.statusLine(current),
+          t.reviewerLine(
+            this.config.reviewerBackend,
+            this.config.reviewerBackend === 'phocinae' ? this.config.phocinae.model : this.config.reviewerModel,
+          ),
           t.verdictsLine(verdictsUsed, this.config.maxReviewsPerTurn),
           t.failuresLine(failuresUsed, this.config.maxFailuresPerTurn),
           ...circuit === undefined ? [] : [t.circuitLine(circuit.trip.kind, circuit.trip.count, circuit.action)],

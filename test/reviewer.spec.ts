@@ -10,6 +10,7 @@ import path from 'node:path'
 import { Session, SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { CallId } from './call-id.ts'
+import { resolvePhocinaeConfig } from '../src/index.ts'
 import {
   buildContextSection,
   buildReviewPrompt,
@@ -53,6 +54,8 @@ function promptConfig(overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {
     reviewerProvider: 'fork',
     reviewerModel: undefined,
     reviewerModelProvider: undefined,
+    reviewerBackend: 'agent',
+    phocinae: resolvePhocinaeConfig(undefined),
     reviewerTimeoutMs: 60_000,
     reviewerTools: ['read', 'glob', 'grep'],
     fallbackPolicy: 'rejected',
@@ -94,6 +97,8 @@ describe('reviewer prompt', () => {
       reviewerProvider: 'fork',
       reviewerModel: undefined,
     reviewerModelProvider: undefined,
+    reviewerBackend: 'agent',
+    phocinae: resolvePhocinaeConfig(undefined),
       reviewerTimeoutMs: 60_000,
       reviewerTools: ['read', 'glob', 'grep'],
       fallbackPolicy: 'rejected',
@@ -139,6 +144,8 @@ describe('reviewer prompt', () => {
       reviewerProvider: 'fork',
       reviewerModel: undefined,
     reviewerModelProvider: undefined,
+    reviewerBackend: 'agent',
+    phocinae: resolvePhocinaeConfig(undefined),
       reviewerTimeoutMs: 60_000,
       reviewerTools: ['read', 'glob', 'grep'],
       fallbackPolicy: 'rejected',

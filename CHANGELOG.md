@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.14.0] - 2026-10-25
+
+### Added
+
+- **Support for the local non-generative `Phocinae-Largha-150M-v1` decision model as the reviewer.** `reviewerBackend: phocinae` — or just `reviewerModel: Phocinae-Largha-150M-v1`, which infers the backend — routes `ai`-policy reviews to a loopback `phocinae-server` (`POST /v1/systemone`, default `http://127.0.0.1:8155/v1/systemone`) instead of a generative subagent: no API key, no `subagents`/`llm` seam, no network. The reviewer asks one typed question (`phocinae.mode`: `harm` by default — measured recall 0.97 on destructive commands in the sibling plugin's labelled set; `tri-state` 0.74; `noul` 0.00 for parity only) and maps `harmless` with `answer_confidence >= phocinae.minConfidence` (default 0.45) to allow; `risky`, `destructive`, and `ask` deny.
+- **Every abnormal path is fail-closed.** Unreachable service, timeout, cancellation, a non-JSON body, an `answers` array, a missing or out-of-range answer, a truncated state, and a missing or below-floor confidence all resolve through `fallbackPolicy` (default `rejected`) — never a grant. An unsure allow cannot become an allow; a truncated state can deny but never allow.
+- **The state is loopback-only and redacted.** `phocinae.allowRemoteEndpoint` must be set explicitly to send the reviewed call's text off-host; the evidence reuses the existing key-level and inline-secret redaction, and additionally redacts the approval reason because this state leaves the process.
+- **Observability and docs.** `/auto-review status` now names the reviewer backend and model, and `autoReview/verdict` records `provider: phocinae` (instead of claiming a subagent ran). Full config documentation, an annotated example in `fixtures/config/config-full.yaml`, and the two-question setup instructions in all five READMEs.
+
 ## [0.13.8] - 2026-10-22
 
 ### Fixed

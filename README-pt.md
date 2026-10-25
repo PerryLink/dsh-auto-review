@@ -60,7 +60,7 @@ Quando uma ação cruza a fronteira do sandbox, um segundo modelo lê as evidên
 | Harness | DeepSeek Harness `dsh-v0.2.1-rc.2` (verificado 2026-10-18): `engines.dsh >=0.2.1-0 <0.3.0`; os caminhos de compatibilidade P0 têm testes de regressão. |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | Plataformas | Todas (answerer de host; painel web opcional via capacidade de projeção de sessão) |
-| Modelo | Qualquer (o revisor herda a rota do agente da sessão; `reviewerModel` sobrescreve) |
+| Modelo | Qualquer modelo generativo (o revisor herda a rota do agente da sessão; `reviewerModel` sobrescreve), ou o modelo de decisão local não generativo `Phocinae-Largha-150M-v1` (`reviewerBackend: phocinae`) |
 
 ## O que você recebe
 
@@ -164,6 +164,14 @@ Todos os ajustes são campos Schemastery `Config` (alteráveis no cordis.yml). U
 | `reviewerPreset` | *(none)* | Id do Agent Preset somente leitura; obrigatório quando o host expõe apenas `startActivation` (0.2.1+) |
 | `reviewerModel` | *(herdado)* | Id do modelo revisor; se vazio, herda a rota do agente da sessão |
 | `reviewerModelProvider` | *(herdado)* | Rota do provedor LLM para `reviewerModel`; se vazio, herda o provedor do agente da sessão |
+| `reviewerBackend` | `agent` | Motor do revisor: `agent` (o revisor generativo) ou `phocinae` (o serviço local de decisão não generativo). Sem definir, é inferido de `reviewerModel`: um id `Phocinae…` seleciona `phocinae` |
+| `phocinae.endpoint` | `http://127.0.0.1:8155/v1/systemone` | URL do serviço de decisão Phocinae; somente loopback salvo `phocinae.allowRemoteEndpoint` |
+| `phocinae.model` | `Phocinae-Largha-150M-v1` | Nome do modelo servido; um `reviewerModel` Phocinae o seleciona automaticamente |
+| `phocinae.timeoutMs` | `5000` | Prazo HTTP por requisição (uma tentativa, sem retry), limitado por `reviewerTimeoutMs` |
+| `phocinae.minConfidence` | `0.45` | Piso de confiança calibrada para um `allow`; um allow inseguro passa pelo `fallbackPolicy` em vez de conceder |
+| `phocinae.mode` | `harm` | Pergunta: `harm` (recall medido 0.97 em comandos destrutivos), `tri-state` (0.74), `noul` (0.00; só paridade) |
+| `phocinae.maxStateChars` | `4096` | Limite do estado de decisão renderizado; um estado truncado pode negar mas nunca permitir |
+| `phocinae.allowRemoteEndpoint` | `false` | Permitir endpoint não loopback. O estado carrega o texto da chamada revisada, então é uma decisão explícita de saída de dados |
 | `reviewerTimeoutMs` | `60000` | Prazo do veredito; ao expirar, aplica-se a política de fallback |
 | `reviewerTools` | `[read, glob, grep]` | Lista de permissões de ferramentas do filho revisor (deve ser não vazia) |
 | `fallbackPolicy` | `rejected` | Falha do revisor: `rejected` (falha fechada) / `delegate` / `allow-once` |
@@ -181,6 +189,24 @@ Todos os ajustes são campos Schemastery `Config` (alteráveis no cordis.yml). U
 | `verdictCacheMaxEntries` | `256` | Máximo de impressões em cache antes de despejar a mais antiga |
 | `language` | `en` | Idioma da UI da saída do comando `/auto-review` (`en` \| `zh`) |
 | `allowUnmarkedAudit` | `false` | Força a auditoria do registro de sessão em hosts que descartam o marcador `ignorable` (perigoso: eventos sem marcador tornam sessões irrecuperáveis em outros hosts); o padrão é detectar e degradar (adaptado em 2026-09-02, reverificado contra `0.1.5-rc.2` em 2026-09-11) |
+
+### Revisor local com modelo de decisão (Phocinae, opcional)
+
+`reviewerBackend: phocinae` troca o revisor generativo pelo modelo de decisão local e não generativo **Phocinae-Largha-150M-v1**, servido pelo [`phocinae-server`](https://github.com/Phocinae/phocinae-server) (`POST /v1/systemone`). O modelo responde uma pergunta tipada —"qual o dano desta chamada se ela rodar?"— e nunca gera texto, então uma revisão **não precisa de chave de API, nem da costura `subagents`/`llm`, nem de rede**: um forward (≈21 ms a quente em GPU, ≈1,5 s em CPU single-thread) devolve `harmless` / `risky` / `destructive` com confiança calibrada.
+
+```yaml
+config:
+  toolsPolicy: { overrides: { bash: ai } }
+  reviewerModel: Phocinae-Largha-150M-v1   # só isto já seleciona o backend Phocinae
+  phocinae:
+    endpoint: http://127.0.0.1:8155/v1/systemone
+    minConfidence: 0.45
+    mode: harm
+```
+
+Só `harmless` com `answer_confidence >= minConfidence` permite. `risky` e `destructive` negam (risco médio / alto); no `tri-state`, `ask` nega; um allow inseguro ou sem confiança passa pelo `fallbackPolicy` (fecha em falha); um estado truncado pode negar mas nunca permitir. O endpoint é somente loopback salvo `phocinae.allowRemoteEndpoint: true`, e a evidência passa pela mesma redação de chaves e segredos inline do prompt generativo — o motivo também é redigido, porque esse estado sai do processo. O backend vale apenas para revisões de aprovação; a camada de revisão do `dsh-eval` continua usando um modelo generativo.
+
+Inicie o serviço uma vez: `pip install phocinae-server` (ou rode o checkout), baixe os pesos no model card e execute `PHOC_MODEL_DIR=<weights-dir> python -m phocinae.main` — ele escuta em `127.0.0.1:8155`; verifique com `curl http://127.0.0.1:8155/health`.
 
 Exemplo (forma completa anotada: `fixtures/config/config-full.yaml`):
 

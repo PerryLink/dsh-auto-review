@@ -60,7 +60,7 @@ DeepSeek Harness 的第二模型 AI 审批 —— 一个只读审查子代理在
 | 宿主 | DeepSeek Harness `dsh-v0.2.1-rc.2`（2026-10-18 验证）：`engines.dsh >=0.2.1-0 <0.3.0`；P0 兼容路径已有回归测试。 |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | 平台 | 全部（宿主 answerer；可选 Web 审查面板，依赖会话投影能力） |
-| 模型 | 任意（审查器默认继承会话代理的路由；`reviewerModel` 可覆盖） |
+| 模型 | 任意生成式模型（审查器默认继承会话代理的路由；`reviewerModel` 可覆盖），或本机非生成式的 `Phocinae-Largha-150M-v1` 决策模型（`reviewerBackend: phocinae`） |
 
 ## 你能获得什么
 
@@ -164,6 +164,14 @@ No recent denial #2 in this session (0 recorded).
 | `reviewerPreset` | *(none)* | 只读 Agent Preset id；宿主只提供 `startActivation`（0.2.1+）时必填 |
 | `reviewerModel` | *(继承)* | 审查器模型 id；不设置则继承会话代理的路由 |
 | `reviewerModelProvider` | *(继承)* | `reviewerModel` 的 LLM provider 路由；不设置则继承会话代理的 provider |
+| `reviewerBackend` | `agent` | 审查引擎：`agent`（生成式审查器）或 `phocinae`（本机非生成式决策服务）。不设置时由 `reviewerModel` 推断：`Phocinae…` 模型 id 会选择 `phocinae` |
+| `phocinae.endpoint` | `http://127.0.0.1:8155/v1/systemone` | Phocinae 决策服务地址；除设置 `phocinae.allowRemoteEndpoint` 外仅允许 loopback |
+| `phocinae.model` | `Phocinae-Largha-150M-v1` | 服务端模型名；`reviewerModel` 为 Phocinae 模型时自动采用 |
+| `phocinae.timeoutMs` | `5000` | 单次 HTTP 截止时间（只尝试一次，不重试），受 `reviewerTimeoutMs` 约束 |
+| `phocinae.minConfidence` | `0.45` | 放行所需的校准置信度下限；置信度不足的 allow 会走 `fallbackPolicy`，不会放行 |
+| `phocinae.mode` | `harm` | 提问方式：`harm`（在破坏性命令上实测召回 0.97）、`tri-state`（0.74）、`noul`（0.00，仅用于对齐） |
+| `phocinae.maxStateChars` | `4096` | 决策状态渲染上限；被截断的状态可以拒绝，但永远不会放行 |
+| `phocinae.allowRemoteEndpoint` | `false` | 允许非 loopback 端点。状态里含被审调用的文本，所以这是一次显式的数据出境决定 |
 | `reviewerTimeoutMs` | `60000` | 裁决截止时间；超时后应用 fallback 策略 |
 | `reviewerTools` | `[read, glob, grep]` | 审查器子代理的工具白名单（必须非空） |
 | `fallbackPolicy` | `rejected` | 审查器失败时的策略：`rejected`（失败关闭）/ `delegate` / `allow-once` |
@@ -181,6 +189,24 @@ No recent denial #2 in this session (0 recorded).
 | `verdictCacheMaxEntries` | `256` | 缓存指纹上限，超出后淘汰最旧条目 |
 | `language` | `en` | `/auto-review` 命令输出的界面语言（`en` \| `zh`） |
 | `allowUnmarkedAudit` | `false` | 强制在丢弃 `ignorable` 标记的宿主上写入会话审计（危险：未标记事件会让会话在其他宿主上无法恢复）；默认自动探测并降级（2026-09-02 适配，2026-09-11 针对 `0.1.5-rc.2` 复核） |
+
+### 本地决策模型审查器（Phocinae，可选）
+
+`reviewerBackend: phocinae` 会把生成式审查器换成由 [`phocinae-server`](https://github.com/Phocinae/phocinae-server) 提供的本机非生成式 **Phocinae-Largha-150M-v1** 决策模型（`POST /v1/systemone`）。模型只回答一个类型化问题——"这个工具调用如果执行，危害有多大？"——**不生成任何 token**，所以审查**不需要 API key、不需要 `subagents`/`llm` 接缝、也不需要网络**：一次前向（GPU 热态约 21 ms，CPU 单线程约 1.5 s）返回 `harmless` / `risky` / `destructive` 及其校准置信度。
+
+```yaml
+config:
+  toolsPolicy: { overrides: { bash: ai } }
+  reviewerModel: Phocinae-Largha-150M-v1   # 仅这一项即可选中 Phocinae 后端
+  phocinae:
+    endpoint: http://127.0.0.1:8155/v1/systemone
+    minConfidence: 0.45
+    mode: harm
+```
+
+只有 `harmless` 且 `answer_confidence >= minConfidence` 才会放行。`risky` / `destructive` 拒绝（中 / 高风险）；`tri-state` 模式的 `ask` 按拒绝处理；置信度不足或缺失的 allow 走 `fallbackPolicy`（失败关闭）；被截断的状态只可拒绝、不可放行。端点默认仅允许 loopback，除非显式设置 `phocinae.allowRemoteEndpoint: true`；发给模型的证据与生成式提示词一样经过键名级与内联密钥脱敏——理由也会脱敏，因为这份状态会离开进程。该后端只作用于审批审查；`dsh-eval` 的审查层仍使用生成式模型。
+
+启动服务：`pip install phocinae-server`（或直接运行仓库），从模型卡下载权重，然后 `PHOC_MODEL_DIR=<weights-dir> python -m phocinae.main`——它监听 `127.0.0.1:8155`；用 `curl http://127.0.0.1:8155/health` 验证。
 
 示例（完整注释形式见 `fixtures/config/config-full.yaml`）：
 

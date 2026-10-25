@@ -23,6 +23,7 @@ import type { AutoReviewFallback } from './events.ts'
 import { AutoReviewCircuitId, AutoReviewRejectionId, AutoReviewVerdictId, findPresentedCall } from './events.ts'
 import type { ContextBudgetConfig, ResolvedConfig, RiskLevel } from './config.ts'
 import type { ReviewerChildren } from './isolation.ts'
+import { runPhocinaeReview, type PhocinaeEvidence } from './phocinae.ts'
 /** Minimal shape of the 0.2.1+ startActivation surface (alpha hosts lack it). */
 interface ReviewerActivationService {
   startActivation?: (spec: {
@@ -121,7 +122,7 @@ const INLINE_SECRET_FLAG = new RegExp(`(--?${INLINE_SECRET_KEY}\\s+)(["']?)([^\\
  * @param text - the free-form string to redact.
  * @returns the string with every recognized inline secret masked.
  */
-function redactInlineSecrets(text: string): string {
+export function redactInlineSecrets(text: string): string {
   return text
     .replace(INLINE_SECRET_ASSIGN, (_match, head: string, quote: string) => head + quote + REDACTED)
     .replace(INLINE_SECRET_FLAG, (_match, head: string, quote: string) => head + quote + REDACTED)
@@ -417,10 +418,45 @@ export function parseVerdict(value: unknown, reasonMaxChars: number): ReviewerVe
 }
 
 /**
+ * Build the redacted evidence a Phocinae review sees: the tool, the session's
+ * workspace, the calling model's reason (inline secrets redacted — the
+ * generative prompt's reason is not redacted by the prompt builder, but this
+ * one leaves the process, so it is), and the pending call's already-redacted
+ * argument text. The transcript budget is deliberately not included: the
+ * decision model reads one bounded state, and the parameter preview is the
+ * evidence the question is about.
+ * @param request - the pending approval request.
+ * @param config - resolved config (reason cap, session log).
+ * @param override - a pending human one-shot override, when one applies.
+ * @returns the evidence for {@link runPhocinaeReview}.
+ */
+export function buildPhocinaeEvidence(
+  request: ApprovalRequest,
+  config: ResolvedConfig,
+  override?: OverrideContext,
+): PhocinaeEvidence {
+  const argumentsText = request.callId === undefined
+    ? undefined
+    : sanitizedArgumentsText(sessionEvents(request.agent.session), request.callId)
+  return {
+    toolName: request.toolName,
+    reason: truncate(redactInlineSecrets(request.reason ?? '(none given)'), config.reasonMaxChars),
+    workspace: request.agent.session.header.cwd ?? '(unknown)',
+    platform: process.platform,
+    ...argumentsText === undefined ? {} : { argumentsText },
+    ...override === undefined
+      ? {}
+      : { override: { reviewId: String(override.reviewId), toolName: override.toolName } },
+  }
+}
+
+/**
  * Run one review attempt through whichever seam the host offers: the isolated
  * structured-capture child, or — when the host no longer takes a `toolFilter` —
- * the tool-less model call. Both resolve to a {@link ReviewResolution}, and
- * every failure path resolves to a {@link ReviewFailure}: never a grant.
+ * the tool-less model call. On a `'phocinae'` backend neither seam is used:
+ * the local decision service answers one typed question instead. Every path
+ * resolves to a {@link ReviewResolution}, and every failure path resolves to a
+ * {@link ReviewFailure}: never a grant.
  * @param ctx - the plugin context (`ctx.subagents`, and `ctx.llm` feature-detected).
  * @param config - resolved config (provider, timeout, tools, model, budgets).
  * @param request - the pending approval request (parent, signal, and evidence).
@@ -437,6 +473,12 @@ export async function runReview(
   reviewerSessions: ReviewerChildren,
   override?: OverrideContext,
 ): Promise<ReviewResolution> {
+  // The local decision service needs neither `subagents` nor `llm`: it is a
+  // plain HTTP call to a loopback process. Checked first so an offline or
+  // key-less deployment never falls into the generative path.
+  if (config.reviewerBackend === 'phocinae') {
+    return runPhocinaeReview(buildPhocinaeEvidence(request, config, override), config, request.signal)
+  }
   // Two reviewer seams, because the host moved: dsh <= 0.2.1-alpha still exposes
   // the one-shot child (`ctx.subagents.start`, structured capture + tool
   // allow-list), while 0.2.1 replaced it with `startActivation`, whose spawn

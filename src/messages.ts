@@ -15,6 +15,7 @@ export interface Messages {
   readonly usage: string
   readonly description: string
   readonly statusLine: (enabled: boolean) => string
+  readonly reviewerLine: (backend: 'agent' | 'phocinae', model: string | undefined) => string
   readonly verdictsLine: (used: number, max: number) => string
   readonly failuresLine: (used: number, max: number) => string
   readonly circuitLine: (kind: string, count: number, action: string) => string
@@ -36,6 +37,7 @@ const EN: Messages = {
   usage: 'Usage: /auto-review on|off|status|approve [n]',
   description: 'enable or disable second-model AI auto-review for this session, inspect verdicts, or approve one retry',
   statusLine: enabled => `Auto-review is ${enabled ? 'ON' : 'OFF'} for this session.`,
+  reviewerLine: (backend, model) => `Reviewer: ${backend === 'phocinae' ? 'local Phocinae decision service' : 'generative reviewer'}${model === undefined ? '' : ` (${model})`}.`,
   verdictsLine: (used, max) => `AI verdicts this turn: ${used}/${max}`,
   failuresLine: (used, max) => `Reviewer failures this turn: ${used}/${max}`,
   circuitLine: (kind, count, action) => `Rejection circuit breaker tripped (${kind}: ${count} denials); later requests in this turn follow "${action}".`,
@@ -65,6 +67,7 @@ const ZH: Messages = {
   usage: '用法：/auto-review on|off|status|approve [n]',
   description: '为本会话启用或禁用第二模型 AI 自动审查、查看裁决统计，或批准一次重试',
   statusLine: enabled => `本会话的自动审查已${enabled ? '开启' : '关闭'}。`,
+  reviewerLine: (backend, model) => `审查器：${backend === 'phocinae' ? '本机 Phocinae 决策服务' : '生成式审查器'}${model === undefined ? '' : `（${model}）`}。`,
   verdictsLine: (used, max) => `本回合 AI 裁决数：${used}/${max}`,
   failuresLine: (used, max) => `本回合审查失败数：${used}/${max}`,
   circuitLine: (kind, count, action) => `拒绝熔断器已触发（${kind}：${count} 次拒绝）；本回合后续请求按 "${action}" 处理。`,
