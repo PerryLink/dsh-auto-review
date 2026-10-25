@@ -221,7 +221,7 @@
     "@types/react": "19.3.0",
     "@vitest/coverage-v8": "5.0.5",
     "jsdom": "^30.0.1",
-    "oxlint": "1.88.0",
+    "oxlint": "1.89.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "tsdown": "^0.23.0",
