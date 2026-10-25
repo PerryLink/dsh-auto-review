@@ -31,8 +31,7 @@ reviewerBackend: agent         # agent | phocinae (omit: inferred from reviewerM
 #   endpoint: http://127.0.0.1:8155/v1/systemone   # loopback only unless allowRemoteEndpoint is true
 #   model: Phocinae-Largha-150M-v1
 #   timeoutMs: 5000            # one attempt, no retry; bounded by reviewerTimeoutMs
-#   minConfidence: 0.45        # an allow below this calibrated floor resolves through fallbackPolicy
-#   mode: harm                 # harm | tri-state | noul
+#   minConfidence: 0.4         # measured: 0/53 destructive commands allowed; 0.35 let two through
 #   maxStateChars: 4096        # a truncated state can deny but never allow
 #   allowRemoteEndpoint: false
 reviewerTimeoutMs: 60000

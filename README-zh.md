@@ -168,8 +168,7 @@ No recent denial #2 in this session (0 recorded).
 | `phocinae.endpoint` | `http://127.0.0.1:8155/v1/systemone` | Phocinae 决策服务地址；除设置 `phocinae.allowRemoteEndpoint` 外仅允许 loopback |
 | `phocinae.model` | `Phocinae-Largha-150M-v1` | 服务端模型名；`reviewerModel` 为 Phocinae 模型时自动采用 |
 | `phocinae.timeoutMs` | `5000` | 单次 HTTP 截止时间（只尝试一次，不重试），受 `reviewerTimeoutMs` 约束 |
-| `phocinae.minConfidence` | `0.45` | 放行所需的校准置信度下限；置信度不足的 allow 会走 `fallbackPolicy`，不会放行 |
-| `phocinae.mode` | `harm` | 提问方式：`harm`（在破坏性命令上实测召回 0.97）、`tri-state`（0.74）、`noul`（0.00，仅用于对齐） |
+| `phocinae.minConfidence` | `0.4` | 放行所需的校准置信度下限；置信度不足的 allow 会走 `fallbackPolicy`，不会放行。实测：0.4 下 53 条破坏性命令 0 条被放行，0.35 时有两条通过 |
 | `phocinae.maxStateChars` | `4096` | 决策状态渲染上限；被截断的状态可以拒绝，但永远不会放行 |
 | `phocinae.allowRemoteEndpoint` | `false` | 允许非 loopback 端点。状态里含被审调用的文本，所以这是一次显式的数据出境决定 |
 | `reviewerTimeoutMs` | `60000` | 裁决截止时间；超时后应用 fallback 策略 |
@@ -192,7 +191,7 @@ No recent denial #2 in this session (0 recorded).
 
 ### 本地决策模型审查器（Phocinae，可选）
 
-`reviewerBackend: phocinae` 会把生成式审查器换成由 [`phocinae-server`](https://github.com/Phocinae/phocinae-server) 提供的本机非生成式 **Phocinae-Largha-150M-v1** 决策模型（`POST /v1/systemone`）。模型只回答一个类型化问题——"这个工具调用如果执行，危害有多大？"——**不生成任何 token**，所以审查**不需要 API key、不需要 `subagents`/`llm` 接缝、也不需要网络**：一次前向（GPU 热态约 21 ms，CPU 单线程约 1.5 s）返回 `harmless` / `risky` / `destructive` 及其校准置信度。
+`reviewerBackend: phocinae` 会把生成式审查器换成由 [`phocinae-server`](https://github.com/Phocinae/phocinae-server) 提供的本机非生成式 **Phocinae-Largha-150M-v1** 决策模型（`POST /v1/systemone`）。模型只回答一个类型化问题，不生成任何 token，因此审查**不需要 API key、不需要 `subagents`/`llm` 接缝、也不需要网络**：一次前向（GPU 热态约 21 ms，CPU 单线程约 1.5 s）返回带校准置信度的危害标签。
 
 ```yaml
 config:
@@ -200,11 +199,13 @@ config:
   reviewerModel: Phocinae-Largha-150M-v1   # 仅这一项即可选中 Phocinae 后端
   phocinae:
     endpoint: http://127.0.0.1:8155/v1/systemone
-    minConfidence: 0.45
-    mode: harm
+    minConfidence: 0.4
+  fallbackPolicy: delegate                 # 可选：把 risky/不确定的请求交给人类链
 ```
 
-只有 `harmless` 且 `answer_confidence >= minConfidence` 才会放行。`risky` / `destructive` 拒绝（中 / 高风险）；`tri-state` 模式的 `ask` 按拒绝处理；置信度不足或缺失的 allow 走 `fallbackPolicy`（失败关闭）；被截断的状态只可拒绝、不可放行。端点默认仅允许 loopback，除非显式设置 `phocinae.allowRemoteEndpoint: true`；发给模型的证据与生成式提示词一样经过键名级与内联密钥脱敏——理由也会脱敏，因为这份状态会离开进程。该后端只作用于审批审查；`dsh-eval` 的审查层仍使用生成式模型。
+**它是否决/分级层，不是通用放行者。** 只有 `harmless` 且 `answer_confidence >= phocinae.minConfidence`（默认 0.4）才会放行。`destructive` 直接拒绝；`risky`、置信度不足的 `harmless`、服务不可达或响应不合法都走 `fallbackPolicy`（默认失败关闭的 `rejected`；设为 `delegate` 则交给人类链）。审查只针对 **shell 命令**：`write`/`edit` 等没有 `command` 参数的调用会直接升级，不会询问模型。
+
+状态文本就是 `The agent is about to run the shell command "<command>" in its workspace.`，选项带描述（把模型训练时的 `criteria` 渲染进选项文本，因为 HTTP 契约没有 `criteria` 字段）。在 89 条带标签命令（53 条破坏性、36 条常规）上实测（2026-10-25，CPU fp32，发布权重）：**`0.4` 下 53 条破坏性命令 0 条被放行**——26 条拒绝、27 条升级——36 条常规命令放行 5 条；把下限降到 0.35 会有两条 Windows 破坏性命令通过。审批理由、转录和工作区路径**不会**发送；命令本身要经过与生成式提示词相同的键名级与内联密钥脱敏。端点默认仅允许 loopback，除非设置 `phocinae.allowRemoteEndpoint: true`。该后端只作用于审批审查；`dsh-eval` 的审查层仍使用生成式模型。
 
 启动服务：`pip install phocinae-server`（或直接运行仓库），从模型卡下载权重，然后 `PHOC_MODEL_DIR=<weights-dir> python -m phocinae.main`——它监听 `127.0.0.1:8155`；用 `curl http://127.0.0.1:8155/health` 验证。
 

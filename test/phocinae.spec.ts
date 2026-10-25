@@ -1,7 +1,8 @@
 /**
- * Phocinae reviewer tests: config resolution, the request/answer contract, the
- * verdict mapping, every failure path, and the answerer end-to-end with a real
- * local HTTP service (a Node server that speaks `/v1/systemone`).
+ * Phocinae reviewer tests: config resolution, command extraction, the measured
+ * request shape, the verdict mapping, every failure path, and the answerer
+ * end-to-end with a real local HTTP service (a Node server that speaks
+ * `/v1/systemone`).
  * @module dsh-auto-review/test/phocinae.spec
  */
 
@@ -19,7 +20,9 @@ import {
   resolvePhocinaeConfig,
 } from '../src/index.ts'
 import {
+  PHOCINAE_HARM_OPTIONS,
   buildPhocinaeRequest,
+  commandOfArguments,
   decidePhocinaeVerdict,
   isPhocinaeFailure,
   renderPhocinaeState,
@@ -74,18 +77,18 @@ async function startService(
   }
 }
 
-/** Answer one question with the given confidence, in the server's contract. */
+/** Answer the harm question with the given index and confidence. */
 function answerWith(
   response: ServerResponse,
-  answers: Record<string, unknown>,
-  confidence?: Record<string, number>,
+  answer: number,
+  confidence?: number,
   model = PHOCINAE_DEFAULT_MODEL,
 ): void {
   response.writeHead(200, { 'content-type': 'application/json' })
   response.end(JSON.stringify({
     model,
-    answers,
-    ...confidence === undefined ? {} : { answer_confidence: confidence },
+    answers: { harm: answer },
+    ...confidence === undefined ? {} : { answer_confidence: { harm: confidence } },
   }))
 }
 
@@ -101,22 +104,18 @@ function phocinaeConfig(endpoint: string, extra: Record<string, unknown> = {}) {
 /** The evidence one review sends for a bash command. */
 const EVIDENCE = {
   toolName: 'bash',
-  reason: 'run the test suite',
-  workspace: '/workspace',
-  platform: 'linux',
   argumentsText: '{\n  "command": "npm test"\n}',
 } as const
 
 describe('phocinae config', () => {
-  it('defaults to the sibling plugin\'s endpoint and model without changing the reviewer backend', () => {
+  it('defaults to the sibling plugin endpoint and model without changing the reviewer backend', () => {
     const resolved = resolveConfig()
     expect(resolved.reviewerBackend).toBe('agent')
     expect(resolved.phocinae).toEqual({
       endpoint: PHOCINAE_DEFAULT_ENDPOINT,
       model: PHOCINAE_DEFAULT_MODEL,
       timeoutMs: 5000,
-      minConfidence: 0.45,
-      mode: 'harm',
+      minConfidence: 0.4,
       maxStateChars: 4096,
       allowRemoteEndpoint: false,
     })
@@ -135,8 +134,8 @@ describe('phocinae config', () => {
   })
 
   it('lets an explicit backend win over the model-name inference', () => {
-    const explicit = resolveConfig({ reviewerBackend: 'agent', reviewerModel: 'Phocinae-Largha-150M-v1' })
-    expect(explicit.reviewerBackend).toBe('agent')
+    expect(resolveConfig({ reviewerBackend: 'agent', reviewerModel: 'Phocinae-Largha-150M-v1' }).reviewerBackend)
+      .toBe('agent')
   })
 
   it('keeps the published model when only the backend is set', () => {
@@ -161,55 +160,65 @@ describe('phocinae config', () => {
     expect(() => resolvePhocinaeConfig({ maxStateChars: -1 })).toThrow(/maxStateChars/u)
     expect(() => resolvePhocinaeConfig({ model: '   ' })).toThrow(/model/u)
     expect(() => resolveConfig({ reviewerBackend: 'nope' as never })).toThrow(/reviewerBackend/u)
-    expect(() => resolveConfig({ phocinae: { mode: 'nope' as never } })).toThrow(/phocinae.mode/u)
+  })
+})
+
+describe('phocinae command extraction', () => {
+  it('reads the shell command spellings the harness uses', () => {
+    expect(commandOfArguments('{"command":"ls -la"}')).toBe('ls -la')
+    expect(commandOfArguments('{"cmd":"pwd"}')).toBe('pwd')
+    expect(commandOfArguments('{"script":"npm test"}')).toBe('npm test')
+    expect(commandOfArguments('{"CommandLine":"Get-Date"}')).toBe('Get-Date')
+    expect(commandOfArguments('"echo hi"')).toBe('echo hi')
+  })
+
+  it('returns undefined for a non-shell call instead of guessing', () => {
+    expect(commandOfArguments('{"path":"README.md"}')).toBeUndefined()
+    expect(commandOfArguments('{"command":"   "}')).toBeUndefined()
+    expect(commandOfArguments('not json')).toBeUndefined()
+    expect(commandOfArguments(undefined)).toBeUndefined()
   })
 })
 
 describe('phocinae request and verdict mapping', () => {
-  it('asks the harm question with the measured option order', () => {
-    const plan = buildPhocinaeRequest({ ...EVIDENCE }, resolveConfig().phocinae)
+  it('asks the measured question: a plain statement and described options', () => {
+    const plan = buildPhocinaeRequest('npm test', resolveConfig().phocinae)
     expect(plan.questionId).toBe('harm')
     expect(plan.questionType).toBe('choice')
-    expect(plan.body.questions).toEqual([{ id: 'harm', type: 'choice', options: ['harmless', 'risky', 'destructive'] }])
-    expect(plan.body.state).toContain('tool: bash')
-    expect(plan.body.state).toContain('cwd: /workspace')
-    expect(plan.body.state).toContain('"command": "npm test"')
-    expect(plan.body.state).toContain('How harmful is this tool call if it runs?')
+    expect(plan.body.state).toBe('The agent is about to run the shell command "npm test" in its workspace.')
+    expect(plan.body.questions).toEqual([{ id: 'harm', type: 'choice', options: PHOCINAE_HARM_OPTIONS }])
+    expect(PHOCINAE_HARM_OPTIONS).toHaveLength(3)
+    expect(PHOCINAE_HARM_OPTIONS[0]).toMatch(/^harmless: /u)
+    expect(PHOCINAE_HARM_OPTIONS[1]).toMatch(/^risky: /u)
+    expect(PHOCINAE_HARM_OPTIONS[2]).toMatch(/^destructive: /u)
     expect(plan.truncated).toBe(false)
   })
 
-  it('renders the tri-state and boolean questions when configured', () => {
-    const tri = buildPhocinaeRequest({ ...EVIDENCE }, resolveConfig({ phocinae: { mode: 'tri-state' } }).phocinae)
-    expect(tri.body.questions[0]).toEqual({ id: 'action', type: 'choice', options: ['allow', 'ask', 'deny'] })
-    expect(tri.body.state).toContain('reviewed by a human')
-    const noul = buildPhocinaeRequest({ ...EVIDENCE }, resolveConfig({ phocinae: { mode: 'noul' } }).phocinae)
-    expect(noul.body.questions[0]).toEqual({ id: 'risk', type: 'noul' })
-    expect(noul.body.state).toContain('be blocked for safety')
-  })
-
   it('marks a clamped state as truncated instead of silently showing a head', () => {
-    const { text, truncated } = renderPhocinaeState({ ...EVIDENCE }, 20)
+    const { text, truncated } = renderPhocinaeState('x'.repeat(100), 20)
     expect(truncated).toBe(true)
-    expect(text.startsWith('tool: bash')).toBe(true)
     expect(text.endsWith('[truncated]')).toBe(true)
   })
 
   it('allows only a harmless answer with enough calibrated confidence', () => {
     const config = resolveConfig().phocinae
-    const plan = buildPhocinaeRequest({ ...EVIDENCE }, config)
+    const plan = buildPhocinaeRequest('npm test', config)
     const allow = decidePhocinaeVerdict(plan, { answer: 0, confidence: 0.8 }, config, PHOCINAE_DEFAULT_MODEL)
     expect(allow).toMatchObject({ decision: 'allow', riskLevel: 'low' })
     expect((allow as { reason: string }).reason).toContain('0.80')
 
+    // Risky escalates; it is never a grant and never a hard deny.
     const risky = decidePhocinaeVerdict(plan, { answer: 1, confidence: 0.9 }, config, PHOCINAE_DEFAULT_MODEL)
-    expect(risky).toMatchObject({ decision: 'deny', riskLevel: 'medium' })
-    const destructive = decidePhocinaeVerdict(plan, { answer: 2, confidence: 0.9 }, config, PHOCINAE_DEFAULT_MODEL)
+    expect(isPhocinaeFailure(risky)).toBe(true)
+    expect((risky as { error: string }).error).toContain('risky')
+
+    const destructive = decidePhocinaeVerdict(plan, { answer: 2, confidence: 0.1 }, config, PHOCINAE_DEFAULT_MODEL)
     expect(destructive).toMatchObject({ decision: 'deny', riskLevel: 'high' })
   })
 
   it('never turns an unsure, confidence-less, or truncated allow into a verdict', () => {
     const config = resolveConfig().phocinae
-    const plan = buildPhocinaeRequest({ ...EVIDENCE }, config)
+    const plan = buildPhocinaeRequest('npm test', config)
     const unsure = decidePhocinaeVerdict(plan, { answer: 0, confidence: 0.3 }, config, PHOCINAE_DEFAULT_MODEL)
     expect(isPhocinaeFailure(unsure)).toBe(true)
     expect((unsure as { error: string }).error).toContain('minConfidence')
@@ -223,28 +232,9 @@ describe('phocinae request and verdict mapping', () => {
     expect(isPhocinaeFailure(truncated)).toBe(true)
     expect((truncated as { error: string }).error).toContain('truncated')
 
-    // A deny always stands, whatever the confidence.
-    const deny = decidePhocinaeVerdict(plan, { answer: 2, confidence: 0.01 }, config, PHOCINAE_DEFAULT_MODEL)
-    expect(deny).toMatchObject({ decision: 'deny', riskLevel: 'high' })
-  })
-
-  it('maps tri-state "ask" and the boolean question fail-closed', () => {
-    const tri = resolveConfig({ phocinae: { mode: 'tri-state' } }).phocinae
-    const triPlan = buildPhocinaeRequest({ ...EVIDENCE }, tri)
-    expect(decidePhocinaeVerdict(triPlan, { answer: 1, confidence: 0.9 }, tri, PHOCINAE_DEFAULT_MODEL)).toMatchObject({
-      decision: 'deny',
-      riskLevel: 'medium',
-    })
-    const noul = resolveConfig({ phocinae: { mode: 'noul' } }).phocinae
-    const noulPlan = buildPhocinaeRequest({ ...EVIDENCE }, noul)
-    expect(decidePhocinaeVerdict(noulPlan, { answer: true, confidence: 0.9 }, noul, PHOCINAE_DEFAULT_MODEL)).toMatchObject({
-      decision: 'deny',
-      riskLevel: 'high',
-    })
-    expect(decidePhocinaeVerdict(noulPlan, { answer: false, confidence: 0.9 }, noul, PHOCINAE_DEFAULT_MODEL)).toMatchObject({
-      decision: 'allow',
-      riskLevel: 'low',
-    })
+    // A truncated state can still deny: a denial does not rest on full evidence.
+    const truncatedDeny = decidePhocinaeVerdict(truncatedPlan, { answer: 2, confidence: 0.2 }, config, PHOCINAE_DEFAULT_MODEL)
+    expect(truncatedDeny).toMatchObject({ decision: 'deny', riskLevel: 'high' })
   })
 })
 
@@ -263,22 +253,32 @@ describe('phocinae transport', () => {
     return started
   }
 
-  it('sends the request and returns the verdict with the served model', async () => {
+  it('sends the measured request and returns the verdict with the served model', async () => {
     const mock = await service((_body, _request, response) => {
-      answerWith(response, { harm: 0 }, { harm: 0.82 })
+      answerWith(response, 0, 0.82)
     })
     const resolution = await runPhocinaeReview({ ...EVIDENCE }, phocinaeConfig(mock.endpoint))
-    expect(resolution).toMatchObject({
-      decision: 'allow',
-      riskLevel: 'low',
-      model: PHOCINAE_DEFAULT_MODEL,
-    })
+    expect(resolution).toMatchObject({ decision: 'allow', riskLevel: 'low', model: PHOCINAE_DEFAULT_MODEL })
     expect(mock.captured).toHaveLength(1)
     expect(mock.captured[0]?.url).toBe('/v1/systemone')
-    expect(mock.captured[0]?.body).toMatchObject({
+    expect(mock.captured[0]?.body).toEqual({
       model: PHOCINAE_DEFAULT_MODEL,
-      questions: [{ id: 'harm', type: 'choice', options: ['harmless', 'risky', 'destructive'] }],
+      state: 'The agent is about to run the shell command "npm test" in its workspace.',
+      questions: [{ id: 'harm', type: 'choice', options: [...PHOCINAE_HARM_OPTIONS] }],
     })
+  })
+
+  it('escalates a non-shell tool without contacting the service', async () => {
+    const mock = await service((_body, _request, response) => {
+      answerWith(response, 0, 0.99)
+    })
+    const resolution = await runPhocinaeReview(
+      { toolName: 'write', argumentsText: '{"path":"a.txt"}' },
+      phocinaeConfig(mock.endpoint),
+    )
+    expect(resolution).toMatchObject({ fallback: 'unavailable' })
+    expect((resolution as { error: string }).error).toContain('shell commands only')
+    expect(mock.captured).toHaveLength(0)
   })
 
   it('fails closed on an HTTP error', async () => {
@@ -296,8 +296,7 @@ describe('phocinae transport', () => {
       response.writeHead(200, { 'content-type': 'application/json' })
       response.end('not json')
     })
-    const resolution = await runPhocinaeReview({ ...EVIDENCE }, phocinaeConfig(mock.endpoint))
-    expect(resolution).toMatchObject({ fallback: 'schema' })
+    expect(await runPhocinaeReview({ ...EVIDENCE }, phocinaeConfig(mock.endpoint))).toMatchObject({ fallback: 'schema' })
   })
 
   it('treats an answers ARRAY as a protocol error rather than an empty answer', async () => {
@@ -310,22 +309,16 @@ describe('phocinae transport', () => {
     expect((resolution as { error: string }).error).toContain('array')
   })
 
-  it('rejects an out-of-range choice index and a non-boolean noul answer', async () => {
+  it('rejects an out-of-range choice index', async () => {
     const mock = await service((_body, _request, response) => {
-      answerWith(response, { harm: 7 }, { harm: 0.9 })
+      answerWith(response, 7, 0.9)
     })
     expect(await runPhocinaeReview({ ...EVIDENCE }, phocinaeConfig(mock.endpoint))).toMatchObject({ fallback: 'schema' })
-
-    const noulMock = await service((_body, _request, response) => {
-      answerWith(response, { risk: 'maybe' }, { risk: 0.9 })
-    })
-    expect(await runPhocinaeReview({ ...EVIDENCE }, phocinaeConfig(noulMock.endpoint, { mode: 'noul' })))
-      .toMatchObject({ fallback: 'schema' })
   })
 
   it('times out on a slow service and reports the deadline', async () => {
     const mock = await service((_body, _request, response) => {
-      setTimeout(() => answerWith(response, { harm: 0 }, { harm: 0.9 }), 300)
+      setTimeout(() => answerWith(response, 0, 0.9), 300)
     })
     const resolution = await runPhocinaeReview({ ...EVIDENCE }, phocinaeConfig(mock.endpoint, { timeoutMs: 50 }))
     expect(resolution).toMatchObject({ fallback: 'timeout' })
@@ -333,7 +326,7 @@ describe('phocinae transport', () => {
 
   it('cancels when the approval request is cancelled', async () => {
     const mock = await service((_body, _request, response) => {
-      setTimeout(() => answerWith(response, { harm: 0 }, { harm: 0.9 }), 300)
+      setTimeout(() => answerWith(response, 0, 0.9), 300)
     })
     const controller = new AbortController()
     setTimeout(() => controller.abort(), 20)
@@ -357,12 +350,9 @@ describe('phocinae answerer integration', () => {
     await Promise.all(services.splice(0).map(service => service.close()))
   })
 
-  async function answerService(
-    answers: Record<string, unknown>,
-    confidence: Record<string, number>,
-  ): Promise<MockService> {
+  async function answerService(answer: number, confidence: number): Promise<MockService> {
     const started = await startService((_body, _request, response) => {
-      answerWith(response, answers, confidence)
+      answerWith(response, answer, confidence)
     })
     services.push(started)
     return started
@@ -376,23 +366,35 @@ describe('phocinae answerer integration', () => {
     return undefined
   }
 
-  it('grants an allow verdict without starting a reviewer subagent', async () => {
-    const mock = await answerService({ harm: 0 }, { harm: 0.91 })
-    const harness = await mountHarness({
+  /** Mount the plugin against a mock service with `bash: ai`. */
+  async function mount(endpoint: string, config: Record<string, unknown> = {}) {
+    return mountHarness({
       allowUnmarkedAudit: true,
       toolsPolicy: { overrides: { bash: 'ai' } },
       reviewerBackend: 'phocinae',
-      phocinae: { endpoint: mock.endpoint },
+      phocinae: { endpoint },
+      ...config,
     })
+  }
+
+  /** Append the presented call the evidence builder reads. */
+  function appendCall(harness: Awaited<ReturnType<typeof mountHarness>>, callId: CallId, command: string) {
     harness.session.append('tool/call', {
-      callId: CallId('call-1') as never,
+      callId: callId as never,
       name: 'bash',
-      arguments: JSON.stringify({ command: 'npm test' }),
+      arguments: JSON.stringify({ command }),
     } as never)
+  }
+
+  it('grants a harmless verdict without starting a reviewer subagent', async () => {
+    const mock = await answerService(0, 0.91)
+    const harness = await mount(mock.endpoint)
+    const callId = CallId('call-1')
+    appendCall(harness, callId, 'npm test')
     const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
       agent: harness.agent,
       toolName: 'bash',
-      callId: CallId('call-1'),
+      callId,
       reason: 'run the test suite',
     }, next)
     expect(outcome).toBe('allowed-once')
@@ -407,19 +409,15 @@ describe('phocinae answerer integration', () => {
   })
 
   it('denies a destructive verdict and feeds the reason back', async () => {
-    const mock = await answerService({ harm: 2 }, { harm: 0.97 })
-    const harness = await mountHarness({
-      allowUnmarkedAudit: true,
-      toolsPolicy: { overrides: { bash: 'ai' } },
-      reviewerBackend: 'phocinae',
-      phocinae: { endpoint: mock.endpoint },
-    })
+    const mock = await answerService(2, 0.97)
+    const harness = await mount(mock.endpoint)
     const callId = CallId('call-2')
+    appendCall(harness, callId, 'rm -rf /')
     const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
       agent: harness.agent,
       toolName: 'bash',
       callId,
-      reason: 'clean the build directory',
+      reason: 'clean the root directory',
     }, next)
     expect(outcome).toBe('rejected')
     expect(lastEvent(harness, 'autoReview/verdict')?.data).toMatchObject({
@@ -436,59 +434,81 @@ describe('phocinae answerer integration', () => {
     expect(feedback[0]!.text).toContain('Do not attempt')
   })
 
-  it('falls back (fail closed) on an unsure allow instead of granting it', async () => {
-    const mock = await answerService({ harm: 0 }, { harm: 0.2 })
-    const harness = await mountHarness({
-      allowUnmarkedAudit: true,
-      toolsPolicy: { overrides: { bash: 'ai' } },
-      reviewerBackend: 'phocinae',
-      phocinae: { endpoint: mock.endpoint },
-    })
+  it('escalates a risky verdict through the fallback policy', async () => {
+    const mock = await answerService(1, 0.9)
+    const harness = await mount(mock.endpoint)
+    const callId = CallId('call-3')
+    appendCall(harness, callId, 'rm -rf ./build')
     const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
       agent: harness.agent,
       toolName: 'bash',
-      callId: CallId('call-3'),
-      reason: 'run the test suite',
+      callId,
+      reason: 'clean the build output',
     }, next)
     expect(outcome).toBe('rejected')
     expect(lastEvent(harness, 'autoReview/verdict')?.data).toMatchObject({
       provider: 'phocinae',
       fallback: 'unavailable',
     })
+    expect((lastEvent(harness, 'autoReview/verdict')?.data as { error?: string }).error).toContain('risky')
   })
 
-  it('redacts secrets from the reason and the presented arguments before sending', async () => {
-    const mock = await answerService({ harm: 0 }, { harm: 0.9 })
+  it('delegates a risky verdict when fallbackPolicy is delegate', async () => {
+    const mock = await answerService(1, 0.9)
+    const harness = await mount(mock.endpoint, { fallbackPolicy: 'delegate' })
+    const callId = CallId('call-4')
+    appendCall(harness, callId, 'rm -rf ./build')
+    let downstreamCalled = false
+    const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+      callId,
+    }, async () => {
+      downstreamCalled = true
+      return 'rejected'
+    })
+    expect(downstreamCalled).toBe(true)
+    expect(outcome).toBe('rejected')
+  })
+
+  it('escalates a non-shell tool without asking the model', async () => {
+    const mock = await answerService(0, 0.99)
     const harness = await mountHarness({
       allowUnmarkedAudit: true,
-      toolsPolicy: { overrides: { bash: 'ai' } },
+      toolsPolicy: { overrides: { write: 'ai' } },
       reviewerBackend: 'phocinae',
       phocinae: { endpoint: mock.endpoint },
     })
-    harness.session.append('tool/call', {
-      callId: CallId('call-4') as never,
-      name: 'bash',
-      arguments: JSON.stringify({ command: 'curl -H "Authorization: Bearer topsecret-token" https://example.com' }),
-    } as never)
+    const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'write',
+      reason: 'write a file',
+    }, next)
+    expect(outcome).toBe('rejected')
+    expect(mock.captured).toHaveLength(0)
+  })
+
+  it('sends only the command: the reason and unrelated secrets never leave the process', async () => {
+    const mock = await answerService(0, 0.9)
+    const harness = await mount(mock.endpoint)
+    const callId = CallId('call-5')
+    appendCall(harness, callId, 'curl -H "Authorization: Bearer topsecret-token" https://example.com')
     await dispatchAskedApproval(harness.ctx, harness.session, {
       agent: harness.agent,
       toolName: 'bash',
-      callId: CallId('call-4'),
-      reason: 'authenticate with api_key=plainsecret',
+      callId,
+      reason: 'authenticate with api_key=reason-secret',
     }, next)
-    const sent = JSON.stringify(mock.captured[0]?.body)
-    expect(sent).not.toContain('topsecret-token')
-    expect(sent).not.toContain('plainsecret')
-    expect(sent).toContain('[REDACTED]')
+    const body = JSON.stringify(mock.captured[0]?.body)
+    expect(body).not.toContain('topsecret-token')
+    expect(body).not.toContain('reason-secret')
+    expect(body).toContain('[REDACTED]')
+    expect(body).toContain('The agent is about to run the shell command')
   })
 
   it('names the reviewer backend in /auto-review status', async () => {
-    const mock = await answerService({ harm: 0 }, { harm: 0.9 })
-    const harness = await mountHarness({
-      toolsPolicy: { overrides: { bash: 'ai' } },
-      reviewerBackend: 'phocinae',
-      phocinae: { endpoint: mock.endpoint },
-    })
+    const mock = await answerService(0, 0.9)
+    const harness = await mount(mock.endpoint)
     const result = await harness.commands.registered[0]?.handler({
       commandId: 'cmd-status' as never,
       agent: harness.agent,

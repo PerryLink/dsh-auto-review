@@ -170,8 +170,7 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 | `phocinae.endpoint` | `http://127.0.0.1:8155/v1/systemone` | Phocinae decision-service URL; loopback only unless `phocinae.allowRemoteEndpoint` is set |
 | `phocinae.model` | `Phocinae-Largha-150M-v1` | Served model name; a Phocinae `reviewerModel` selects it automatically |
 | `phocinae.timeoutMs` | `5000` | Per-request HTTP deadline (one attempt, no retry), bounded by `reviewerTimeoutMs` |
-| `phocinae.minConfidence` | `0.45` | Calibrated-confidence floor for an `allow`; an unsure allow resolves through `fallbackPolicy` instead of granting |
-| `phocinae.mode` | `harm` | Question asked: `harm` (measured recall 0.97 on destructive commands), `tri-state` (0.74), `noul` (0.00; parity only) |
+| `phocinae.minConfidence` | `0.4` | Calibrated-confidence floor for an `allow`; an unsure allow resolves through `fallbackPolicy` instead of granting. Measured: 0/53 destructive commands allowed at 0.4, while 0.35 let two through |
 | `phocinae.maxStateChars` | `4096` | Cap on the rendered decision state; a truncated state can deny but never allow |
 | `phocinae.allowRemoteEndpoint` | `false` | Permit a non-loopback endpoint. The state carries the reviewed call's text, so this is an explicit egress decision |
 | `reviewerTimeoutMs` | `60000` | Verdict deadline; on expiry the fallback policy applies |
@@ -194,7 +193,7 @@ All tunables are Schemastery `Config` fields (changeable from cordis.yml). An id
 
 ### Local decision-model reviewer (Phocinae, optional)
 
-`reviewerBackend: phocinae` swaps the generative reviewer for the local, non-generative **Phocinae-Largha-150M-v1** decision model served by [`phocinae-server`](https://github.com/Phocinae/phocinae-server) (`POST /v1/systemone`). The model answers one typed question — "how harmful is this tool call if it runs?" — and never generates text, so a review needs **no API key, no `subagents`/`llm` seam, and no network**: one forward pass (≈21 ms warm on a GPU, ≈1.5 s single-threaded on CPU) returns `harmless` / `risky` / `destructive` with a calibrated confidence.
+`reviewerBackend: phocinae` swaps the generative reviewer for the local, non-generative **Phocinae-Largha-150M-v1** decision model served by [`phocinae-server`](https://github.com/Phocinae/phocinae-server) (`POST /v1/systemone`). The model answers one typed question and never generates text, so a review needs **no API key, no `subagents`/`llm` seam, and no network**: one forward pass (≈21 ms warm on a GPU, ≈1.5 s single-threaded on CPU) returns a harm label with a calibrated confidence.
 
 ```yaml
 config:
@@ -202,11 +201,13 @@ config:
   reviewerModel: Phocinae-Largha-150M-v1   # this alone selects the Phocinae backend
   phocinae:
     endpoint: http://127.0.0.1:8155/v1/systemone
-    minConfidence: 0.45
-    mode: harm
+    minConfidence: 0.4
+  fallbackPolicy: delegate                 # optional: hand risky/unsure requests to the human chain
 ```
 
-Only `harmless` with `answer_confidence >= minConfidence` allows. `risky` and `destructive` deny (medium / high risk); in `tri-state` mode `ask` denies; an unsure or confidence-less allow resolves through `fallbackPolicy` (fail closed); a truncated state can deny but never allow. The endpoint is loopback-only unless `phocinae.allowRemoteEndpoint: true`, and the evidence passes the same key-level and inline-secret redaction as the generative prompt — the reason is redacted too, because this state leaves the process. The backend applies to approval reviews only; `dsh-eval`'s review layer still uses a generative model.
+**It is a veto/triage layer, not a general-purpose approver.** Only a `harmless` answer with `answer_confidence >= phocinae.minConfidence` allows. `destructive` denies; `risky`, an unsure `harmless`, and an unreachable or malformed service resolve through `fallbackPolicy` (default fail-closed `rejected`; set `delegate` to send them to the human chain). The reviewer only asks about **shell commands**: a `write`/`edit` or any other call without a `command` argument escalates without contacting the model.
+
+The state is exactly `The agent is about to run the shell command "<command>" in its workspace.` with described options (the model's trained `criteria` rendered into the option text, because the HTTP contract has no `criteria` field). Measured on 89 labelled commands (2026-10-25, CPU fp32, released weights): **0 of 53 destructive commands were allowed at `0.4`** — 26 were denied and 27 escalated — while 5 of 36 routine commands were allowed; lowering the floor to 0.35 let two destructive Windows commands through. The approval reason, transcript and workspace path are **not** sent, and the command passes the same key-level and inline-secret redaction as the generative prompt. The endpoint is loopback-only unless `phocinae.allowRemoteEndpoint: true`. The backend applies to approval reviews only; `dsh-eval`'s review layer still uses a generative model.
 
 Start the service once: `pip install phocinae-server` (or run the checkout), download the weights from the model card, then `PHOC_MODEL_DIR=<weights-dir> python -m phocinae.main` — it listens on `127.0.0.1:8155`; verify with `curl http://127.0.0.1:8155/health`.
 

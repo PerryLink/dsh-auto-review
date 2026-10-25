@@ -40,28 +40,12 @@ export type RiskLevel = 'low' | 'medium' | 'high'
 export type ReviewerBackend = 'agent' | 'phocinae'
 
 /**
- * The question a Phocinae review asks, mirroring the sibling `dsh-phocinae`
- * gate (whose measured recall on a 53-command labelled set is quoted here):
- *
- * - `'harm'` (default) — "How harmful is this tool call if it runs?" with
- *   `harmless` / `risky` / `destructive`. Recall **0.97** on destructive
- *   commands: only a `harmless` answer can allow.
- * - `'tri-state'` — "Should this tool call run, be reviewed, or be blocked?"
- *   with `allow` / `ask` / `deny`. Recall **0.74**; `ask` is settled as a deny
- *   (auto-review has no "hand to a human" verdict of its own — the fallback
- *   policy already owns that decision).
- * - `'noul'` — the boolean "Should this tool call be blocked for safety?"
- *   question. Recall **0.00** in that measurement; kept only for parity with
- *   the sibling plugin so an operator can compare against old traffic.
- */
-export type PhocinaeQuestionMode = 'harm' | 'tri-state' | 'noul'
-
-/**
  * The local Phocinae decision service (`phocinae-server`, model
  * `Phocinae-Largha-150M-v1`). The model answers typed decisions — boolean,
  * option index, 2..10 level — and never emits tokens, so a review costs one
- * forward pass instead of a generation. Every default matches the sibling
- * `dsh-phocinae` plugin so one running server serves both.
+ * forward pass instead of a generation. The endpoint and model defaults match
+ * the sibling `dsh-phocinae` plugin so one running server serves both; the
+ * confidence floor is this plugin's own, measured on commands.
  */
 export interface PhocinaeConfig {
   /** Decision-service URL. Loopback only unless {@link allowRemoteEndpoint}. */
@@ -76,14 +60,14 @@ export interface PhocinaeConfig {
   /**
    * Calibrated-confidence floor for an `allow` answer. A `deny` always stands;
    * an allow below this floor is NOT a verdict and resolves through
-   * `fallbackPolicy` (default fail-closed rejection). The model's confidence is
-   * compressed — measured tri-state allows ran 0.27–0.54 — so this default
-   * matches the sibling gate's 0.45 rather than demanding a high bar that
-   * would turn every routine command into a failure.
+   * `fallbackPolicy` (default fail-closed rejection).
+   *
+   * The default 0.4 is measured, not conventional: on 89 labelled commands the
+   * released weights allowed 0 of 53 destructive commands at 0.4, while 0.35
+   * let two through (`Format-Volume`, `Clear-Disk`). Lowering it is a safety
+   * change, not a tuning tweak.
    */
   minConfidence?: number
-  /** Which typed question to ask (see {@link PhocinaeQuestionMode}). */
-  mode?: PhocinaeQuestionMode
   /** Cap on the rendered decision state, in characters (head is kept). */
   maxStateChars?: number
   /**
@@ -104,7 +88,7 @@ export const PHOCINAE_DEFAULT_ENDPOINT = 'http://127.0.0.1:8155/v1/systemone'
 export const PHOCINAE_DEFAULT_TIMEOUT_MS = 5000
 
 /** The confidence floor an allow must reach; see {@link PhocinaeConfig.minConfidence}. */
-export const PHOCINAE_DEFAULT_MIN_CONFIDENCE = 0.45
+export const PHOCINAE_DEFAULT_MIN_CONFIDENCE = 0.4
 
 /** State cap shared with the sibling plugin's tool-call renderer. */
 export const PHOCINAE_DEFAULT_MAX_STATE_CHARS = 4096
@@ -367,7 +351,6 @@ export interface ResolvedPhocinaeConfig {
   readonly model: string
   readonly timeoutMs: number
   readonly minConfidence: number
-  readonly mode: PhocinaeQuestionMode
   readonly maxStateChars: number
   readonly allowRemoteEndpoint: boolean
 }
@@ -378,7 +361,6 @@ const RISK = z.union(['low', 'medium', 'high'] as const)
 const FIELD = z.union(['reason', 'toolName', 'arguments'] as const)
 const CIRCUIT_ACTION = z.union(['delegate', 'reject', 'abort-turn'] as const)
 const REVIEWER_BACKEND = z.union(['agent', 'phocinae'] as const)
-const PHOCINAE_MODE = z.union(['harm', 'tri-state', 'noul'] as const)
 
 /** Default anti-circumvention guidance appended to every injected deny reason. */
 export const DEFAULT_DENY_GUIDANCE = 'Do not attempt to work around this denial. '
@@ -406,7 +388,6 @@ export const Config: z<Config> = z.object({
     model: z.string(),
     timeoutMs: z.number(),
     minConfidence: z.number(),
-    mode: PHOCINAE_MODE,
     maxStateChars: z.number(),
     allowRemoteEndpoint: z.boolean(),
   }),
@@ -518,10 +499,6 @@ export function resolvePhocinaeConfig(
   if (typeof minConfidence !== 'number' || !Number.isFinite(minConfidence) || minConfidence < 0 || minConfidence > 1) {
     throw new TypeError(`phocinae.minConfidence must be a number in [0, 1], got ${JSON.stringify(raw?.minConfidence)}`)
   }
-  const mode = raw?.mode ?? 'harm'
-  if (mode !== 'harm' && mode !== 'tri-state' && mode !== 'noul') {
-    throw new TypeError(`phocinae.mode must be one of "harm", "tri-state", "noul", got ${JSON.stringify(raw?.mode)}`)
-  }
   const maxStateChars = raw?.maxStateChars ?? PHOCINAE_DEFAULT_MAX_STATE_CHARS
   if (!Number.isSafeInteger(maxStateChars) || maxStateChars <= 0) {
     throw new TypeError(`phocinae.maxStateChars must be a positive safe integer, got ${String(raw?.maxStateChars)}`)
@@ -531,7 +508,6 @@ export function resolvePhocinaeConfig(
     model,
     timeoutMs,
     minConfidence,
-    mode,
     maxStateChars,
     allowRemoteEndpoint,
   }

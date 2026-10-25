@@ -168,8 +168,7 @@ Todas las opciones son campos Schemastery `Config` (modificables desde cordis.ym
 | `phocinae.endpoint` | `http://127.0.0.1:8155/v1/systemone` | URL del servicio de decisión Phocinae; solo loopback salvo `phocinae.allowRemoteEndpoint` |
 | `phocinae.model` | `Phocinae-Largha-150M-v1` | Nombre del modelo servido; un `reviewerModel` Phocinae lo selecciona automáticamente |
 | `phocinae.timeoutMs` | `5000` | Plazo HTTP por solicitud (un intento, sin reintentos), acotado por `reviewerTimeoutMs` |
-| `phocinae.minConfidence` | `0.45` | Piso de confianza calibrada para un `allow`; un allow dudoso pasa por `fallbackPolicy` en vez de conceder |
-| `phocinae.mode` | `harm` | Pregunta: `harm` (recall medido 0.97 en comandos destructivos), `tri-state` (0.74), `noul` (0.00; solo paridad) |
+| `phocinae.minConfidence` | `0.4` | Piso de confianza calibrada para un `allow`; un allow dudoso pasa por `fallbackPolicy` en vez de conceder. Medido: 0/53 comandos destructivos permitidos con 0.4; con 0.35 pasaron dos |
 | `phocinae.maxStateChars` | `4096` | Límite del estado de decisión renderizado; un estado truncado puede denegar pero nunca permitir |
 | `phocinae.allowRemoteEndpoint` | `false` | Permitir un endpoint no loopback. El estado lleva el texto de la llamada revisada, así que es una decisión explícita de salida de datos |
 | `reviewerTimeoutMs` | `60000` | Plazo del veredicto; al vencer se aplica la política de fallback |
@@ -192,7 +191,7 @@ Todas las opciones son campos Schemastery `Config` (modificables desde cordis.ym
 
 ### Revisor local con modelo de decisión (Phocinae, opcional)
 
-`reviewerBackend: phocinae` sustituye el revisor generativo por el modelo de decisión local y no generativo **Phocinae-Largha-150M-v1**, servido por [`phocinae-server`](https://github.com/Phocinae/phocinae-server) (`POST /v1/systemone`). El modelo responde una pregunta tipada —"¿qué tan dañina es esta llamada si se ejecuta?"— y nunca genera texto, así que una revisión **no necesita clave de API, ni la costura `subagents`/`llm`, ni red**: una pasada (≈21 ms en caliente con GPU, ≈1,5 s en CPU monohilo) devuelve `harmless` / `risky` / `destructive` con una confianza calibrada.
+`reviewerBackend: phocinae` sustituye el revisor generativo por el modelo de decisión local y no generativo **Phocinae-Largha-150M-v1**, servido por [`phocinae-server`](https://github.com/Phocinae/phocinae-server) (`POST /v1/systemone`). El modelo responde una pregunta tipada y nunca genera texto, así que una revisión **no necesita clave de API, ni la costura `subagents`/`llm`, ni red**: una pasada (≈21 ms en caliente con GPU, ≈1,5 s en CPU monohilo) devuelve una etiqueta de daño con confianza calibrada.
 
 ```yaml
 config:
@@ -200,11 +199,13 @@ config:
   reviewerModel: Phocinae-Largha-150M-v1   # esto solo ya selecciona el backend Phocinae
   phocinae:
     endpoint: http://127.0.0.1:8155/v1/systemone
-    minConfidence: 0.45
-    mode: harm
+    minConfidence: 0.4
+  fallbackPolicy: delegate                 # opcional: envía lo dudoso a la cadena humana
 ```
 
-Solo `harmless` con `answer_confidence >= minConfidence` permite. `risky` y `destructive` deniegan (riesgo medio / alto); en `tri-state`, `ask` deniega; un allow dudoso o sin confianza pasa por `fallbackPolicy` (cierre en fallo); un estado truncado puede denegar pero nunca permitir. El endpoint es solo loopback salvo `phocinae.allowRemoteEndpoint: true`, y la evidencia pasa la misma redacción de claves y secretos en línea que el prompt generativo — la razón también se redacta, porque este estado sale del proceso. El backend se aplica solo a las revisiones de aprobación; la capa de revisión de `dsh-eval` sigue usando un modelo generativo.
+**Es una capa de veto/triaje, no un aprobador general.** Solo un `harmless` con `answer_confidence >= phocinae.minConfidence` (por defecto 0.4) permite. `destructive` deniega; `risky`, un `harmless` dudoso y un servicio inalcanzable o malformado pasan por `fallbackPolicy` (por defecto `rejected`, cierre en fallo; `delegate` los envía a la cadena humana). El revisor solo pregunta por **comandos de shell**: un `write`/`edit` u otra llamada sin argumento `command` escala sin contactar al modelo.
+
+El estado es exactamente `The agent is about to run the shell command "<command>" in its workspace.`, con opciones descritas (los `criteria` con los que se entrenó el modelo, renderizados en el texto de la opción porque el contrato HTTP no tiene campo `criteria`). Medido sobre 89 comandos etiquetados (53 destructivos, 36 rutinarios) (2026-10-25, CPU fp32, pesos publicados): **0 de 53 comandos destructivos permitidos con `0.4`** — 26 denegados y 27 escalados — y 5 de 36 comandos rutinarios permitidos; bajar el piso a 0.35 dejó pasar dos comandos destructivos de Windows. La razón de aprobación, la transcripción y la ruta del workspace **no** se envían, y el comando pasa por la misma redacción de claves y secretos en línea que el prompt generativo. El endpoint es solo loopback salvo `phocinae.allowRemoteEndpoint: true`. El backend se aplica solo a las revisiones de aprobación; la capa de revisión de `dsh-eval` sigue usando un modelo generativo.
 
 Inicia el servicio una vez: `pip install phocinae-server` (o ejecuta el checkout), descarga los pesos desde la model card y ejecuta `PHOC_MODEL_DIR=<weights-dir> python -m phocinae.main` — escucha en `127.0.0.1:8155`; verifica con `curl http://127.0.0.1:8155/health`.
 

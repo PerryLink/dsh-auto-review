@@ -168,8 +168,7 @@ No recent denial #2 in this session (0 recorded).
 | `phocinae.endpoint` | `http://127.0.0.1:8155/v1/systemone` | Phocinae निर्णय-सेवा URL; `phocinae.allowRemoteEndpoint` के बिना केवल loopback |
 | `phocinae.model` | `Phocinae-Largha-150M-v1` | परोसा गया मॉडल नाम; Phocinae `reviewerModel` इसे स्वतः चुनता है |
 | `phocinae.timeoutMs` | `5000` | प्रति-अनुरोध HTTP समय-सीमा (एक प्रयास, कोई retry नहीं), `reviewerTimeoutMs` से सीमित |
-| `phocinae.minConfidence` | `0.45` | `allow` के लिए कैलिब्रेटेड कॉन्फ़िडेंस की न्यूनतम सीमा; अनिश्चित allow अनुमति देने के बजाय `fallbackPolicy` से जाता है |
-| `phocinae.mode` | `harm` | पूछा गया प्रश्न: `harm` (विनाशकारी कमांड पर मापा गया recall 0.97), `tri-state` (0.74), `noul` (0.00; केवल समानता) |
+| `phocinae.minConfidence` | `0.4` | `allow` के लिए कैलिब्रेटेड कॉन्फ़िडेंस की न्यूनतम सीमा; अनिश्चित allow अनुमति देने के बजाय `fallbackPolicy` से जाता है। मापा गया: 0.4 पर 53 में से 0 विनाशकारी कमांड अनुमत; 0.35 पर दो निकल गए |
 | `phocinae.maxStateChars` | `4096` | रेंडर किए गए निर्णय-स्थिति की सीमा; कटी हुई स्थिति अस्वीकार कर सकती है पर कभी अनुमति नहीं दे सकती |
 | `phocinae.allowRemoteEndpoint` | `false` | गैर-loopback endpoint की अनुमति। स्थिति में समीक्षित कॉल का टेक्स्ट होता है, इसलिए यह स्पष्ट डेटा-निर्यात निर्णय है |
 | `reviewerTimeoutMs` | `60000` | निर्णय की समय-सीमा; समाप्ति पर fallback नीति लागू होती है |
@@ -192,7 +191,7 @@ No recent denial #2 in this session (0 recorded).
 
 ### स्थानीय निर्णय-मॉडल समीक्षक (Phocinae, वैकल्पिक)
 
-`reviewerBackend: phocinae` जनरेटिव समीक्षक की जगह स्थानीय, गैर-जनरेटिव **Phocinae-Largha-150M-v1** निर्णय मॉडल लेता है, जो [`phocinae-server`](https://github.com/Phocinae/phocinae-server) द्वारा परोसा जाता है (`POST /v1/systemone`)। मॉडल एक टाइप्ड प्रश्न का उत्तर देता है —"यह टूल कॉल चले तो कितना हानिकारक है?"— और कभी टेक्स्ट नहीं बनाता, इसलिए समीक्षा के लिए **API कुंजी, `subagents`/`llm` सीम, या नेटवर्क की ज़रूरत नहीं**: एक फ़ॉरवर्ड (GPU पर गर्म ≈21 ms, CPU सिंगल-थ्रेड ≈1.5 s) कैलिब्रेटेड कॉन्फ़िडेंस के साथ `harmless` / `risky` / `destructive` लौटाता है।
+`reviewerBackend: phocinae` जनरेटिव समीक्षक की जगह स्थानीय, गैर-जनरेटिव **Phocinae-Largha-150M-v1** निर्णय मॉडल लेता है, जो [`phocinae-server`](https://github.com/Phocinae/phocinae-server) द्वारा परोसा जाता है (`POST /v1/systemone`)। मॉडल एक टाइप्ड प्रश्न का उत्तर देता है और कभी टेक्स्ट नहीं बनाता, इसलिए समीक्षा के लिए **API कुंजी, `subagents`/`llm` सीम, या नेटवर्क की ज़रूरत नहीं**: एक फ़ॉरवर्ड (GPU पर गर्म ≈21 ms, CPU सिंगल-थ्रेड ≈1.5 s) कैलिब्रेटेड कॉन्फ़िडेंस के साथ हानि-लेबल लौटाता है।
 
 ```yaml
 config:
@@ -200,11 +199,13 @@ config:
   reviewerModel: Phocinae-Largha-150M-v1   # केवल यही Phocinae बैकएंड चुनता है
   phocinae:
     endpoint: http://127.0.0.1:8155/v1/systemone
-    minConfidence: 0.45
-    mode: harm
+    minConfidence: 0.4
+  fallbackPolicy: delegate                 # वैकल्पिक: संदिग्ध अनुरोध मानव श्रृंखला को
 ```
 
-केवल `harmless` और `answer_confidence >= minConfidence` ही अनुमति देता है। `risky` और `destructive` अस्वीकार करते हैं (मध्यम / उच्च जोखिम); `tri-state` में `ask` अस्वीकार है; अनिश्चित या कॉन्फ़िडेंस-रहित allow `fallbackPolicy` से जाता है (विफल-बंद); कटा हुआ state अस्वीकार कर सकता है पर कभी अनुमति नहीं दे सकता। एंडपॉइंट केवल loopback है जब तक `phocinae.allowRemoteEndpoint: true` न हो, और साक्ष्य उसी कुंजी-स्तरीय व इनलाइन-सीक्रेट रिडैक्शन से गुज़रता है जो जनरेटिव प्रॉम्प्ट में है — कारण भी रिडैक्ट होता है क्योंकि यह state प्रोसेस से बाहर जाता है। यह बैकएंड केवल अनुमोदन समीक्षाओं पर लागू होता है; `dsh-eval` की समीक्षा परत अभी भी जनरेटिव मॉडल वापस करती है।
+**यह एक वीटो/ट्रायाज पर्दा है, सामान्य अनुमोदक नहीं।** केवल `harmless` और `answer_confidence >= phocinae.minConfidence` (डिफ़ॉल्ट 0.4) अनुमति देता है। `destructive` अस्वीकार करता है; `risky`, अनिश्चित `harmless`, और अनुपलब्ध या विकृत सेवा `fallbackPolicy` से जाते हैं (डिफ़ॉल्ट विफल-बंद `rejected`; `delegate` उन्हें मानव श्रृंखला को भेजता है)। समीक्षक केवल **shell कमांड** के बारे में पूछता है: `write`/`edit` या `command` तर्क के बिना कोई भी कॉल मॉडल से पूछे बिना एस्केलेट होता है।
+
+स्थिति पाठ ठीक `The agent is about to run the shell command "<command>" in its workspace.` है, विकल्प विवरण के साथ (मॉडल के प्रशिक्षण `criteria` विकल्प पाठ में रेंडर किए गए, क्योंकि HTTP अनुबंध में `criteria` फ़ील्ड नहीं है)। 89 लेबल वाले कमांड (53 विनाशकारी, 36 नियमित) पर मापा गया (2026-10-25, CPU fp32, प्रकाशित वेट्स): **`0.4` पर 53 में से 0 विनाशकारी कमांड अनुमत** — 26 अस्वीकृत और 27 एस्केलेट — जबकि 36 में से 5 नियमित कमांड अनुमत; सीमा 0.35 करने पर दो Windows विनाशकारी कमांड निकल गए। अनुमोदन कारण, ट्रांसक्रिप्ट और वर्कस्पेस पथ **नहीं** भेजे जाते, और कमांड जनरेटिव प्रॉम्प्ट जैसे ही कुंजी/इनलाइन-सीक्रेट रिडैक्शन से गुज़रता है। एंडपॉइंट केवल loopback है जब तक `phocinae.allowRemoteEndpoint: true` न हो। यह बैकएंड केवल अनुमोदन समीक्षाओं पर लागू होता है; `dsh-eval` की समीक्षा परत अभी भी जनरेटिव मॉडल वापस करती है।
 
 सेवा एक बार शुरू करें: `pip install phocinae-server` (या चेकआउट चलाएँ), मॉडल कार्ड से वेट्स डाउनलोड करें, फिर `PHOC_MODEL_DIR=<weights-dir> python -m phocinae.main` — यह `127.0.0.1:8155` पर सुनता है; `curl http://127.0.0.1:8155/health` से जाँचें।
 

@@ -418,35 +418,23 @@ export function parseVerdict(value: unknown, reasonMaxChars: number): ReviewerVe
 }
 
 /**
- * Build the redacted evidence a Phocinae review sees: the tool, the session's
- * workspace, the calling model's reason (inline secrets redacted — the
- * generative prompt's reason is not redacted by the prompt builder, but this
- * one leaves the process, so it is), and the pending call's already-redacted
- * argument text. The transcript budget is deliberately not included: the
- * decision model reads one bounded state, and the parameter preview is the
- * evidence the question is about.
+ * Build the redacted evidence a Phocinae review sees: the tool name and the
+ * pending call's already-redacted argument text.
+ *
+ * The approval reason, workspace path, transcript and override are deliberately
+ * NOT sent: the measured formulation is the command alone, and each added field
+ * changed the model's verdicts when probed against the released weights. Less
+ * evidence leaving the process is a second, independent benefit.
  * @param request - the pending approval request.
- * @param config - resolved config (reason cap, session log).
- * @param override - a pending human one-shot override, when one applies.
  * @returns the evidence for {@link runPhocinaeReview}.
  */
-export function buildPhocinaeEvidence(
-  request: ApprovalRequest,
-  config: ResolvedConfig,
-  override?: OverrideContext,
-): PhocinaeEvidence {
+export function buildPhocinaeEvidence(request: ApprovalRequest): PhocinaeEvidence {
   const argumentsText = request.callId === undefined
     ? undefined
     : sanitizedArgumentsText(sessionEvents(request.agent.session), request.callId)
   return {
     toolName: request.toolName,
-    reason: truncate(redactInlineSecrets(request.reason ?? '(none given)'), config.reasonMaxChars),
-    workspace: request.agent.session.header.cwd ?? '(unknown)',
-    platform: process.platform,
     ...argumentsText === undefined ? {} : { argumentsText },
-    ...override === undefined
-      ? {}
-      : { override: { reviewId: String(override.reviewId), toolName: override.toolName } },
   }
 }
 
@@ -477,7 +465,7 @@ export async function runReview(
   // plain HTTP call to a loopback process. Checked first so an offline or
   // key-less deployment never falls into the generative path.
   if (config.reviewerBackend === 'phocinae') {
-    return runPhocinaeReview(buildPhocinaeEvidence(request, config, override), config, request.signal)
+    return runPhocinaeReview(buildPhocinaeEvidence(request), config, request.signal)
   }
   // Two reviewer seams, because the host moved: dsh <= 0.2.1-alpha still exposes
   // the one-shot child (`ctx.subagents.start`, structured capture + tool
