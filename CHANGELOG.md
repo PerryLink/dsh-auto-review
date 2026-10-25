@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Opt-in `answerDetailed()` with exported request-local receipt types, including correlation, fallback/delegation and isolated circuit snapshots. Existing `answer()` and approval-chain behavior are unchanged; the detailed API catches exceptions and rejects final results after disposal without promising immediate cancellation.
+
 ## [0.13.8] - 2026-10-22
 
 ### Fixed

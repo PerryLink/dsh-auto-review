@@ -539,6 +539,10 @@ pnpm pack                   # प्रकाशित tarball
 
 सभी PerryLink प्लगइन DSH Desktop के बिल्ट-इन मार्केट में देखे जा सकते हैं: **Market → Sources → add source → पेस्ट करें** `https://perrylink-dsh-catalog.perrylink.workers.dev/catalog-source.json` **→ चुनें**। इंस्टॉलेशन मार्केट के npm-identity सत्यापन और आपकी पुष्टि से ही होता है।
 
+## संरचित रसीदें
+
+एकीकरण `ctx.autoReviewRuntime.answerDetailed(request, next)` को कॉल करके और `DetailedAnswer` / `ReviewReceipt` आयात करके अनुरोध संबंध, समीक्षा, fallback, delegation और circuit प्रमाण प्राप्त कर सकते हैं; कस्टम session events आवश्यक नहीं हैं। `answer()` और स्थापित approval chain का व्यवहार अपरिवर्तित है। केवल विस्तृत API आंतरिक या downstream exceptions को `rejected` / `unavailable` में बदलती है; disposal के बाद अंतिम परिणाम rejected होता है, लेकिन तुरंत cancellation या देर से होने वाले अंतर्निहित side effects हटाने की गारंटी नहीं है। `configuredReviewerBackend` backend है, model provider नहीं। बाद में `prepend` के साथ पंजीकृत Host listener पहले चल सकता है; रसीदें exclusive approval admission नहीं देतीं।
+
 ## लाइसेंस
 
 [Apache License 2.0](LICENSE) © 2026 dsh-auto-review contributors

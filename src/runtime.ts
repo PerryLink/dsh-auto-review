@@ -61,6 +61,37 @@ import {
 import { isReviewFailure, newCircuitId, newRejectionId, newVerdictId, runReview, sanitizedArgumentsText, truncate } from './review.ts'
 import type { OverrideContext, ReviewFailure, ReviewResolution } from './review.ts'
 
+/** Structured receipt independent of the host's custom session-event support. */
+export interface ReviewReceipt {
+  sessionId: string
+  approvalId?: ApprovalRequestId
+  callId?: CallId
+  toolName: string
+  reviewId?: string
+  category: 'review' | 'fault' | 'policy' | 'delegate' | 'circuit' | 'cancelled'
+  reason: string
+  decision?: 'allow' | 'deny'
+  fallback?: AutoReviewFallback
+  delegated?: boolean
+  cached?: boolean
+  configuredReviewerBackend?: string
+  configuredReviewerModelProvider?: string
+  reviewerModel?: string
+  reviewerSessionId?: string
+  durationMs?: number
+  delegationReason?: string
+  escalation?: 'risk-policy'
+  circuit?: SessionEventMap['autoReview/circuit']
+  circuitTriggered?: boolean
+  outcome?: ApprovalOutcome
+}
+
+/** Closed answer plus the evidence needed by an external audit owner. */
+export interface DetailedAnswer {
+  outcome: ApprovalOutcome
+  receipt: ReviewReceipt
+}
+
 export const name = 'auto-review'
 export const inject = ['approval', 'subagents', 'commands', 'tools']
 
@@ -208,6 +239,7 @@ function policyFor(config: ResolvedConfig, request: ApprovalRequest, argumentsTe
  * teardown effect that clears the pending circuit-breaker timers.
  */
 export class AutoReviewRuntime {
+  private disposed = false
   /**
    * Live reviewer children — their approval asks never re-enter AI review,
    * and their steps are stripped of injected context by
@@ -510,26 +542,106 @@ export class AutoReviewRuntime {
    * @returns the closed approval outcome.
    */
   answer(request: ApprovalRequest, next: () => Promise<ApprovalOutcome>): Promise<ApprovalOutcome> {
+    return this.answerCore(request, next)
+  }
+
+  /** Return a request-local audit receipt without appending unknown host events. */
+  async answerDetailed(request: ApprovalRequest, next: () => Promise<ApprovalOutcome>): Promise<DetailedAnswer> {
+    const receipt: ReviewReceipt = {
+      sessionId: String(request.agent.id),
+      ...(request.callId === undefined ? {} : { callId: request.callId }),
+      toolName: request.toolName,
+      category: 'delegate',
+      reason: 'unclaimed',
+    }
+    let outcome: ApprovalOutcome = 'rejected'
+    try {
+      const approvalId = correlateApprovalId(sessionEvents(request.agent.session), request.toolName, request.callId)
+      if (approvalId !== undefined) {
+        receipt.approvalId = approvalId
+      }
+      if (!this.disposed) {
+        outcome = await this.answerCore(request, async () => {
+          receipt.delegated = true
+          return next()
+        }, receipt)
+      }
+    } catch (error) {
+      receipt.category = 'fault'
+      receipt.reason = error instanceof Error ? error.message : String(error)
+      receipt.fallback = 'unavailable'
+    }
+    if (this.disposed) {
+      outcome = 'rejected'
+      receipt.category = 'fault'
+      receipt.reason = 'runtime-disposed'
+      receipt.fallback = 'unavailable'
+    }
+    receipt.outcome = outcome
+    return { outcome, receipt }
+  }
+
+  /** 回执由调用方持有，嵌套 trip 也必须与内部熔断状态隔离。 */
+  private circuitSnapshot(circuit: SessionEventMap['autoReview/circuit']): SessionEventMap['autoReview/circuit'] {
+    return { ...circuit, trip: { ...circuit.trip } }
+  }
+
+  private answerCore(request: ApprovalRequest, next: () => Promise<ApprovalOutcome>, receipt?: ReviewReceipt): Promise<ApprovalOutcome> {
     // Anti-recursion: a reviewer child's own approval asks go to the human chain.
-    if (this.reviewerSessions.has(request.agent.id)) return next()
+    if (this.reviewerSessions.has(request.agent.id)) {
+      if (receipt !== undefined) {
+        receipt.reason = 'reviewer-recursion'
+      }
+      return next()
+    }
     const session = request.agent.session
     const memory = this.memoryFor(session)
     const enabled = effectiveAutoReviewState(sessionEvents(session)) ?? memory.enabledOverride ?? this.config.enableByDefault
-    if (!enabled) return next()
+    if (!enabled) {
+      if (receipt !== undefined) {
+        receipt.reason = 'session-disabled'
+      }
+      return next()
+    }
     const needsArguments = this.config.riskRules.some(rule => rule.field === 'arguments')
     const argumentsText = needsArguments && request.callId !== undefined
       ? sanitizedArgumentsText(sessionEvents(session), request.callId)
       : undefined
     const { policy, source } = policyFor(this.config, request, argumentsText)
-    if (policy === 'never') return this.neverReject(request, source)
-    if (policy !== 'ai') return next()
+    if (policy === 'never') {
+      return this.neverReject(request, source, receipt)
+    }
+    if (policy !== 'ai') {
+      if (receipt !== undefined) {
+        receipt.reason = 'human-policy'
+      }
+      return next()
+    }
     // Separate budgets: real AI verdicts vs reviewer failures. A broken
     // reviewer burns the failure budget (then delegates) without eating the
     // AI-decision budget, and vice versa.
-    if (this.verdictsInOpenTurn(session, memory) >= this.config.maxReviewsPerTurn) return next()
-    if (this.failuresInOpenTurn(session, memory) >= this.config.maxFailuresPerTurn) return next()
+    if (this.verdictsInOpenTurn(session, memory) >= this.config.maxReviewsPerTurn) {
+      if (receipt !== undefined) {
+        receipt.reason = 'review-budget'
+      }
+      return next()
+    }
+    if (this.failuresInOpenTurn(session, memory) >= this.config.maxFailuresPerTurn) {
+      if (receipt !== undefined) {
+        receipt.reason = 'failure-budget'
+      }
+      return next()
+    }
     const circuit = this.circuitFor(session, memory)
-    if (circuit !== undefined) return this.circuitSettle(request, circuit, next)
+    if (circuit !== undefined) {
+      if (receipt !== undefined) {
+        receipt.category = 'circuit'
+        receipt.reason = 'plugin-circuit'
+        receipt.circuit = this.circuitSnapshot(circuit)
+        receipt.circuitTriggered = false
+      }
+      return this.circuitSettle(request, circuit, next)
+    }
     const approvalId = correlateApprovalId(sessionEvents(session), request.toolName, request.callId)
     if (approvalId === undefined) {
       // The audit chain cannot be completed (verdict → approval/asked); treat
@@ -537,13 +649,13 @@ export class AutoReviewRuntime {
       return this.finish(request, undefined, {
         fallback: 'unavailable',
         error: 'cannot correlate the pending approval/asked audit event',
-      }, next)
+      }, next, 0, receipt)
     }
     const overrideId = this.activeOverrideFor(session, memory, request.toolName, Date.now())
     const override: OverrideContext | undefined = overrideId === undefined
       ? undefined
       : { reviewId: overrideId, toolName: request.toolName }
-    return this.review(request, approvalId, next, override)
+    return this.review(request, approvalId, next, override, receipt)
   }
 
   /**
@@ -557,9 +669,14 @@ export class AutoReviewRuntime {
    * @param source - the matched risk rule or policy table entry.
    * @returns the closed rejection.
    */
-  private neverReject(request: ApprovalRequest, source: string): Promise<ApprovalOutcome> {
+  private neverReject(request: ApprovalRequest, source: string, receipt?: ReviewReceipt): Promise<ApprovalOutcome> {
     const rejectionId = newRejectionId()
     const reason = truncate(source, this.config.reasonMaxChars)
+    if (receipt !== undefined) {
+      receipt.category = 'policy'
+      receipt.reason = reason
+      receipt.reviewId = String(rejectionId)
+    }
     const approvalId = correlateApprovalId(sessionEvents(request.agent.session), request.toolName, request.callId)
     const session = request.agent.session
     const memory = this.memoryFor(session)
@@ -621,6 +738,7 @@ export class AutoReviewRuntime {
     approvalId: ApprovalRequestId,
     next: () => Promise<ApprovalOutcome>,
     override?: OverrideContext,
+    receipt?: ReviewReceipt,
   ): Promise<ApprovalOutcome> {
     const started = Date.now()
     const cacheKey = this.fingerprintFor(request)
@@ -646,7 +764,7 @@ export class AutoReviewRuntime {
     }
     const durationMs = Date.now() - started
     if (isReviewFailure(resolution)) {
-      return this.finish(request, approvalId, resolution, next, durationMs)
+      return this.finish(request, approvalId, resolution, next, durationMs, receipt)
     }
     const reviewId = newVerdictId()
     const overridden = resolution.decision === 'allow'
@@ -655,6 +773,30 @@ export class AutoReviewRuntime {
     const outcome: ApprovalOutcome | undefined = overridden
       ? this.config.riskPolicy.onHighRisk === 'deny' ? 'rejected' : undefined
       : resolution.decision === 'allow' ? 'allowed-once' : 'rejected'
+    if (receipt !== undefined) {
+      receipt.category = 'review'
+      receipt.reviewId = String(reviewId)
+      receipt.decision = resolution.decision
+      receipt.reason = overridden ? resolution.reason + ' (risk-policy override)' : resolution.reason
+      if (overridden) {
+        receipt.escalation = 'risk-policy'
+      }
+      receipt.cached = cached
+      receipt.configuredReviewerBackend = this.config.reviewerProvider
+      if (this.config.reviewerModelProvider !== undefined) {
+        receipt.configuredReviewerModelProvider = this.config.reviewerModelProvider
+      }
+      if (resolution.model !== undefined) {
+        receipt.reviewerModel = resolution.model
+      }
+      if (resolution.reviewerSessionId !== undefined) {
+        receipt.reviewerSessionId = String(resolution.reviewerSessionId)
+      }
+      receipt.durationMs = durationMs
+      if (outcome === undefined) {
+        receipt.delegationReason = 'risk-policy'
+      }
+    }
     const auditOk = this.auditMayAppend()
     if (auditOk) {
       const result = (request.agent.session.append as unknown as VerdictAppend)('autoReview/verdict', {
@@ -684,7 +826,15 @@ export class AutoReviewRuntime {
     if (outcome === undefined) return next()
     if (resolution.decision === 'deny') {
       this.recordDenyReason(request.callId, request.toolName, reviewId, resolution.reason)
-      this.checkCircuit(request)
+      const circuitTriggered = this.checkCircuit(request)
+      if (receipt !== undefined) {
+        const circuit = this.circuitFor(request.agent.session, this.memoryFor(request.agent.session))
+        if (circuit !== undefined) {
+          // 回执由调用方持有，不能泄漏会影响后续审批的内部熔断状态。
+          receipt.circuit = this.circuitSnapshot(circuit)
+        }
+        receipt.circuitTriggered = circuitTriggered
+      }
       return 'rejected'
     }
     if (overridden) {
@@ -696,7 +846,15 @@ export class AutoReviewRuntime {
         reviewId,
         `${resolution.reason} (risk ${resolution.riskLevel} exceeds the configured maxAutoAllow ${this.config.riskPolicy.maxAutoAllow}; the allow verdict was overridden)`,
       )
-      this.checkCircuit(request)
+      const circuitTriggered = this.checkCircuit(request)
+      if (receipt !== undefined) {
+        const circuit = this.circuitFor(request.agent.session, this.memoryFor(request.agent.session))
+        if (circuit !== undefined) {
+          // 回执由调用方持有，不能泄漏会影响后续审批的内部熔断状态。
+          receipt.circuit = this.circuitSnapshot(circuit)
+        }
+        receipt.circuitTriggered = circuitTriggered
+      }
       return 'rejected'
     }
     return 'allowed-once'
@@ -714,12 +872,32 @@ export class AutoReviewRuntime {
     failure: ReviewFailure,
     next: () => Promise<ApprovalOutcome>,
     durationMs = 0,
+    receipt?: ReviewReceipt,
   ): Promise<ApprovalOutcome> {
     const outcome = this.fallbackOutcome(failure)
+    if (receipt !== undefined) {
+      receipt.category = failure.fallback === 'cancelled' ? 'cancelled' : 'fault'
+      receipt.reason = failure.error
+      receipt.configuredReviewerBackend = this.config.reviewerProvider
+      if (this.config.reviewerModelProvider !== undefined) {
+        receipt.configuredReviewerModelProvider = this.config.reviewerModelProvider
+      }
+      if (failure.model !== undefined) {
+        receipt.reviewerModel = failure.model
+      }
+      if (failure.reviewerSessionId !== undefined) {
+        receipt.reviewerSessionId = String(failure.reviewerSessionId)
+      }
+      receipt.durationMs = durationMs
+      receipt.fallback = failure.fallback
+    }
     const session = request.agent.session
     const auditOk = this.auditMayAppend()
     if (approvalId !== undefined) {
       const reviewId = newVerdictId()
+      if (receipt !== undefined) {
+        receipt.reviewId = String(reviewId)
+      }
       if (auditOk) {
         const result = (session.append as unknown as VerdictAppend)('autoReview/verdict', {
           reviewId,
@@ -799,11 +977,13 @@ export class AutoReviewRuntime {
    * commits first — the pair must stay turn-enclosed).
    * @param request - the request whose denial may trip the breaker.
    */
-  private checkCircuit(request: ApprovalRequest): void {
+  private checkCircuit(request: ApprovalRequest): boolean {
     const session = request.agent.session
     const memory = this.memoryFor(session)
     const auditOk = this.auditMayAppend()
-    if ((auditOk ? circuitInOpenTurn(sessionEvents(session)) : memory.circuit) !== undefined) return
+    if ((auditOk ? circuitInOpenTurn(sessionEvents(session)) : memory.circuit) !== undefined) {
+      return false
+    }
     const { consecutiveDenies, windowDenies, windowSize, action } = this.config.circuitBreaker
     const consecutive = auditOk ? consecutiveDeniesInOpenTurn(sessionEvents(session)) : AutoReviewRuntime.leadingDenials(memory.verdicts)
     const trip = consecutive >= consecutiveDenies
@@ -814,7 +994,9 @@ export class AutoReviewRuntime {
           : memory.verdicts.slice(0, windowSize).filter(verdict => verdict.denial).length
         return window >= windowDenies ? { kind: 'window' as const, count: window } : undefined
       })()
-    if (trip === undefined) return
+    if (trip === undefined) {
+      return false
+    }
     const circuitId = newCircuitId()
     if (auditOk) {
       const result = (session.append as unknown as CircuitAppend)('autoReview/circuit', {
@@ -844,6 +1026,7 @@ export class AutoReviewRuntime {
       }, 0)
       this.pendingAborts.add(timer)
     }
+    return true
   }
 
   /**
@@ -1073,6 +1256,7 @@ export class AutoReviewRuntime {
 
   /** Clear every pending circuit-breaker abort-turn timer; called by the plugin fiber's teardown effect. */
   dispose(): void {
+    this.disposed = true
     for (const timer of this.pendingAborts) clearTimeout(timer)
     this.pendingAborts.clear()
   }
