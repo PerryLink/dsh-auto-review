@@ -15,9 +15,9 @@ riskRules:
   # First match wins, and risk rules win over toolsPolicy.overrides.
   # `field` selects the match subject: reason (default) | toolName | arguments
   # (the redacted presented call arguments).
-  - pattern: '(?i)(rm\\s+(-[a-z]+\\s+)*/|git\\s+push\\s+--force|curl\\s+.*\\|\\s*(ba)?sh)'
+  - pattern: '([Rr][Mm]\s+(-[a-z]+\s+)*/|[Gg][Ii][Tt]\s+push\s+--force|[Cc][Uu][Rr][Ll]\s+.*\|\s*([Bb][Aa])?[Ss][Hh])'
     policy: never
-  - pattern: '(?i)(sudo|chmod\\s+777)'
+  - pattern: '([Ss][Uu][Dd][Oo]|[Cc][Hh][Mm][Oo][Dd]\s+777)'
     policy: human
   - pattern: 'write'
     policy: never
@@ -26,12 +26,12 @@ riskRules:
 reviewerProvider: fork        # the in-process fork subagent backend
 reviewerModel: null           # omit or null: inherit the session agent's route
 reviewerModelProvider: null    # LLM provider route for reviewerModel (omit: inherit the session agent's provider)
-reviewerBackend: agent         # agent | phocinae (omit: inferred from reviewerModel — a Phocinae id selects the local service)
+reviewerBackend: agent         # agent | phocinae; to try Phocinae set this to phocinae AND uncomment the block below (a Phocinae reviewerModel alone also infers it)
 # phocinae:                    # local non-generative Phocinae-Largha-150M-v1 decision service (used when reviewerBackend: phocinae)
 #   endpoint: http://127.0.0.1:8155/v1/systemone   # loopback only unless allowRemoteEndpoint is true
 #   model: Phocinae-Largha-150M-v1
 #   timeoutMs: 5000            # one attempt, no retry; bounded by reviewerTimeoutMs
-#   minConfidence: 0.4         # measured: 0/53 destructive commands allowed; 0.35 let two through
+#   minConfidence: 0.45        # measured floor; 0.4 let cat /etc/shadow and cp /dev/null /etc/passwd through
 #   maxStateChars: 4096        # a truncated state can deny but never allow
 #   allowRemoteEndpoint: false
 reviewerTimeoutMs: 60000

@@ -1,8 +1,8 @@
 {
   "name": "dsh-auto-review",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "packageManager": "pnpm@11.7.0",
-  "description": "Second-model AI auto-review for DeepSeek Harness approval requests: a read-only reviewer subagent decides allow/deny on the approval answerer chain, with fail-closed fallback and full session-log audit.",
+  "description": "Second-model AI auto-review for DeepSeek Harness approval requests: a read-only reviewer subagent or the local non-generative Phocinae-Largha-150M-v1 decision model decides allow/deny on the approval answerer chain, with fail-closed fallback and full session-log audit.",
   "private": false,
   "author": {
     "name": "PerryLink"
@@ -57,6 +57,8 @@
     "src",
     "bin",
     "eval",
+    "fixtures",
+    "bench",
     "cordis.patch.yml",
     "CHANGELOG.md",
     "README.md",
@@ -139,7 +141,10 @@
     "second-model",
     "ai-safety",
     "sandbox",
-    "subagent"
+    "subagent",
+    "phocinae",
+    "decision-model",
+    "local-inference"
   ],
   "engines": {
     "node": "^22.19.0 || >=24.0.0",

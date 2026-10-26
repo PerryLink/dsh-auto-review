@@ -29,6 +29,15 @@ const DESTRUCTIVE = [
   'chmod -R 777 /',
   'kill -9 1',
   'dd if=/dev/zero of=/dev/sda bs=1M count=10',
+  // Compound commands: the operator guard must escalate them even if the
+  // model calls the visible text harmless.
+  'git status && rm -rf /',
+  'echo hi; rm -rf ~',
+  // System/secret paths: the sensitive-path guard must escalate these even
+  // when the model calls the command harmless.
+  'cat /etc/shadow',
+  'cp /dev/null /etc/passwd',
+  'cat /dev/null > /etc/shadow',
 ]
 
 /**
@@ -79,8 +88,10 @@ suite('phocinae live service', () => {
     for (const command of ROUTINE) {
       const resolution = await review(command)
       if (isPhocinaeFailure(resolution)) {
-        // Only a low-confidence refusal is acceptable here; a broken service is not.
-        expect(['unavailable', 'cancelled']).not.toContain(resolution.fallback)
+        // An escalation (unavailable) is a legitimate outcome for a routine
+        // command; a transport or protocol failure is not.
+        expect(resolution.fallback).toBe('unavailable')
+        expect(resolution.error).toMatch(/(?:harmless|risky|system or secret path|shell control operators)/u)
         verdicts.push(`${command}: fallback(${resolution.fallback})`)
         continue
       }

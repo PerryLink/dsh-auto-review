@@ -1105,14 +1105,28 @@ export class AutoReviewRuntime {
 export function apply(ctx: Context, config: Config): void {
   const resolved = resolveConfig(config)
   // `turns: 0` is a legitimate opt-out (see ContextBudgetConfig), but combined
-  // with any `ai` policy it is the deny-everything configuration: the reviewer
-  // never sees the request, judges the evidence insufficient, and its own
-  // verdict rule turns that into a denial of every user-authorized action.
-  // Say so once at mount instead of letting it read as a broken reviewer.
-  if (resolved.contextBudget.turns === 0 && hasAiPolicy(resolved)) {
+  // with any `ai` policy it is the deny-everything configuration for the
+  // GENERATIVE reviewer: it never sees the request, judges the evidence
+  // insufficient, and its own verdict rule turns that into a denial of every
+  // user-authorized action. The Phocinae backend does not read the transcript
+  // at all, so the warning would be false there.
+  if (resolved.reviewerBackend === 'agent' && resolved.contextBudget.turns === 0 && hasAiPolicy(resolved)) {
     ctx.logger.warn(
       'auto-review: contextBudget.turns is 0 while at least one tool or risk-rule policy is "ai", so the reviewer is asked to decide without any transcript — it cannot see the user\'s request and its own rule ("when unsure, DENY") will reject user-authorized actions. Set contextBudget.turns to a small non-zero value (the default is 2), or route those tools to "human" instead.',
     )
+  }
+  // The Phocinae backend reviews shell commands only; a non-shell `ai` policy
+  // (the bundled patch ships `write: ai`) silently escalates. Name it at mount.
+  if (resolved.reviewerBackend === 'phocinae') {
+    const nonShellAi = ['write', 'edit', 'apply_patch', 'multiedit']
+      .filter(tool => resolved.toolsPolicy.overrides[tool] === 'ai')
+    if (resolved.toolsPolicy.default === 'ai') nonShellAi.push('unlisted tools')
+    if (nonShellAi.length > 0) {
+      ctx.logger.warn(
+        `auto-review: reviewerBackend is "phocinae", which reviews shell commands only; ${nonShellAi.join(', ')} `
+        + 'will escalate through fallbackPolicy instead of being model-reviewed. Set those tools to "human" or use the generative backend.',
+      )
+    }
   }
   const runtime = new AutoReviewRuntime(ctx, resolved)
   // Unloading the plugin clears any pending circuit-breaker abort-turn timer.

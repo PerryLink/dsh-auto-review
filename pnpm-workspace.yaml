@@ -16,7 +16,7 @@ allowBuilds:
   '@deepseek-ai/dsh-subprocess-local': true
   node-pty: true
   koffi: true
-# Whole-graph pin to the host line (dsh-v0.1.7-rc.2).
+# Whole-graph pin to the host line (dsh 0.2.1-alpha.1).
 #
 # Only the DIRECT `@deepseek-ai/dsh-*` dependencies can be pinned in
 # package.json, because pnpm 11 no longer reads a `pnpm` field there. Everything

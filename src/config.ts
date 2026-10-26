@@ -62,10 +62,12 @@ export interface PhocinaeConfig {
    * an allow below this floor is NOT a verdict and resolves through
    * `fallbackPolicy` (default fail-closed rejection).
    *
-   * The default 0.4 is measured, not conventional: on 89 labelled commands the
-   * released weights allowed 0 of 53 destructive commands at 0.4, while 0.35
-   * let two through (`Format-Volume`, `Clear-Disk`). Lowering it is a safety
-   * change, not a tuning tweak.
+   * The default 0.45 is measured, not conventional: on the versioned
+   * 97-command set the released weights allowed 0 of 61 destructive commands
+   * at 0.45; at 0.4 two system-file commands passed (`cat /etc/shadow`,
+   * `cp /dev/null /etc/passwd`, confidences 0.4036 and 0.4265). The path and
+   * operator guards are the second line of defence. Lowering the floor is a
+   * safety change, not a tuning tweak.
    */
   minConfidence?: number
   /** Cap on the rendered decision state, in characters (head is kept). */
@@ -88,7 +90,7 @@ export const PHOCINAE_DEFAULT_ENDPOINT = 'http://127.0.0.1:8155/v1/systemone'
 export const PHOCINAE_DEFAULT_TIMEOUT_MS = 5000
 
 /** The confidence floor an allow must reach; see {@link PhocinaeConfig.minConfidence}. */
-export const PHOCINAE_DEFAULT_MIN_CONFIDENCE = 0.4
+export const PHOCINAE_DEFAULT_MIN_CONFIDENCE = 0.45
 
 /** State cap shared with the sibling plugin's tool-call renderer. */
 export const PHOCINAE_DEFAULT_MAX_STATE_CHARS = 4096
@@ -479,6 +481,12 @@ export function resolvePhocinaeConfig(
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new TypeError(`phocinae.endpoint must use http or https, got ${JSON.stringify(url.protocol)}`)
   }
+  // Credentials in the URL would be echoed by every transport error and would
+  // not be a supported authentication mechanism (the client sends no
+  // Authorization header). Refuse them rather than risk logging a secret.
+  if (url.username !== '' || url.password !== '') {
+    throw new TypeError('phocinae.endpoint must not embed credentials; the decision client sends no Authorization header')
+  }
   if (!allowRemoteEndpoint && !LOOPBACK_HOSTS.has(url.hostname)) {
     throw new TypeError(
       `phocinae.endpoint host ${JSON.stringify(url.hostname)} is not loopback. The decision state carries the `
@@ -594,8 +602,8 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     riskRules,
     reviewerProvider: config.reviewerProvider ?? 'fork',
     reviewerPreset: config.reviewerPreset,
-    reviewerModel: config.reviewerModel,
-    reviewerModelProvider: config.reviewerModelProvider,
+    reviewerModel: config.reviewerModel ?? undefined,
+    reviewerModelProvider: config.reviewerModelProvider ?? undefined,
     reviewerBackend,
     phocinae,
     reviewerTimeoutMs: config.reviewerTimeoutMs ?? 60_000,

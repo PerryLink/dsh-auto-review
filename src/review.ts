@@ -428,13 +428,19 @@ export function parseVerdict(value: unknown, reasonMaxChars: number): ReviewerVe
  * @param request - the pending approval request.
  * @returns the evidence for {@link runPhocinaeReview}.
  */
-export function buildPhocinaeEvidence(request: ApprovalRequest): PhocinaeEvidence {
+export function buildPhocinaeEvidence(
+  request: ApprovalRequest,
+  override?: OverrideContext,
+): PhocinaeEvidence {
   const argumentsText = request.callId === undefined
     ? undefined
     : sanitizedArgumentsText(sessionEvents(request.agent.session), request.callId)
   return {
     toolName: request.toolName,
     ...argumentsText === undefined ? {} : { argumentsText },
+    ...override === undefined
+      ? {}
+      : { override: { reviewId: String(override.reviewId), toolName: override.toolName } },
   }
 }
 
@@ -465,7 +471,7 @@ export async function runReview(
   // plain HTTP call to a loopback process. Checked first so an offline or
   // key-less deployment never falls into the generative path.
   if (config.reviewerBackend === 'phocinae') {
-    return runPhocinaeReview(buildPhocinaeEvidence(request), config, request.signal)
+    return runPhocinaeReview(buildPhocinaeEvidence(request, override), config, request.signal)
   }
   // Two reviewer seams, because the host moved: dsh <= 0.2.1-alpha still exposes
   // the one-shot child (`ctx.subagents.start`, structured capture + tool

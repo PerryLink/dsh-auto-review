@@ -9,9 +9,9 @@ toolsPolicy:
     bash: ai
 
 riskRules:
-  - pattern: '(?i)(killall|pkill|taskkill|Stop-Process)'
+  - pattern: '([Kk][Ii][Ll][Ll][Aa][Ll][Ll]|[Pp][Kk][Ii][Ll][Ll]|[Tt][Aa][Ss][Kk][Kk][Ii][Ll][Ll]|[Ss][Tt][Oo][Pp]-[Pp][Rr][Oo][Cc][Ee][Ss][Ss])'
     policy: never
-  - pattern: '(?i)(sudo|chmod\s+777)'
+  - pattern: '([Ss][Uu][Dd][Oo]|[Cc][Hh][Mm][Oo][Dd]\s+777)'
     policy: human
 
 reviewerTimeoutMs: 30000
