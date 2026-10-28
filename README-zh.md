@@ -607,6 +607,10 @@ pnpm pack                   # 发布产物
 
 </details>
 
+## 结构化回执
+
+集成方可调用 `ctx.autoReviewRuntime.answerDetailed(request, next)`，导入 `DetailedAnswer` / `ReviewReceipt`，获取请求关联、审查/回退/转交及熔断证据，无需自定义会话事件。`answer()` 和已安装的审批链保持原行为。仅详细接口将内部或下游异常转为 `rejected` / `unavailable`；卸载后最终拒绝，但不承诺立即取消或消除底层迟到副作用。`configuredReviewerBackend` 表示审查后端，不是模型供应商。Host 后注册的 `prepend` 监听器可能先运行；回执不提供独占审批入口。
+
 ## 许可证
 
 [Apache License 2.0](LICENSE) © 2026 dsh-auto-review contributors

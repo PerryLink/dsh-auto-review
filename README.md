@@ -612,6 +612,10 @@ This project is part of the DeepSeek Harness plugin family from [PerryLink](http
 
 </details>
 
+## Structured receipts
+
+Integrations can call `ctx.autoReviewRuntime.answerDetailed(request, next)` and import `DetailedAnswer` / `ReviewReceipt` to receive request-local correlation, review/fallback/delegation and circuit evidence without custom session events. `answer()` and the installed approval chain retain their behavior. Only the detailed API converts internal or downstream exceptions to `rejected` / `unavailable`; after disposal its final result is rejected, without promising immediate cancellation or removal of late underlying side effects. `configuredReviewerBackend` names the reviewer backend, not the model provider. A later Host listener registered with `prepend` can run first: receipts do not provide exclusive approval admission.
+
 ## License
 
 [Apache License 2.0](LICENSE) © 2026 dsh-auto-review contributors

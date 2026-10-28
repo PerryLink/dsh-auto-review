@@ -509,6 +509,10 @@ Este plugin **no interfiere** con otros plugins, incluidos los de más estrellas
 
 Evidencia estática: `dsh-plugin-doctor` K10–K13 dan `pass` en todas las comprobaciones de este repositorio.
 
+## Recibos estructurados
+
+Las integraciones pueden llamar a `ctx.autoReviewRuntime.answerDetailed(request, next)` e importar `DetailedAnswer` / `ReviewReceipt` para obtener correlación, revisión, fallback, delegación y evidencia del circuito sin eventos de sesión personalizados. `answer()` y la cadena instalada mantienen su comportamiento. Solo la API detallada convierte excepciones internas o posteriores en `rejected` / `unavailable`; tras la descarga rechaza el resultado final, sin garantizar cancelación inmediata ni eliminar efectos tardíos subyacentes. `configuredReviewerBackend` identifica el backend, no el proveedor del modelo. Un listener del Host registrado después con `prepend` puede ejecutarse primero: los recibos no ofrecen admisión exclusiva.
+
 ## PerryLink DSH Plugin Family
 
 Este proyecto forma parte de la familia de plugins de DeepSeek Harness de [PerryLink](https://github.com/PerryLink). El registro permanece plegado abajo para que cada README conserve una primera pantalla corta; expándelo para ver cada fila y su estado.
