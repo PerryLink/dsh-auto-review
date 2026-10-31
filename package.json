@@ -197,7 +197,7 @@
     "@deepseek-ai/dsh-brand": "0.2.1-rc.2",
     "@deepseek-ai/dsh-client-connection": "0.2.1-rc.2",
     "@deepseek-ai/dsh-client-locale": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-client-ui-conversation": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.2.1-rc.4",
     "@deepseek-ai/dsh-client-ui-slots": "0.2.1-rc.2",
     "@deepseek-ai/dsh-commands": "0.2.1-rc.2",
     "@deepseek-ai/dsh-credentials-local": "0.2.1-alpha.1",
