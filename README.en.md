@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-auto-review-flow-dark.svg">
-  <img src="docs/assets/dsh-auto-review-flow-light.svg" width="100%" alt="dsh-auto-review approval flow: approval/request → riskRules & toolsPolicy → read-only reviewer subagent → {decision, reason, riskLevel} → allow or a reasoned deny; non-ai policies delegate via next() to the human answerer">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-auto-review-hero-en-dark.webp">
+  <img src="docs/assets/dsh-auto-review-hero-en-light.webp" width="100%" alt="dsh-auto-review review docket: an approval/request claimed under ai policy, the read-only reviewer room (agent subagent / local Phocinae) reading redacted evidence, and the {decision, reason, riskLevel} verdict; a deny reason returns to the denied tool result by callId, and fallback settles rejected / delegate / allow-once">
 </picture>
 
 # dsh-auto-review
@@ -37,6 +37,13 @@ dsh plugin --profile <name> add dsh-auto-review
 ## What it is
 
 When an action crosses the sandbox boundary, `dsh-auto-review` hands the approval decision to a second model: a read-only reviewer subagent reads the real workspace (through its `read`/`glob`/`grep` allow-list), the already-streamed tool-call arguments (sensitive values redacted), the request reason, and your risk rules — then returns a structured verdict `{ decision, reason, riskLevel }`. Humans approve nothing while nothing unsafe slips through. A deny verdict feeds its reason back to the calling model, so the agent learns why instead of retrying blindly, and every decision reconstructs from the session log.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-auto-review-flow-v5-dark.svg">
+  <img src="docs/assets/dsh-auto-review-flow-v5-light.svg" width="100%" alt="dsh-auto-review claim funnel: a boundary-crossing request passes the claim gate, evidence assembly, read-only reviewer room and verdict contract, then one of three outcome doors (allow / deny / fallback); non-ai, spent budgets and delegate exit through next() to the human answerer, never and reviewer failures close deterministically on the right, and the log-only audit chain runs underneath">
+</picture>
+
+*Structure: a claim funnel — four gates narrow every boundary-crossing request, only ai policy reaches the read-only reviewer (agent subagent or local Phocinae), and the verdict settles into one of three doors (allow / deny / fallback); next() delegation and deterministic close run on the right, the log-only audit chain closes the bottom.*
 
 ## Three-step setup
 

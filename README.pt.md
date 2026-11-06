@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-auto-review-flow-dark.svg">
-  <img src="docs/assets/dsh-auto-review-flow-light.svg" width="100%" alt="Fluxo de aprovação do dsh-auto-review: approval/request → riskRules e toolsPolicy → subagente revisor somente-leitura → {decision, reason, riskLevel} → permitir ou negar com motivo; políticas não-ai delegam via next() ao aprovador humano">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-auto-review-hero-en-dark.webp">
+  <img src="docs/assets/dsh-auto-review-hero-en-light.webp" width="100%" alt="Dossiê de revisão do dsh-auto-review: uma approval/request reivindicada com política ai, a sala de revisão somente-leitura (subagente agent / Phocinae local) lendo evidência redigida e o veredito {decision, reason, riskLevel}; o motivo de um deny volta ao resultado da ferramenta negada por callId, e o fallback resolve em rejected / delegate / allow-once">
 </picture>
 
 # dsh-auto-review
@@ -37,6 +37,13 @@ dsh plugin --profile <name> add dsh-auto-review
 ## O que é
 
 Quando uma ação cruza a fronteira do sandbox, o `dsh-auto-review` entrega a decisão de aprovação a um segundo modelo: um subagente revisor somente-leitura lê o workspace real (pela sua allow-list `read`/`glob`/`grep`), os argumentos da chamada de ferramenta já transmitidos (valores sensíveis redigidos), o motivo da requisição e suas regras de risco — e devolve um veredito estruturado `{ decision, reason, riskLevel }`. Humanos não aprovam nada e nada inseguro passa. Um veredito de negação devolve o motivo ao modelo chamador, para que o agente aprenda por quê em vez de tentar às cegas, e toda decisão se reconstrói a partir do log de sessão.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-auto-review-flow-v5-dark.svg">
+  <img src="docs/assets/dsh-auto-review-flow-v5-light.svg" width="100%" alt="Funil de reivindicação do dsh-auto-review: uma requisição que cruza a fronteira passa pelo portão de reivindicação, pela montagem de evidência, pela sala de revisão somente-leitura e pelo contrato de veredito, e termina em uma de três saídas (allow / deny / fallback); não-ai, orçamentos esgotados e delegate saem por next() para o aprovador humano, never e falhas do revisor fecham de forma determinística à direita, e a cadeia de auditoria somente-log corre embaixo">
+</picture>
+
+*Estrutura: um funil de reivindicação — quatro portões estreitam cada requisição que cruza a fronteira, só a política ai chega ao revisor somente-leitura (subagente agent ou Phocinae local) e o veredito se resolve em uma de três saídas (allow / deny / fallback); à direita ficam a delegação por next() e o fechamento determinístico, e embaixo a cadeia de auditoria somente-log.*
 
 ## Instalação em três passos
 

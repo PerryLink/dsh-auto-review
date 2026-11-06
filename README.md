@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-auto-review-flow-dark.svg">
-  <img src="docs/assets/dsh-auto-review-flow-light.svg" width="100%" alt="dsh-auto-review 审批流：approval/request → riskRules 与 toolsPolicy → 只读审查子代理 → {decision, reason, riskLevel} → allow 或带理由拒绝；非 ai 策略经 next() 委派给人类审批">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-auto-review-hero-zh-dark.webp">
+  <img src="docs/assets/dsh-auto-review-hero-zh-light.webp" width="100%" alt="dsh-auto-review 裁决夹：approval/request 认领 ai 策略请求，只读审查室（agent 子代理 / 本地 Phocinae）读取脱敏证据，返回 {decision, reason, riskLevel}；deny 的理由经 callId 回注被拒工具结果，fallback 走 rejected / delegate / allow-once">
 </picture>
 
 # dsh-auto-review
@@ -37,6 +37,13 @@ dsh plugin --profile <name> add dsh-auto-review
 ## 它是什么
 
 当某个动作越过沙箱边界，`dsh-auto-review` 把审批决定交给第二个模型：一个只读审查子代理读取真实工作区（经 `read`/`glob`/`grep` 白名单）、已流式传出的工具调用参数（敏感值已脱敏）、请求理由与你的风险规则，返回结构化裁决 `{ decision, reason, riskLevel }`——人类无需批准任何事，也没有任何不安全的东西蒙混过关。拒绝裁决会把理由反馈给调用模型，让代理学会原因而不是盲目重试；每一次决策都能从会话日志重建。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-auto-review-flow-v5-dark.svg">
+  <img src="docs/assets/dsh-auto-review-flow-v5-light.svg" width="100%" alt="dsh-auto-review 认领漏斗：越界请求依次通过认领闸门、证据装配、只读审查室与裁决契约，收束为 allow / deny / fallback 三个出口；非 ai、预算耗尽与 delegate 经 next() 委派给人类审批链，never 与审查失败在右侧确定性收口，底部是仅日志的审批审计链">
+</picture>
+
+*结构：认领漏斗 —— 四道认领闸门把越界请求逐层收窄，只有 ai 策略进入只读审查室（agent 子代理或本地 Phocinae），最终收束为 allow / deny / fallback 三个出口；右侧是 next() 委派与确定性收口两条旁路，底部是仅日志审计链。*
 
 ## 三步上手
 

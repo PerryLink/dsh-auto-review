@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-auto-review-flow-dark.svg">
-  <img src="docs/assets/dsh-auto-review-flow-light.svg" width="100%" alt="Flujo de aprobación de dsh-auto-review: approval/request → riskRules y toolsPolicy → subagente revisor de solo lectura → {decision, reason, riskLevel} → allow o una denegación con razón; las políticas no-ai delegan vía next() al answerer humano">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-auto-review-hero-en-dark.webp">
+  <img src="docs/assets/dsh-auto-review-hero-en-light.webp" width="100%" alt="Expediente de revisión de dsh-auto-review: una approval/request reclamada con política ai, la sala de revisión de solo lectura (subagente agent / Phocinae local) leyendo evidencia redactada y el veredicto {decision, reason, riskLevel}; la razón de un deny vuelve al resultado de la herramienta denegada por callId y el fallback se resuelve en rejected / delegate / allow-once">
 </picture>
 
 # dsh-auto-review
@@ -37,6 +37,13 @@ dsh plugin --profile <name> add dsh-auto-review
 ## Qué es
 
 Cuando una acción cruza el límite del sandbox, `dsh-auto-review` entrega la decisión de aprobación a un segundo modelo: un subagente revisor de solo lectura lee el espacio de trabajo real (a través de su lista blanca `read`/`glob`/`grep`), los argumentos de la llamada a herramienta ya transmitidos (valores sensibles redactados), la razón de la solicitud y tus reglas de riesgo — y devuelve un veredicto estructurado `{ decision, reason, riskLevel }`. Los humanos no aprueban nada y nada inseguro se cuela. Un veredicto de denegación devuelve su razón al modelo que llama, de modo que el agente aprende por qué en lugar de reintentar a ciegas, y cada decisión se reconstruye desde el registro de sesión.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-auto-review-flow-v5-dark.svg">
+  <img src="docs/assets/dsh-auto-review-flow-v5-light.svg" width="100%" alt="Embudo de reclamación de dsh-auto-review: una solicitud que cruza el límite pasa por la puerta de reclamación, el ensamblado de evidencia, la sala de revisión de solo lectura y el contrato de veredicto, y termina en una de tres salidas (allow / deny / fallback); lo no-ai, los presupuestos agotados y delegate salen por next() hacia el answerer humano, never y los fallos del revisor cierran de forma determinista a la derecha, y la cadena de auditoría solo-log corre debajo">
+</picture>
+
+*Estructura: un embudo de reclamación — cuatro puertas estrechan cada solicitud que cruza el límite, solo la política ai llega al revisor de solo lectura (subagente agent o Phocinae local) y el veredicto se resuelve en una de tres salidas (allow / deny / fallback); a la derecha corren la delegación por next() y el cierre determinista, y abajo la cadena de auditoría solo-log.*
 
 ## Instalación en tres pasos
 

@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-auto-review-flow-dark.svg">
-  <img src="docs/assets/dsh-auto-review-flow-light.svg" width="100%" alt="dsh-auto-review अनुमोदन प्रवाह: approval/request → riskRules और toolsPolicy → केवल-पठन समीक्षक सबएजेंट → {decision, reason, riskLevel} → अनुमति या कारण सहित अस्वीकृति; गैर-ai नीतियाँ next() से मानव उत्तरकर्ता को सौंपती हैं">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-auto-review-hero-en-dark.webp">
+  <img src="docs/assets/dsh-auto-review-hero-en-light.webp" width="100%" alt="dsh-auto-review समीक्षा डोज़ियर: ai नीति के तहत दावा किया गया approval/request, केवल-पठन समीक्षक कक्ष (agent सबएजेंट / स्थानीय Phocinae) द्वारा रेडैक्टेड साक्ष्य पढ़ना और {decision, reason, riskLevel} निर्णय; deny का कारण callId से अस्वीकृत टूल परिणाम में लौटता है और fallback rejected / delegate / allow-once में तय होता है">
 </picture>
 
 # dsh-auto-review
@@ -37,6 +37,13 @@ dsh plugin --profile <name> add dsh-auto-review
 ## यह क्या है
 
 जब कोई क्रिया sandbox सीमा पार करती है, `dsh-auto-review` अनुमोदन निर्णय दूसरे मॉडल को सौंपता है: एक केवल-पठन समीक्षक सबएजेंट वास्तविक workspace (अपनी `read`/`glob`/`grep` allow-list से), पहले से प्रसारित टूल-कॉल तर्क (संवेदनशील मान रेडैक्टेड), अनुरोध का कारण और आपके जोखिम नियम पढ़ता है — और संरचित निर्णय `{ decision, reason, riskLevel }` लौटाता है। मनुष्य कुछ भी अनुमोदित नहीं करते और असुरक्षित कुछ भी पार नहीं होता। अस्वीकृति निर्णय कारण को कॉलिंग मॉडल को लौटाता है, ताकि एजेंट बिना सोचे दोबारा प्रयास करने के बजाय कारण सीखे, और हर निर्णय सत्र लॉग से पुनर्निर्मित होता है।
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dsh-auto-review-flow-v5-dark.svg">
+  <img src="docs/assets/dsh-auto-review-flow-v5-light.svg" width="100%" alt="dsh-auto-review claim फ़नल: सीमा पार करने वाला अनुरोध claim गेट, साक्ष्य संयोजन, केवल-पठन समीक्षक कक्ष और निर्णय अनुबंध से गुज़रता है, फिर तीन निकासों (allow / deny / fallback) में से एक में तय होता है; गैर-ai, समाप्त बजट और delegate next() से मानव उत्तरकर्ता की ओर निकलते हैं, never और समीक्षक विफलताएँ दाईं ओर नियतात्मक रूप से बंद होती हैं, और नीचे केवल-लॉग ऑडिट श्रृंखला चलती है">
+</picture>
+
+*संरचना: एक claim फ़नल — चार गेट हर सीमा-पार करने वाले अनुरोध को संकीर्ण करते हैं, केवल ai नीति केवल-पठन समीक्षक (agent सबएजेंट या स्थानीय Phocinae) तक पहुँचती है, और निर्णय तीन निकासों (allow / deny / fallback) में से एक में तय होता है; दाईं ओर next() प्रत्यायोजन और नियतात्मक क्लोज़ हैं, नीचे केवल-लॉग ऑडिट श्रृंखला।*
 
 ## तीन चरणों में शुरुआत
 

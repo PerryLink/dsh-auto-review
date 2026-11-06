@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="660" viewBox="0 0 1100 660" role="img" aria-labelledby="fig-title">
+<title id="fig-title">dsh-auto-review — the claim funnel: four gates (session, ai policy, per-turn budgets, circuit) narrow every boundary-crossing approval/request down to the read-only reviewer room and three outcome doors (allow, deny, fallback); non-ai and unavailable requests bypass through next() to the human answerer, never and reviewer failures close deterministically, and the log-only audit chain runs underneath</title>
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#131a2a"/><stop offset="1" stop-color="#0c1016"/></linearGradient>
+<filter id="soft" x="-30%" y="-30%" width="170%" height="185%"><feDropShadow dx="0" dy="7" stdDeviation="10" flood-color="#1b1735" flood-opacity="0.48"/></filter>
+<marker id="arr" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0.5 0.5 L9.5 5 L0.5 9.5 z" fill="#8496f5"/></marker>
+<marker id="arrw" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0.5 0.5 L9.5 5 L0.5 9.5 z" fill="#e2ae57"/></marker>
+</defs>
+<rect width="1100" height="660" rx="22" fill="url(#bg)"/>
+<circle cx="1040" cy="92" r="220" fill="#8496f5" opacity="0.1"/>
+<text x="44" y="50" fill="#eef2fa" font-family="Segoe UI, Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif" font-size="23" font-weight="700" text-anchor="start">dsh-auto-review · claim funnel</text>
+<text x="44" y="78" fill="#a8b1c4" font-family="Segoe UI, Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif" font-size="15" font-weight="400" text-anchor="start">every boundary-crossing request is filtered by four claim gates; only ai policy reaches the reviewer</text>
+<text x="1056" y="50" fill="#737d92" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="14" font-weight="400" text-anchor="end">src/runtime.ts · answerCore()</text>
+<text x="1056" y="74" fill="#8496f5" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="14" font-weight="400" text-anchor="end">/auto-review on|off|status|approve [n]</text>
+<line x1="44" y1="94" x2="1056" y2="94" stroke="#242c3d" stroke-width="1.5" stroke-linecap="round"/>
+<polygon points="48,182 548,182 506,196 90,196" fill="#20273a"/>
+<polygon points="90,264 506,264 464,278 132,278" fill="#20273a"/>
+<polygon points="132,358 464,358 422,372 174,372" fill="#20273a"/>
+<polygon points="174,440 422,440 383,478 213,478" fill="#252d44" stroke="#3a446b" stroke-width="1.2"/>
+<g filter="url(#soft)"><rect x="48" y="104" width="500" height="78" rx="20" fill="#1b2231" stroke="#424e7b" stroke-width="1.7"/></g>
+<g filter="url(#soft)"><rect x="90" y="196" width="416" height="68" rx="18" fill="#1b2231" stroke="#2d364a" stroke-width="1.4"/></g>
+<g filter="url(#soft)"><rect x="132" y="278" width="332" height="80" rx="18" fill="#1b2231" stroke="#2d364a" stroke-width="1.4"/></g>
+<g filter="url(#soft)"><rect x="174" y="372" width="248" height="68" rx="18" fill="#1b2231" stroke="#2d364a" stroke-width="1.4"/></g>
+<text x="68" y="132" fill="#eef2fa" font-family="Segoe UI, Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif" font-size="17" font-weight="700" text-anchor="start">① claim gate</text>
+<text x="528" y="132" fill="#8496f5" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="700" text-anchor="end">claim</text>
+<text x="68" y="158" fill="#a8b1c4" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="12.5" font-weight="400" text-anchor="start">session on · policy=ai · per-turn budgets · circuit clear</text>
+<text x="110" y="220" fill="#eef2fa" font-family="Segoe UI, Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif" font-size="17" font-weight="700" text-anchor="start">② evidence assembly</text>
+<text x="486" y="220" fill="#8496f5" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="400" text-anchor="end">approval/asked id</text>
+<text x="110" y="244" fill="#a8b1c4" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="12.5" font-weight="400" text-anchor="start">redacted args · reason · risk rules · bounded transcript</text>
+<text x="152" y="304" fill="#eef2fa" font-family="Segoe UI, Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif" font-size="17" font-weight="700" text-anchor="start">③ reviewer room · read-only</text>
+<text x="444" y="304" fill="#8496f5" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="400" text-anchor="end">one-shot</text>
+<rect x="144" y="316" width="152" height="36" rx="11" fill="#21283c" stroke="#343d60" stroke-width="1"/>
+<text x="154" y="331" fill="#eef2fa" font-family="Segoe UI, Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif" font-size="12" font-weight="600" text-anchor="start">agent · fork</text>
+<text x="154" y="346" fill="#a8b1c4" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="400" text-anchor="start">read/glob/grep</text>
+<rect x="304" y="316" width="148" height="36" rx="11" fill="#21283c" stroke="#343d60" stroke-width="1"/>
+<text x="314" y="331" fill="#eef2fa" font-family="Segoe UI, Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif" font-size="12" font-weight="600" text-anchor="start">phocinae · 150M</text>
+<text x="314" y="346" fill="#a8b1c4" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="400" text-anchor="start">loopback · ≈21 ms</text>
+<text x="194" y="394" fill="#eef2fa" font-family="Segoe UI, Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif" font-size="17" font-weight="700" text-anchor="start">④ verdict contract</text>
+<text x="194" y="416" fill="#a8b1c4" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="600" text-anchor="start">{decision, reason, riskLevel}</text>
+<text x="194" y="432" fill="#737d92" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="400" text-anchor="start">riskPolicy · cache · fallbackPolicy</text>
+<text x="298" y="467" fill="#8496f5" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="700" text-anchor="middle">outcome</text>
+<g filter="url(#soft)"><rect x="640" y="104" width="416" height="210" rx="18" fill="#1b2231" stroke="#2d364a" stroke-width="1.4"/></g>
+<text x="660" y="130" fill="#eef2fa" font-family="Segoe UI, Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif" font-size="17" font-weight="700" text-anchor="start">bypass · next()</text>
+<text x="1036" y="130" fill="#8496f5" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="400" text-anchor="end">never short-circuits</text>
+<text x="660" y="150" fill="#a8b1c4" font-family="Segoe UI, Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif" font-size="11.5" font-weight="400" text-anchor="start">the human answerer keeps its turn</text>
+<line x1="660" y1="162" x2="1036" y2="162" stroke="#242c3d" stroke-width="1.2" stroke-linecap="round"/>
+<text x="660" y="184" fill="#a8b1c4" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="12.5" font-weight="400" text-anchor="start">· session off / /auto-review off</text>
+<text x="660" y="210" fill="#a8b1c4" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="12.5" font-weight="400" text-anchor="start">· toolsPolicy: human (default)</text>
+<text x="660" y="236" fill="#a8b1c4" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="12.5" font-weight="400" text-anchor="start">· per-turn budget spent</text>
+<text x="660" y="262" fill="#a8b1c4" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="12.5" font-weight="400" text-anchor="start">· circuit action: delegate</text>
+<text x="660" y="288" fill="#a8b1c4" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="12.5" font-weight="400" text-anchor="start">· fallbackPolicy: delegate</text>
+<text x="660" y="306" fill="#8496f5" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="400" text-anchor="start">→ human answerer → approval/decided</text>
+<g filter="url(#soft)"><rect x="640" y="328" width="416" height="152" rx="18" fill="#1b2231" stroke="#2d364a" stroke-width="1.4"/></g>
+<text x="660" y="354" fill="#eef2fa" font-family="Segoe UI, Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif" font-size="17" font-weight="700" text-anchor="start">deterministic close</text>
+<text x="1036" y="354" fill="#f08a9c" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="700" text-anchor="end">fail closed</text>
+<text x="660" y="374" fill="#a8b1c4" font-family="Segoe UI, Microsoft YaHei, PingFang SC, Noto Sans CJK SC, sans-serif" font-size="11.5" font-weight="400" text-anchor="start">no reviewer run, no budget burned</text>
+<line x1="660" y1="386" x2="1036" y2="386" stroke="#242c3d" stroke-width="1.2" stroke-linecap="round"/>
+<text x="660" y="408" fill="#a8b1c4" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="12.5" font-weight="400" text-anchor="start">· never rule / toolsPolicy → [auto-review-never]</text>
+<text x="660" y="432" fill="#a8b1c4" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="12.5" font-weight="400" text-anchor="start">· reviewer failure → fallbackPolicy: rejected</text>
+<text x="660" y="456" fill="#a8b1c4" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="12.5" font-weight="400" text-anchor="start">· circuit action: reject / abort-turn</text>
+<line x1="548" y1="143" x2="636" y2="143" stroke="#8496f5" stroke-width="1.8" stroke-linecap="round" stroke-dasharray="5 5" marker-end="url(#arr)"/>
+<path d="M 422 406 H 596 Q 620 406 620 430 H 636" fill="none" stroke="#e2ae57" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="5 5" marker-end="url(#arrw)"/>
+<text x="470" y="400" fill="#e2ae57" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="400" text-anchor="start">reviewer failure</text>
+<line x1="298" y1="478" x2="298" y2="492" stroke="#8496f5" stroke-width="2" stroke-linecap="round"/>
+<line x1="205" y1="492" x2="893" y2="492" stroke="#8496f5" stroke-width="2" stroke-linecap="round"/>
+<line x1="205" y1="492" x2="205" y2="506" stroke="#8496f5" stroke-width="2" stroke-linecap="round" marker-end="url(#arr)"/>
+<line x1="549" y1="492" x2="549" y2="506" stroke="#8496f5" stroke-width="2" stroke-linecap="round" marker-end="url(#arr)"/>
+<line x1="893" y1="492" x2="893" y2="506" stroke="#8496f5" stroke-width="2" stroke-linecap="round" marker-end="url(#arr)"/>
+<g filter="url(#soft)"><rect x="44" y="508" width="322" height="64" rx="16" fill="#1b2231" stroke="#345755" stroke-width="1.4"/></g>
+<text x="64" y="534" fill="#6fd3ac" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700" text-anchor="start">allow</text>
+<text x="64" y="556" fill="#a8b1c4" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="11.5" font-weight="400" text-anchor="start">allowed-once · no persistent grant</text>
+<g filter="url(#soft)"><rect x="388" y="508" width="322" height="64" rx="16" fill="#1b2231" stroke="#5a4151" stroke-width="1.4"/></g>
+<text x="408" y="534" fill="#f08a9c" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700" text-anchor="start">deny</text>
+<text x="408" y="556" fill="#a8b1c4" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="11.5" font-weight="400" text-anchor="start">rejected · reason → denied tool result</text>
+<g filter="url(#soft)"><rect x="732" y="508" width="322" height="64" rx="16" fill="#1b2231" stroke="#564c3c" stroke-width="1.4"/></g>
+<text x="752" y="534" fill="#e2ae57" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="18" font-weight="700" text-anchor="start">fallback</text>
+<text x="752" y="556" fill="#a8b1c4" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="11.5" font-weight="400" text-anchor="start">rejected (default) · delegate · allow-once</text>
+<g filter="url(#soft)"><rect x="44" y="584" width="1012" height="60" rx="16" fill="#1b2231" stroke="#2d364a" stroke-width="1.4"/></g>
+<text x="64" y="610" fill="#8496f5" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="700" text-anchor="start">approval/asked → autoReview/verdict | autoReview/rejection → approval/decided</text>
+<text x="64" y="632" fill="#a8b1c4" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="11.5" font-weight="400" text-anchor="start">log-only · ignorable envelope · autoReview projection → Web panel</text>
+<text x="1036" y="632" fill="#737d92" font-family="Consolas, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="400" text-anchor="end">Apache-2.0 · fail closed</text>
+</svg>
