@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.15.1] - 2026-11-13
+
+### Fixed
+
+- **A PTC session's tool-call arguments were invisible to the reviewer, so every `ai`-routed escalation from one was denied (issue #83).** `renderCallContext` → `sanitizedArgumentsText()` looked the pending call up by an exact `callId` match against `tool/call` rows only — but a PTC approval carries the INNER id `<outer>:ptc:<n>` while the logged `tool/call` carries `<outer>` (name `run_code`), so the id never matched and the transcript rendered "not found or unparseable". The "insufficient evidence ⇒ DENY" rule then fired on the evidence gap for exactly the calls where human oversight matters most, and the verdict cache was skipped for the same reason. The lookup now reads the PTC sub-dispatch record first (`tool/ptc-dispatch-start`, and its settled `tool/ptc-dispatch` pair, keyed by `subCallId`), and only when the child record is missing walks the `:ptc:` prefix out to the nearest enclosing `tool/call`; the prompt names which record the reviewer is seeing and states explicitly when the arguments belong to the enclosing call rather than the pending one. The same lookup feeds the `arguments` risk-rule field and the verdict fingerprint (still skipped for an enclosing-only row, which every sub-call of one program shares). Deny evidence is now diagnosable from the prompt alone: a record with no parseable arguments payload reads differently from a call id that could not be resolved at all, instead of both reading as "arguments missing". Regression tests synthesize an `<outer>:ptc:1` approval, assert the reviewer prompt carries the inner tool's own arguments, and assert the enclosing-call and unresolved fallbacks stay visibly distinct.
+
 ## [0.14.1] - 2026-10-26
 
 ### Security
