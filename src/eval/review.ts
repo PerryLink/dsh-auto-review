@@ -1,10 +1,10 @@
 /**
  * The dsh-eval second-model review layer: a supplementary assertion over a
- * finished case run. It reuses the SAME subagent seam as the approval
- * reviewer (`ctx.subagents`, toolFilter allow-list, structured output
- * schema, timeout + abort racing) but with an evaluation-specific prompt —
- * one sentence of role statement first, kept short — and a
- * `{ pass, reason }` verdict.
+ * finished case run. It reuses the SAME subagent seams as the approval
+ * reviewer (`ctx.subagents`: the legacy `toolFilter` child, or a preset-composed
+ * `startActivation`, with structured output, timeout + abort racing) but with an
+ * evaluation-specific prompt — one sentence of role statement first, kept
+ * short — and a `{ pass, reason }` verdict.
  *
  * The review is an assertion layer, not a replacement for the structured
  * assertions: both verdicts land in the report, and either failing fails
@@ -21,29 +21,7 @@ import { assertObjectJsonSchema, type ObjectJsonSchema } from '@deepseek-ai/dsh-
 import type { EvalCase } from './dsl.ts'
 import type { CaseTrace } from './trace.ts'
 import { renderToolCall } from './trace.ts'
-/** Minimal 0.2.1+ activation surface (alpha hosts expose start() instead). */
-interface EvalActivationService {
-  startActivation?: (spec: {
-    provider: string
-    label: string
-    request: {
-      prompt: ContentBlock[]
-      parent: Agent
-      outputSchema: ObjectJsonSchema
-      maxDepth: number
-      agentOptions?: Record<string, unknown>
-      agentPreset: string
-    }
-    signal: AbortSignal
-    delivery: 'caller'
-  }) => Promise<{
-    childId: SessionId
-    result: Promise<{ stopReason: string; structured?: unknown }>
-    dispose(): Promise<void>
-  }>
-}
-
-
+import { buildReviewerActivationSpec, reviewerSubagentSeam, type ReviewerRun } from '../subagent-compat.ts'
 /** A second-model evaluation verdict. */
 export interface EvalReviewVerdict {
   readonly pass: boolean
@@ -172,15 +150,20 @@ export async function runEvalReview(
   signal: AbortSignal,
 ): Promise<EvalReviewResolution> {
   const provider = config.reviewerProvider
-  const providerInfo = ctx.subagents.getProvider(provider)
+  const seam = reviewerSubagentSeam(ctx)
+  const providerInfo = seam.getProvider(provider)
   if (providerInfo === undefined) {
     return { failure: 'unavailable', error: `subagent provider "${provider}" is not registered` }
+  }
+  const activation = typeof seam.startActivation === 'function' && config.reviewerPreset !== undefined
+  if (!activation && typeof seam.start !== 'function') {
+    return { failure: 'unavailable', error: 'this host offers neither subagents.start nor a preset-composed startActivation' }
   }
   const capabilities = providerInfo.capabilities
   if (capabilities?.outputSchema === false) {
     return { failure: 'unavailable', error: `subagent provider "${provider}" does not support outputSchema, which the structured verdict requires` }
   }
-  if (capabilities?.toolFilter === false) {
+  if (!activation && capabilities?.toolFilter === false) {
     return { failure: 'unavailable', error: `subagent provider "${provider}" does not support toolFilter, which the read-only reviewer face requires` }
   }
   const reviewerModel = caze.review?.model ?? config.reviewerModel
@@ -196,7 +179,7 @@ export async function runEvalReview(
   }
   signal.addEventListener('abort', onAbort, { once: true })
   let reviewerSessionId: SessionId | undefined
-  let run: import('@deepseek-ai/dsh-subagent').SubagentRun | undefined
+  let run: ReviewerRun | undefined
   const failure = (kind: EvalReviewFailureKind, error: string): EvalReviewFailure => ({
     failure: kind,
     error,
@@ -204,29 +187,30 @@ export async function runEvalReview(
     ...reviewerModel !== undefined ? { model: reviewerModel } : {},
   })
   try {
-    const activationService = ctx.subagents as unknown as EvalActivationService
-    if (typeof activationService.startActivation === 'function') {
-      if (config.reviewerPreset === undefined) {
+    if (activation) {
+      const startActivation = seam.startActivation
+      if (startActivation === undefined || config.reviewerPreset === undefined) {
         return failure('unavailable', 'this host uses subagents.startActivation; set reviewerPreset to a read-only Agent Preset')
       }
-      const activation = await activationService.startActivation({
+      const started = await startActivation(buildReviewerActivationSpec({
         provider,
         label: `eval-review: ${caze.id}`,
-        request: {
-          prompt,
-          parent,
-          outputSchema: EVAL_VERDICT_SCHEMA,
-          maxDepth: (parent.session.header.delegationDepth ?? 0) + 1,
-          agentPreset: config.reviewerPreset,
-          ...reviewerModel !== undefined ? { agentOptions: { model: reviewerModel } } : {},
-        },
+        prompt,
+        parent,
+        outputSchema: EVAL_VERDICT_SCHEMA,
+        maxDepth: (parent.session.header.delegationDepth ?? 0) + 1,
+        agentPreset: config.reviewerPreset,
+        ...reviewerModel !== undefined ? { agentOptions: { model: reviewerModel } } : {},
         signal: controller.signal,
-        delivery: 'caller',
-      })
-      run = activation as unknown as typeof run
-      reviewerSessionId = activation.childId
+      }))
+      run = started
+      reviewerSessionId = started.childId
     } else {
-      run = await ctx.subagents.start(provider, {
+      const start = seam.start
+      if (start === undefined) {
+        return failure('unavailable', 'this host offers no subagent start seam for the eval reviewer')
+      }
+      const started = await start(provider, {
         label: `eval-review: ${caze.id}`,
         prompt,
         parent,
@@ -236,7 +220,8 @@ export async function runEvalReview(
         maxDepth: (parent.session.header.delegationDepth ?? 0) + 1,
         ...reviewerModel !== undefined ? { agentOptions: { model: reviewerModel } } : {},
       })
-      reviewerSessionId = run.id
+      run = started
+      reviewerSessionId = started.id
     }
     if (run === undefined || reviewerSessionId === undefined) return failure('unavailable', 'reviewer did not publish a session id')
     const result = await run.result

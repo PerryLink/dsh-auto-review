@@ -8,17 +8,20 @@
  *    human dialog simply appears. The fix is positional (`prepend: true`), and
  *    the ordering test below fails without it.
  * 2. `ctx.subagents.start` is gone (0.2.1 replaced it with `startActivation`,
- *    whose spawn provider no longer takes a `toolFilter`), so the reviewer must
- *    be able to judge without a child: one tool-less `ctx.llm.stream` call on
- *    the delegating turn's route.
+ *    whose spawn provider no longer takes a `toolFilter`). An activation host
+ *    is usable only with a read-only `reviewerPreset`; without one the reviewer
+ *    falls back to a tool-less `ctx.llm.stream` call on the delegating turn's
+ *    route, and a host with neither seam nor `llm` resolves `unavailable`.
  * @module dsh-auto-review/test/compat-0.2.1.spec
  */
 
 import { Context } from '@deepseek-ai/cordis'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { describe, expect, it } from 'vitest'
 import * as plugin from '../src/index.ts'
+import { VERDICT_SCHEMA } from '../src/index.ts'
 import {
   appendRequestHeader,
   dispatchAskedApproval,
@@ -47,6 +50,9 @@ describe('answerer position in the approval waterfall', () => {
     const session = ctx.sessions.create(SessionId('web-order-session'))
     session.append('turn/start', { turn: 1 })
     appendRequestHeader(session, { provider: 'deepseek', model: 'deepseek-chat' })
+    // rc.3's ApprovalService injects `sessionProjections`; without the
+    // registry its fiber never activates, so the plugin waits on `approval`.
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(ApprovalService)
     const subagents = makeSubagents(allowVerdict, undefined, { withStart: false })
     const llm = makeLlm(allowVerdict)
@@ -98,8 +104,91 @@ describe('answerer position in the approval waterfall', () => {
   })
 })
 
-describe('tool-less reviewer on a host without subagents.start', () => {
-  /** Mount the 0.2.1 shape: no one-shot child seam, `llm` only. */
+describe('reviewer seam dispatch on an activation host', () => {
+  /**
+   * Mount the 0.2.1+ shape: `startActivation` only. The plugin config decides
+   * whether the preset-composed child is available this time.
+   */
+  async function mountActivation(pluginConfig: Record<string, unknown> = {}) {
+    const harness = await mountHarness(
+      { allowUnmarkedAudit: true, toolsPolicy: { overrides: { bash: 'ai' } }, ...pluginConfig },
+      allowVerdict,
+      {},
+      undefined,
+      'activation',
+    )
+    appendRequestHeader(harness.session, { provider: 'deepseek', model: 'deepseek-chat' })
+    return harness
+  }
+
+  it('routes to startActivation when reviewerPreset is configured, with flat request fields', async () => {
+    const harness = await mountActivation({ reviewerPreset: 'read-only-reviewer' })
+    const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+      reason: 'escalate sandbox',
+    }, next)
+    expect(outcome).toBe('allowed-once')
+    // The activation seam, not the legacy child nor the tool-less call.
+    expect(harness.subagents.starts).toHaveLength(0)
+    expect(harness.subagents.activations).toHaveLength(1)
+    expect(harness.llm.calls).toHaveLength(0)
+    const { spec } = harness.subagents.activations[0]!
+    expect(spec.provider).toBe('mock')
+    expect(spec.delivery).toBe('caller')
+    // The rc.3 host reads the task fields at the TOP level; a nested-only spec
+    // would silently start with no prompt at all.
+    expect(spec.agentPreset).toBe('read-only-reviewer')
+    expect(spec.outputSchema).toEqual(VERDICT_SCHEMA)
+    expect(spec.maxDepth).toBe(1)
+    expect(spec.prompt).toBeDefined()
+    const text = (spec.prompt ?? []).map(block => block.type === 'text' ? block.text : '').join('')
+    expect(text).toContain('Tool name: bash')
+    // The rc.1 alias carries the same composition under `request`.
+    expect(spec.request.agentPreset).toBe('read-only-reviewer')
+    expect(spec.request.prompt).toEqual(spec.prompt)
+  })
+
+  it('falls back to the tool-less call when no reviewerPreset is configured', async () => {
+    const harness = await mountActivation()
+    const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+      reason: 'escalate sandbox',
+    }, next)
+    expect(outcome).toBe('allowed-once')
+    // Without a read-only preset the activation child would inherit the
+    // parent's tools, so the reviewer must not start one at all.
+    expect(harness.subagents.activations).toHaveLength(0)
+    expect(harness.subagents.starts).toHaveLength(0)
+    expect(harness.llm.calls).toHaveLength(1)
+  })
+})
+
+describe('reviewer with neither subagent seam nor llm', () => {
+  it('resolves unavailable (fail closed) instead of throwing', async () => {
+    const harness = await mountHarness(
+      { allowUnmarkedAudit: true, toolsPolicy: { overrides: { bash: 'ai' } } },
+      allowVerdict,
+      {},
+      undefined,
+      'inline-no-llm',
+    )
+    const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+      reason: 'escalate sandbox',
+    }, next)
+    expect(outcome).toBe('rejected')
+    const verdict = harness.session.snapshotEvents().find(event => event.type === 'autoReview/verdict')
+    expect(verdict?.data).toMatchObject({ fallback: 'unavailable' })
+    expect((verdict?.data as { error?: string }).error).toContain('neither')
+    expect(harness.llm.calls).toHaveLength(0)
+  })
+})
+
+describe('tool-less reviewer on a host without a child seam', () => {
+  /** Mount the seam-less shape: neither `start` nor `startActivation`, `llm` only. */
   async function mountInline(script = allowVerdict, pluginConfig: Record<string, unknown> = {}) {
     const harness = await mountHarness(
       { allowUnmarkedAudit: true, toolsPolicy: { overrides: { bash: 'ai' } }, ...pluginConfig },
@@ -121,12 +210,29 @@ describe('tool-less reviewer on a host without subagents.start', () => {
     }, next)
     expect(outcome).toBe('allowed-once')
     expect(harness.subagents.starts).toHaveLength(0)
+    expect(harness.subagents.activations).toHaveLength(0)
     expect(harness.llm.calls).toHaveLength(1)
     expect(harness.llm.calls[0]).toMatchObject({
       provider: 'deepseek',
       model: 'deepseek-chat',
-      temperature: 0,
     })
+    // Thinking mode ignores temperature silently; the request must not claim
+    // a control the model never applies.
+    expect(harness.llm.calls[0]).not.toHaveProperty('temperature')
+    // Unset effort inherits the host/model default: nothing is sent.
+    expect(harness.llm.calls[0]?.reasoningEffort).toBeUndefined()
+  })
+
+  it('forwards reviewerReasoningEffort to the tool-less call when configured', async () => {
+    const harness = await mountInline(allowVerdict, { reviewerReasoningEffort: 'low' })
+    const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+      reason: 'escalate sandbox',
+    }, next)
+    expect(outcome).toBe('allowed-once')
+    expect(harness.llm.calls[0]?.reasoningEffort).toBe('low')
+    expect(harness.llm.calls[0]).not.toHaveProperty('temperature')
   })
 
   it('reads the verdict out of a fenced answer with surrounding prose', async () => {

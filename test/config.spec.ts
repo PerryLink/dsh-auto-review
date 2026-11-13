@@ -37,6 +37,18 @@ describe('config resolution', () => {
     expect(resolved.reviewerModelProvider).toBe('other-provider')
   })
 
+  it('leaves reviewerReasoningEffort unset by default and validates the four effort ids', () => {
+    // Unset means inherit the host/model default — the plugin must not invent
+    // an effort, and sending nothing is the only way to keep that promise.
+    expect(resolveConfig().reviewerReasoningEffort).toBeUndefined()
+    for (const effort of ['off', 'low', 'high', 'max'] as const) {
+      expect(resolveConfig({ reviewerReasoningEffort: effort }).reviewerReasoningEffort).toBe(effort)
+      expect(ConfigSchema({ reviewerReasoningEffort: effort } as never).reviewerReasoningEffort).toBe(effort)
+    }
+    expect(() => ConfigSchema({ reviewerReasoningEffort: 'medium' } as never)).toThrow()
+    expect(() => resolveConfig({ reviewerReasoningEffort: 'medium' as never })).toThrow(/reviewerReasoningEffort/u)
+  })
+
   it('defaults maxFailuresPerTurn to maxReviewsPerTurn when only the latter is set', () => {
     expect(resolveConfig({ maxReviewsPerTurn: 3 }).maxFailuresPerTurn).toBe(3)
     expect(resolveConfig({ maxFailuresPerTurn: 2 }).maxFailuresPerTurn).toBe(2)

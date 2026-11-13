@@ -12,6 +12,7 @@ import { Context } from '@deepseek-ai/cordis'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { describe, expect, it } from 'vitest'
 import * as plugin from '../src/index.ts'
 import { dispatchApproval, makeAgent } from './harness.ts'
@@ -21,6 +22,9 @@ async function mountWithRealCommands() {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
   const session = ctx.sessions.create(SessionId('lifecycle-session'))
+  // rc.3's ApprovalService injects `sessionProjections`; without the registry
+  // the plugin fiber waits on `approval` and registers nothing.
+  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(ApprovalService)
   await ctx.plugin(CommandRuntime)
   ctx.provide('subagents', {

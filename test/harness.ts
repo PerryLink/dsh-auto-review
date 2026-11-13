@@ -8,10 +8,11 @@ import { vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { CommandDefinition } from '@deepseek-ai/dsh-commands'
-import type { FinishReason, GenerateOptions, StreamChunk, UserMessage } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, FinishReason, GenerateOptions, StreamChunk, UserMessage } from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
 import type { Session } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { SubagentRun, SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
 import type { ReviewerVerdict } from '../src/review.ts'
@@ -59,12 +60,45 @@ export interface ScriptedReview {
 export interface MockSubagents {
   getProvider(name: string): object | undefined
   /**
-   * The one-shot child seam. ABSENT when the host is scripted as
-   * 0.2.1-style ({@link makeSubagents} with `withStart: false`), where the host
-   * replaced it with `startActivation` and the reviewer must not use it.
+   * The legacy one-shot child seam. ABSENT when the host is scripted as a
+   * 0.2.1+ activation host ({@link makeSubagents} with `withStart: false`).
    */
   start?(name: string, request: SubagentStartRequest): Promise<SubagentRun>
+  /**
+   * The 0.2.1+ activation seam. Present only when scripted
+   * ({@link makeSubagents} with `withActivation: true`); the reviewer uses it
+   * only when a `reviewerPreset` is configured.
+   */
+  startActivation?(spec: MockActivationSpec): Promise<MockActivation>
   readonly starts: { name: string; request: SubagentStartRequest }[]
+  /** Every activation spec the reviewer submitted, in call order. */
+  readonly activations: { provider: string; spec: MockActivationSpec }[]
+}
+
+/** The task/composition half of a mock activation, flat or nested. */
+export interface MockActivationRequest {
+  readonly prompt?: readonly ContentBlock[]
+  readonly parent?: unknown
+  readonly outputSchema?: unknown
+  readonly maxDepth?: number
+  readonly agentPreset?: string
+  readonly agentOptions?: Record<string, unknown>
+}
+
+/** One activation spec as the reviewer submits it: flat fields plus the `request` alias. */
+export interface MockActivationSpec extends MockActivationRequest {
+  readonly provider: string
+  readonly label: string
+  readonly request: MockActivationRequest
+  readonly signal: AbortSignal
+  readonly delivery: 'caller'
+}
+
+/** The activation handle the mock returns. */
+export interface MockActivation {
+  readonly childId: SessionId
+  readonly result: Promise<{ stopReason: string; structured?: unknown }>
+  dispose(): Promise<void>
 }
 
 /** Mock `ctx.commands` service capturing registrations. */
@@ -105,9 +139,24 @@ export function makeAgent(session: Session, injected: UserMessage[] = []): Agent
 export function makeSubagents(
   script: () => ScriptedReview,
   capabilities?: object,
-  options: { readonly withStart?: boolean } = {},
+  options: { readonly withStart?: boolean; readonly withActivation?: boolean } = {},
 ): MockSubagents {
   const starts: { name: string; request: SubagentStartRequest }[] = []
+  const activations: { provider: string; spec: MockActivationSpec }[] = []
+  /** The result behavior both seams share (verdict, delay, abort-on-signal). */
+  const settle = (signal: AbortSignal, behavior: ScriptedReview): Promise<{ stopReason: string; structured?: unknown }> => (async () => {
+    if (behavior.rejectOnAbort === true) {
+      await new Promise<never>((_, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('The operation was aborted')), { once: true })
+      })
+    }
+    if (behavior.delayMs !== undefined) {
+      await new Promise<void>(resolve => setTimeout(resolve, behavior.delayMs))
+    }
+    return behavior.verdict !== undefined
+      ? { structured: behavior.verdict, stopReason: 'completed' }
+      : { structured: undefined, stopReason: behavior.stopReason ?? 'completed' }
+  })()
   const service: MockSubagents = {
     getProvider(name: string): object | undefined {
       return name === 'mock' ? (capabilities ?? {}) : undefined
@@ -126,30 +175,35 @@ export function makeSubagents(
       })()
       await started
       if (behavior.onStart !== undefined) await behavior.onStart(request)
-      const result = (async () => {
-        if (behavior.rejectOnAbort === true) {
-          await new Promise<never>((_, reject) => {
-            request.signal.addEventListener('abort', () => reject(new Error('The operation was aborted')), { once: true })
-          })
-        }
-        if (behavior.delayMs !== undefined) {
-          await new Promise<void>(resolve => setTimeout(resolve, behavior.delayMs))
-        }
-        return behavior.verdict !== undefined
-          ? { output: [], structured: behavior.verdict, stopReason: 'completed' }
-          : { output: [], structured: undefined, stopReason: behavior.stopReason ?? 'completed' }
-      })()
       return {
         id: SessionId('reviewer-session'),
-        localAgent: undefined,
-        result: result as SubagentRun['result'],
+        result: settle(request.signal, behavior) as SubagentRun['result'],
+        dispose: async () => undefined,
+      }
+    },
+    async startActivation(spec: MockActivationSpec): Promise<MockActivation> {
+      const behavior = script()
+      activations.push({ provider: spec.provider, spec })
+      if (behavior.failStart !== undefined) throw behavior.failStart
+      if (behavior.startDelayMs !== undefined) {
+        await new Promise<void>(resolve => setTimeout(resolve, behavior.startDelayMs))
+      }
+      if (behavior.failStartOnAbort === true && spec.signal.aborted) {
+        throw new Error('aborted before publication')
+      }
+      return {
+        childId: SessionId('reviewer-activation'),
+        result: settle(spec.signal, behavior),
         dispose: async () => undefined,
       }
     },
     starts,
+    activations,
   }
-  // The 0.2.1 host: the service is there, the one-shot `start` is not.
+  // The 0.2.1+ host: the service is there, the legacy one-shot `start` is not.
   if (options.withStart === false) delete service.start
+  // Alpha hosts never expose the activation seam; only scripted hosts do.
+  if (options.withActivation !== true) delete service.startActivation
   return service
 }
 
@@ -243,10 +297,12 @@ export async function mountHarness(
   providerCapabilities?: object,
   /**
    * Which reviewer seam the host is scripted to offer: `subagent` (the
-   * `toolFilter`-capable one-shot child, dsh <= 0.2.1-alpha) or `inline` (the
-   * 0.2.1 host, where `subagents.start` is gone and only `llm` remains).
+   * `toolFilter`-capable one-shot child, dsh <= 0.2.1-alpha), `activation`
+   * (dsh 0.2.1+, where the reviewer must use `startActivation` with a
+   * `reviewerPreset`), `inline` (no start seam at all; only `llm`), or
+   * `inline-no-llm` (neither seam and no `llm` — the unavailable path).
    */
-  seam: 'subagent' | 'inline' = 'subagent',
+  seam: 'subagent' | 'activation' | 'inline' | 'inline-no-llm' = 'subagent',
 ): Promise<Harness> {
   const ctx = new Context()
   // Captured (and silenced) from before the mount: the config warnings this
@@ -256,14 +312,22 @@ export async function mountHarness(
     warnings.push(args.map(argument => String(argument)).join(' '))
   })
   await ctx.plugin(SessionStore)
+  // rc.3's ApprovalService injects `sessionProjections`; without the registry
+  // its fiber stays inactive and `ctx.approval` never resolves.
+  await ctx.plugin(SessionProjectionRegistry)
   const session = ctx.sessions.create(SessionId('harness-session'))
   session.append('turn/start', { turn: 1 })
   await ctx.plugin(ApprovalService, approvalConfig)
-  const subagents = makeSubagents(script, providerCapabilities, { withStart: seam === 'subagent' })
+  const subagents = makeSubagents(script, providerCapabilities, {
+    withStart: seam === 'subagent',
+    withActivation: seam === 'activation',
+  })
   const llm = makeLlm(script)
   const commands = makeCommands()
   ctx.provide('subagents', subagents as never)
-  ctx.provide('llm', llm as never)
+  // `inline-no-llm` scripts the host with neither reviewer seam: the plugin
+  // must resolve `unavailable` instead of throwing on the missing service.
+  if (seam !== 'inline-no-llm') ctx.provide('llm', llm as never)
   ctx.provide('commands', commands as never)
   ctx.provide('tools', {})
   const plugin = await import('../src/index.ts')

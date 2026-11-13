@@ -54,6 +54,7 @@ function promptConfig(overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {
     reviewerProvider: 'fork',
     reviewerModel: undefined,
     reviewerModelProvider: undefined,
+    reviewerReasoningEffort: undefined,
     reviewerBackend: 'agent',
     phocinae: resolvePhocinaeConfig(undefined),
     reviewerTimeoutMs: 60_000,
@@ -97,6 +98,7 @@ describe('reviewer prompt', () => {
       reviewerProvider: 'fork',
       reviewerModel: undefined,
     reviewerModelProvider: undefined,
+    reviewerReasoningEffort: undefined,
     reviewerBackend: 'agent',
     phocinae: resolvePhocinaeConfig(undefined),
       reviewerTimeoutMs: 60_000,
@@ -144,6 +146,7 @@ describe('reviewer prompt', () => {
       reviewerProvider: 'fork',
       reviewerModel: undefined,
     reviewerModelProvider: undefined,
+    reviewerReasoningEffort: undefined,
     reviewerBackend: 'agent',
     phocinae: resolvePhocinaeConfig(undefined),
       reviewerTimeoutMs: 60_000,
@@ -238,7 +241,7 @@ describe('reviewer start request', () => {
     }, async () => 'rejected')
     const start = harness.subagents.starts[0]!
     expect(start.name).toBe('mock')
-    expect(start.request.toolFilter).toEqual({ allow: ['read', 'glob', 'grep'] })
+    expect((start.request as { toolFilter?: unknown }).toolFilter).toEqual({ allow: ['read', 'glob', 'grep'] })
     expect(start.request.outputSchema).toEqual(VERDICT_SCHEMA)
     expect(start.request.maxDepth).toBe(1)
     expect(start.request.label).toBe('auto-review: bash')
@@ -267,6 +270,18 @@ describe('reviewer start request', () => {
       toolName: 'bash',
     }, async () => 'rejected')
     expect(harness.subagents.starts[0]!.request.agentOptions).toBeUndefined()
+  })
+
+  it('passes reviewerReasoningEffort into the child agent options when configured', async () => {
+    const harness = await mountHarness({
+      toolsPolicy: { overrides: { bash: 'ai' } },
+      reviewerReasoningEffort: 'high',
+    })
+    await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+    }, async () => 'rejected')
+    expect(harness.subagents.starts[0]!.request.agentOptions).toEqual({ reasoningEffort: 'high' })
   })
 })
 

@@ -364,6 +364,7 @@ Claude Desktop (`claude_desktop_config.json`) उदाहरण:
 | `reviewerPreset` | *(कोई नहीं)* | केवल-पठन Agent Preset id; जब host `toolFilter` के बजाय `startActivation` (0.2.1+) दे तो आवश्यक |
 | `reviewerModel` | *(विरासत)* | समीक्षक मॉडल id; अनसेट सत्र एजेंट का रूट विरासत में लेता है |
 | `reviewerModelProvider` | *(विरासत)* | `reviewerModel` के लिए LLM provider रूट; अनसेट सत्र एजेंट का provider विरासत में लेता है |
+| `reviewerReasoningEffort` | *(विरासत)* | जनरेटिव समीक्षक का reasoning effort: `off` / `low` / `high` / `max`। अनसेट होस्ट/मॉडल डिफ़ॉल्ट विरासत में लेता है (कुछ नहीं भेजा जाता); यह child के `agentOptions` और tool-less call दोनों को भेजा जाता है। Phocinae backend इसे अनदेखा करता है |
 | `reviewerBackend` | `agent` | समीक्षक इंजन: `agent` (जनरेटिव समीक्षक) या `phocinae` (स्थानीय गैर-जनरेटिव निर्णय सेवा)। अनसेट `reviewerModel` से अनुमान लगाता है: `Phocinae…` id `phocinae` चुनता है |
 | `phocinae.endpoint` | `http://127.0.0.1:8155/v1/systemone` | Phocinae निर्णय-सेवा URL; `phocinae.allowRemoteEndpoint` के बिना केवल loopback |
 | `phocinae.model` | `Phocinae-Largha-150M-v1` | परोसा गया मॉडल नाम; Phocinae `reviewerModel` इसे स्वतः चुनता है |
@@ -411,7 +412,7 @@ state ठीक `The agent is about to run the shell command "<command>" in its 
 
 Shell नियंत्रण ऑपरेटर इस backend द्वारा कभी नहीं हटाए जाते: `;`, `&`, `|`, `$()`, backticks, redirect, newline या अन्य नियंत्रण अक्षर वाला कमांड एस्केलेट होता है, भले ही मॉडल `harmless` उत्तर दे, क्योंकि दिखने वाले पाठ पर निर्णय compound कमांड के बारे में कुछ नहीं कहता। वही system या secret path (`/etc`, `/dev`, `/proc`, `/root`, `~/.ssh`, `.env`, क्रेडेंशियल, Windows system paths) संदर्भित करने वाले कमांड पर लागू: वह अनुमति देने के बजाय एस्केलेट होता है। जो कॉल shell कमांड नहीं हैं (`write`, `edit`, …) वे भी एस्केलेट होती हैं: बंडल पैच `write: ai` भेजता है, इसलिए जब आप यह backend सक्षम करें तो `write`/`edit` को `human` सेट करें, अन्यथा उनके अनुरोध डिफ़ॉल्ट fallback से अस्वीकृत होते हैं।
 
-ये सेटिंग्स जनरेटिव समीक्षक की हैं और इस backend द्वारा अनदेखी: `reviewerProvider`, `reviewerPreset`, `reviewerModelProvider`, `reviewerTools`, `reviewerGuidance`, `reviewerPolicyText` और `contextBudget`। `/auto-review approve` काम करता है: यह state में एक वाक्य का मानव-प्राधिकरण नोट (review id और टूल नाम) जोड़ता है, और मॉडल फिर भी निर्णय लेता है। क्लाइंट कोई `Authorization` हेडर नहीं भेजता; यदि सर्वर `PHOC_BEARER_TOKEN` सेट करता है, तो उसे अनसेट छोड़ें या सामने प्रमाणीकरण proxy रखें।
+ये सेटिंग्स जनरेटिव समीक्षक की हैं और इस backend द्वारा अनदेखी: `reviewerProvider`, `reviewerPreset`, `reviewerModelProvider`, `reviewerReasoningEffort`, `reviewerTools`, `reviewerGuidance`, `reviewerPolicyText` और `contextBudget`। `/auto-review approve` काम करता है: यह state में एक वाक्य का मानव-प्राधिकरण नोट (review id और टूल नाम) जोड़ता है, और मॉडल फिर भी निर्णय लेता है। क्लाइंट कोई `Authorization` हेडर नहीं भेजता; यदि सर्वर `PHOC_BEARER_TOKEN` सेट करता है, तो उसे अनसेट छोड़ें या सामने प्रमाणीकरण proxy रखें।
 
 सेवा एक बार शुरू करें: `pip install phocinae-server` (या checkout चलाएँ), [model card](https://huggingface.co/Phocinae/Phocinae-Largha-150M-v1) से weights डाउनलोड करें, फिर `PHOC_MODEL_DIR=<weights-dir> python -m phocinae.main` — यह `127.0.0.1:8155` पर सुनता है; `curl http://127.0.0.1:8155/health` से सत्यापित करें।
 

@@ -364,6 +364,7 @@ Claude Desktop（`claude_desktop_config.json`）配置示例：
 | `reviewerPreset` | *(none)* | 只读 Agent Preset id；宿主只提供 `startActivation`（0.2.1+）时必填 |
 | `reviewerModel` | *(继承)* | 审查器模型 id；不设置则继承会话代理的路由 |
 | `reviewerModelProvider` | *(继承)* | `reviewerModel` 的 LLM provider 路由；不设置则继承会话代理的 provider |
+| `reviewerReasoningEffort` | *(继承)* | 生成式审查器的推理强度：`off` / `low` / `high` / `max`。不设置则继承宿主/模型默认值（不发送任何字段）；会透传给子代理的 `agentOptions` 与无工具调用。Phocinae 后端会忽略它 |
 | `reviewerBackend` | `agent` | 审查引擎：`agent`（生成式审查器）或 `phocinae`（本机非生成式决策服务）。不设置时由 `reviewerModel` 推断：`Phocinae…` 模型 id 会选择 `phocinae` |
 | `phocinae.endpoint` | `http://127.0.0.1:8155/v1/systemone` | Phocinae 决策服务地址；除设置 `phocinae.allowRemoteEndpoint` 外仅允许 loopback |
 | `phocinae.model` | `Phocinae-Largha-150M-v1` | 服务端模型名；`reviewerModel` 为 Phocinae 模型时自动采用 |
@@ -411,7 +412,7 @@ config:
 
 含 shell 控制符的命令**永远不会被放行**：命令里出现 `;`、`&`、`|`、`$()`、反引号、重定向、换行或其他控制字符时，即使模型回答 `harmless` 也会升级——因为对可见文本的 `harmless` 判断不能代表复合命令整体。引用系统/敏感路径（`/etc`、`/dev`、`/proc`、`/root`、`~/.ssh`、`.env`、凭据、Windows 系统路径）的命令同样会升级而不是放行。非 shell 调用（`write`、`edit` 等）同样会升级：bundle patch 默认带 `write: ai`，启用本后端时请把 `write`/`edit` 改成 `human`，否则它们会按默认 fallback 被拒绝。
 
-以下设置只对生成式审查器有效，本后端会忽略：`reviewerProvider`、`reviewerPreset`、`reviewerModelProvider`、`reviewerTools`、`reviewerGuidance`、`reviewerPolicyText`、`contextBudget`。`/auto-review approve` 有效：它会把一句“用户已授权一次重试”（含 review id 与工具名）加入 state，模型仍会自行裁决。客户端不发送 `Authorization` 头；若服务端设置了 `PHOC_BEARER_TOKEN`，请不要设置它，或在前面加认证代理。
+以下设置只对生成式审查器有效，本后端会忽略：`reviewerProvider`、`reviewerPreset`、`reviewerModelProvider`、`reviewerReasoningEffort`、`reviewerTools`、`reviewerGuidance`、`reviewerPolicyText`、`contextBudget`。`/auto-review approve` 有效：它会把一句“用户已授权一次重试”（含 review id 与工具名）加入 state，模型仍会自行裁决。客户端不发送 `Authorization` 头；若服务端设置了 `PHOC_BEARER_TOKEN`，请不要设置它，或在前面加认证代理。
 
 启动服务：`pip install phocinae-server`（或直接运行仓库），从[模型卡](https://huggingface.co/Phocinae/Phocinae-Largha-150M-v1)下载权重，然后 `PHOC_MODEL_DIR=<weights-dir> python -m phocinae.main`——它监听 `127.0.0.1:8155`；用 `curl http://127.0.0.1:8155/health` 验证。
 

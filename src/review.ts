@@ -1,17 +1,17 @@
 /**
  * The reviewer: one-shot judging of a pending approval request, raced against
- * the configured timeout and the request's cancellation signal. Two seams, one
- * contract — a structured verdict, or a {@link ReviewFailure} the caller maps
- * through the fallback policy (never a grant; fail closed by default). On hosts
- * that still take a `toolFilter` the reviewer is an isolated child of the
- * delegating session; on hosts where that seam is gone it is a single tool-less
- * model call on the same route.
+ * the configured timeout and the request's cancellation signal. Three paths,
+ * one contract — a structured verdict, or a {@link ReviewFailure} the caller
+ * maps through the fallback policy (never a grant; fail closed by default). An
+ * isolated child on the legacy `start` seam, a preset-composed child on the
+ * `startActivation` seam, or a single tool-less model call on the same route
+ * when neither child face is available.
  * @module dsh-auto-review/review
  */
 
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
-import { BlockAssembler, type ContentBlock, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import { BlockAssembler, ReasoningEffortId, type ContentBlock, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { CallId } from './call-id.ts'
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import { sessionEvents } from './session-events.ts'
@@ -24,29 +24,13 @@ import { AutoReviewCircuitId, AutoReviewRejectionId, AutoReviewVerdictId, resolv
 import type { ContextBudgetConfig, ResolvedConfig, RiskLevel } from './config.ts'
 import type { ReviewerChildren } from './isolation.ts'
 import { runPhocinaeReview, type PhocinaeEvidence } from './phocinae.ts'
-/** Minimal shape of the 0.2.1+ startActivation surface (alpha hosts lack it). */
-interface ReviewerActivationService {
-  startActivation?: (spec: {
-    provider: string
-    label: string
-    request: {
-      prompt: ContentBlock[]
-      parent: unknown
-      outputSchema: ObjectJsonSchema
-      maxDepth: number
-      agentOptions?: Record<string, unknown>
-      agentPreset: string
-    }
-    signal: AbortSignal
-    delivery: 'caller'
-  }) => Promise<{
-    childId: SessionId
-    result: Promise<{ stopReason: string; structured?: unknown }>
-    dispose(): Promise<void>
-  }>
-}
-
-
+import {
+  buildReviewerActivationSpec,
+  reviewerSubagentSeam,
+  type ReviewerAgentOptions,
+  type ReviewerRun,
+  type ReviewerSubagentSeam,
+} from './subagent-compat.ts'
 /** A reviewer verdict, validated against the closed decision vocabulary. */
 export interface ReviewerVerdict {
   readonly decision: 'allow' | 'deny'
@@ -512,11 +496,21 @@ export function buildPhocinaeEvidence(
 }
 
 /**
- * Run one review attempt through whichever seam the host offers: the isolated
- * structured-capture child, or — when the host no longer takes a `toolFilter` —
- * the tool-less model call. On a `'phocinae'` backend neither seam is used:
- * the local decision service answers one typed question instead. Every path
- * resolves to a {@link ReviewResolution}, and every failure path resolves to a
+ * Run one review attempt through whichever seam the host offers, in this order:
+ *
+ * 1. `startActivation` AND a configured `reviewerPreset` — the activation child
+ *    composed from a read-only Agent Preset (dsh 0.2.1+);
+ * 2. `start` — the legacy one-shot child with a `toolFilter` allow-list
+ *    (dsh <= 0.2.1-alpha);
+ * 3. neither — one tool-less `llm` call on the delegating turn's route.
+ *
+ * The order matters: activation hosts also dropped `toolFilter`, so a child
+ * started there without a preset would inherit the parent's full tool surface;
+ * requiring the preset keeps that face read-only. A host that exposes both
+ * seams is treated as an activation host, because that is the live one. On a
+ * `'phocinae'` backend none of the three is used: the local decision service
+ * answers one typed question instead. Every path resolves to a
+ * {@link ReviewResolution}, and every failure path resolves to a
  * {@link ReviewFailure}: never a grant.
  * @param ctx - the plugin context (`ctx.subagents`, and `ctx.llm` feature-detected).
  * @param config - resolved config (provider, timeout, tools, model, budgets).
@@ -540,60 +534,69 @@ export async function runReview(
   if (config.reviewerBackend === 'phocinae') {
     return runPhocinaeReview(buildPhocinaeEvidence(request, override), config, request.signal)
   }
-  // Two reviewer seams, because the host moved: dsh <= 0.2.1-alpha still exposes
-  // the one-shot child (`ctx.subagents.start`, structured capture + tool
-  // allow-list), while 0.2.1 replaced it with `startActivation`, whose spawn
-  // provider no longer accepts a `toolFilter`. Reviving the old call there is
-  // not an option — a child without a tool allow-list is exactly the reviewer
-  // face this plugin refuses to publish — so the fallback is a plain model
-  // call: no agent, no tools, no reachable side effect at all.
+  // Three reviewer paths, because the host moved twice: dsh <= 0.2.1-alpha
+  // exposes the one-shot child (`start`, structured capture + tool allow-list);
+  // 0.2.1 replaced it with a preset-composed `startActivation` that has no
+  // `toolFilter`; and a host may expose neither seam at all. The old call is
+  // revivable only where it still exists. On an activation host the preset is
+  // what keeps the reviewer read-only: without it the child would inherit the
+  // parent's tool surface, so the third path is the tool-less model call.
   //
-  // Both seams are detected at call time rather than declared in `inject`: a
-  // host that offers the child seam never needs `llm` mounted, and making it a
+  // All seams are detected at call time rather than declared in `inject`: a
+  // host that offers a child seam never needs `llm` mounted, and making it a
   // hard dependency would stop the plugin from loading there at all.
-  if (typeof ctx.subagents.start !== 'function') {
-    const llm = ctx.get('llm')
-    if (llm === undefined) {
-      return {
-        fallback: 'unavailable',
-        error: 'auto-review: the host offers neither subagents.start nor llm, so the reviewer cannot run',
-      }
-    }
-    return runReviewInline(llm, config, request, override)
+  const seam = reviewerSubagentSeam(ctx)
+  const activation = typeof seam.startActivation === 'function' && config.reviewerPreset !== undefined
+  if (activation || typeof seam.start === 'function') {
+    return runReviewStructured(seam, config, request, reviewerSessions, activation, override)
   }
-  return runReviewStructured(ctx, config, request, reviewerSessions, override)
+  const llm = ctx.get('llm')
+  if (llm === undefined) {
+    return {
+      fallback: 'unavailable',
+      error: 'auto-review: the host offers neither a usable subagent seam nor llm, so the reviewer cannot run',
+    }
+  }
+  return runReviewInline(llm, config, request, override)
 }
 
-/** Agent options for the reviewer child/activation: model and LLM provider when configured. */
-function reviewerAgentOptions(config: ResolvedConfig): { agentOptions?: { model?: string; provider?: string } } {
-  const options = {
+/** Agent options for the reviewer child/activation: model, LLM provider, and effort when configured. */
+function reviewerAgentOptions(config: ResolvedConfig): { agentOptions?: ReviewerAgentOptions } {
+  const options: ReviewerAgentOptions = {
     ...config.reviewerModel === undefined ? {} : { model: config.reviewerModel },
     ...config.reviewerModelProvider === undefined ? {} : { provider: config.reviewerModelProvider },
+    ...config.reviewerReasoningEffort === undefined
+      ? {}
+      : { reasoningEffort: ReasoningEffortId(config.reviewerReasoningEffort) },
   }
   return Object.keys(options).length === 0 ? {} : { agentOptions: options }
 }
 
 /**
- * The structured reviewer path: one-shot child on the configured provider with
- * a read-only tool allow-list and the verdict schema as its structured output.
- * @param ctx - the plugin context (`ctx.subagents` and the request's parent agent).
+ * The structured reviewer path: one-shot child on the configured provider, with
+ * a read-only tool allow-list (legacy seam) or a read-only Agent Preset
+ * (activation seam), and the verdict schema as its structured output.
+ * @param seam - the structural `ctx.subagents` view, already dispatched by {@link runReview}.
  * @param config - resolved config (provider, timeout, tools, model, budgets).
  * @param request - the pending approval request (parent, signal, and evidence).
  * @param reviewerSessions - the mount's reviewer-child registry, so the
  *   answerer can refuse the child's own approval asks while the review runs
  *   and the context firewall knows whose steps to strip.
+ * @param activation - true when {@link runReview} selected the activation seam
+ *   (which requires {@link ResolvedConfig.reviewerPreset}).
  * @param override - a pending human one-shot override, when one applies.
  * @returns the verdict or the failure.
  */
 async function runReviewStructured(
-  ctx: Context,
+  seam: ReviewerSubagentSeam,
   config: ResolvedConfig,
   request: ApprovalRequest,
   reviewerSessions: ReviewerChildren,
+  activation: boolean,
   override?: OverrideContext,
 ): Promise<ReviewResolution> {
   const provider = config.reviewerProvider
-  const providerInfo = ctx.subagents.getProvider(provider)
+  const providerInfo = seam.getProvider(provider)
   if (providerInfo === undefined) {
     return { fallback: 'unavailable', error: `subagent provider "${provider}" is not registered` }
   }
@@ -603,7 +606,10 @@ async function runReviewStructured(
   if (capabilities?.outputSchema === false) {
     return { fallback: 'unavailable', error: `subagent provider "${provider}" does not support outputSchema, which the structured verdict requires` }
   }
-  if (capabilities?.toolFilter === false) {
+  // `toolFilter` exists only on the legacy seam; the activation face is scoped
+  // by the preset instead, so a provider that dropped the old capability must
+  // not be rejected here.
+  if (!activation && capabilities?.toolFilter === false) {
     return { fallback: 'unavailable', error: `subagent provider "${provider}" does not support toolFilter, which the read-only reviewer face requires` }
   }
   const promptText = buildReviewPrompt(request, config, override)
@@ -624,7 +630,7 @@ async function runReviewStructured(
   request.signal?.addEventListener('abort', onAbort, { once: true })
   let reviewerSessionId: SessionId | undefined
   let model: string | undefined
-  let run: import('@deepseek-ai/dsh-subagent').SubagentRun | undefined
+  let run: ReviewerRun | undefined
   const failure = (fallback: AutoReviewFallback, error: string): ReviewFailure => ({
     fallback,
     error,
@@ -632,44 +638,47 @@ async function runReviewStructured(
     ...model !== undefined ? { model } : {},
   })
   try {
-    const activationService = ctx.subagents as unknown as ReviewerActivationService
-    if (typeof activationService.startActivation === 'function') {
+    if (activation) {
       // Host 0.2.1+ removed start()/toolFilter. The only read-only face is an
-      // Agent Preset that scopes tools itself, so refuse to migrate without one
-      // rather than handing the reviewer the parent's full tool surface.
-      if (config.reviewerPreset === undefined) {
-        return failure('unavailable', 'this host uses subagents.startActivation; set reviewerPreset to a read-only Agent Preset (reviewerProvider fork cannot scope tools here)')
+      // Agent Preset that scopes tools itself, so runReview refuses to select
+      // this branch without one rather than handing the reviewer the parent's
+      // full tool surface.
+      const startActivation = seam.startActivation
+      if (startActivation === undefined || config.reviewerPreset === undefined) {
+        return failure('unavailable', 'the host uses subagents.startActivation; set reviewerPreset to a read-only Agent Preset (reviewerProvider fork cannot scope tools here)')
       }
-      const activation = await activationService.startActivation({
+      const started = await startActivation(buildReviewerActivationSpec({
         provider,
         label: `auto-review: ${request.toolName}`,
-        request: {
-          prompt,
-          parent: request.agent,
-          outputSchema: VERDICT_SCHEMA,
-          maxDepth: (request.agent.session.header.delegationDepth ?? 0) + 1,
-          agentPreset: config.reviewerPreset,
-          ...reviewerAgentOptions(config),
-        },
+        prompt,
+        parent: request.agent,
+        outputSchema: VERDICT_SCHEMA,
+        // The cap equals the reviewer's OWN computed depth (parent depth + 1):
+        // the reviewer may run, but any child it tries to spawn would exceed it.
+        maxDepth: (request.agent.session.header.delegationDepth ?? 0) + 1,
+        agentPreset: config.reviewerPreset,
+        ...reviewerAgentOptions(config),
         signal: controller.signal,
-        delivery: 'caller',
-      })
-      run = activation as unknown as typeof run
-      reviewerSessionId = activation.childId
+      }))
+      run = started
+      reviewerSessionId = started.childId
     } else {
-      run = await ctx.subagents.start(provider, {
+      const start = seam.start
+      if (start === undefined) {
+        return failure('unavailable', 'the host exposes no subagent start seam for the structured reviewer')
+      }
+      const started = await start(provider, {
         label: `auto-review: ${request.toolName}`,
         prompt,
         parent: request.agent,
         signal: controller.signal,
         toolFilter: { allow: config.reviewerTools },
         outputSchema: VERDICT_SCHEMA,
-        // The cap equals the reviewer's OWN computed depth (parent depth + 1):
-        // the reviewer may run, but any child it tries to spawn would exceed it.
         maxDepth: (request.agent.session.header.delegationDepth ?? 0) + 1,
         ...reviewerAgentOptions(config),
       })
-      reviewerSessionId = run.id
+      run = started
+      reviewerSessionId = started.id
     }
     if (run === undefined || reviewerSessionId === undefined) {
       return failure('unavailable', 'reviewer did not publish a session id')
@@ -713,9 +722,12 @@ async function runReviewStructured(
 }
 
 /**
- * The tool-less reviewer path, for hosts whose subagent seam no longer takes a
- * `toolFilter`: one `ctx.llm.stream` call on the same route the delegating turn
- * used, `temperature: 0`, the same prompt, and the same verdict validation. No
+ * The tool-less reviewer path, for hosts whose subagent seams are unavailable
+ * or unusable without a read-only preset: one `ctx.llm.stream` call on the same
+ * route the delegating turn used, the same prompt, and the same verdict
+ * validation. No `temperature` is sent — thinking mode ignores it silently, so
+ * a value would only mislead a reader of the request; `reviewerReasoningEffort`
+ * is forwarded when set, and omitted otherwise so the host default applies. No
  * child session exists, so there is nothing to isolate and no id to record; the
  * absence of tools is the isolation. Every failure still resolves to a
  * {@link ReviewFailure}.
@@ -756,7 +768,9 @@ async function runReviewInline(
       model,
       system: REVIEW_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: [{ type: 'text', text: promptText }] }],
-      temperature: 0,
+      ...config.reviewerReasoningEffort === undefined
+        ? {}
+        : { reasoningEffort: ReasoningEffortId(config.reviewerReasoningEffort) },
       signal: controller.signal,
     })) {
       assembler.push(chunk)

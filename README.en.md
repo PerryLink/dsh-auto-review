@@ -364,6 +364,7 @@ Most-used keys:
 | `reviewerPreset` | *(none)* | Read-only Agent Preset id; required when the host exposes `startActivation` (0.2.1+) instead of `toolFilter` |
 | `reviewerModel` | *(inherit)* | Reviewer model id; unset inherits the session agent's route |
 | `reviewerModelProvider` | *(inherit)* | LLM provider route for `reviewerModel`; unset inherits the session agent's provider |
+| `reviewerReasoningEffort` | *(inherit)* | Reasoning effort for the generative reviewer: `off` / `low` / `high` / `max`. Unset inherits the host/model default (nothing is sent); forwarded to both the child's `agentOptions` and the tool-less call. The Phocinae backend ignores it |
 | `reviewerBackend` | `agent` | Reviewer engine: `agent` (the generative reviewer) or `phocinae` (the local non-generative decision service). Unset infers it from `reviewerModel`: a `Phocinae…` id selects `phocinae` |
 | `phocinae.endpoint` | `http://127.0.0.1:8155/v1/systemone` | Phocinae decision-service URL; loopback only unless `phocinae.allowRemoteEndpoint` is set |
 | `phocinae.model` | `Phocinae-Largha-150M-v1` | Served model name; a Phocinae `reviewerModel` selects it automatically |
@@ -411,7 +412,7 @@ The state is exactly `The agent is about to run the shell command "<command>" in
 
 Shell control operators are never cleared by this backend: a command containing `;`, `&`, `|`, `$()`, backticks, a redirect, a newline, or another control character escalates even when the model answers `harmless`, because a verdict about the visible text says nothing about a compound command. The same applies to a command that references a system or secret path (`/etc`, `/dev`, `/proc`, `/root`, `~/.ssh`, `.env`, credentials, Windows system paths): it escalates instead of allowing. Calls that are not shell commands (`write`, `edit`, …) escalate too: the bundled patch ships `write: ai`, so set `write`/`edit` to `human` when you enable this backend, or their requests are rejected by the default fallback.
 
-These settings belong to the generative reviewer and are ignored by this backend: `reviewerProvider`, `reviewerPreset`, `reviewerModelProvider`, `reviewerTools`, `reviewerGuidance`, `reviewerPolicyText`, and `contextBudget`. `/auto-review approve` does work: it adds a one-sentence human-authorization note (review id and tool name) to the state, and the model still decides. The client sends no `Authorization` header; if the server sets `PHOC_BEARER_TOKEN`, leave it unset or put an authenticating proxy in front.
+These settings belong to the generative reviewer and are ignored by this backend: `reviewerProvider`, `reviewerPreset`, `reviewerModelProvider`, `reviewerReasoningEffort`, `reviewerTools`, `reviewerGuidance`, `reviewerPolicyText`, and `contextBudget`. `/auto-review approve` does work: it adds a one-sentence human-authorization note (review id and tool name) to the state, and the model still decides. The client sends no `Authorization` header; if the server sets `PHOC_BEARER_TOKEN`, leave it unset or put an authenticating proxy in front.
 
 Start the service once: `pip install phocinae-server` (or run the checkout), download the weights from the [model card](https://huggingface.co/Phocinae/Phocinae-Largha-150M-v1), then `PHOC_MODEL_DIR=<weights-dir> python -m phocinae.main` — it listens on `127.0.0.1:8155`; verify with `curl http://127.0.0.1:8155/health`.
 

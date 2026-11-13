@@ -31,6 +31,9 @@ const SILENT_RUNNER_ENV = { DSH_LOADER_RUNNER_NO_RETHROW: '1' }
 function configFor(pluginRow: string, configLines: string[] = []): string {
   return [
     "- name: '@deepseek-ai/dsh-session'",
+    // rc.3's ApprovalService injects `sessionProjections`; without this row the
+    // approval fiber stays inactive and the plugin never mounts.
+    "- name: '@deepseek-ai/dsh-session-projection'",
     "- name: '@deepseek-ai/dsh-user-approval'",
     "- name: '@deepseek-ai/dsh-commands'",
     `- name: ${JSON.stringify(pluginRow)}`,
@@ -130,7 +133,8 @@ describe('real Loader composition', () => {
     expect(silent.stderr).not.toMatch(/toolsPolicy\.default/u)
     expect(loud.stderr).toMatch(/toolsPolicy\.default/u)
     expect(loud.stderr).not.toMatch(/command is missing/u)
-  })
+    // Two full loader boots: the default 5s test budget is too tight on rc.3.
+  }, 20_000)
 })
 
 describe('built bin smoke', () => {

@@ -40,6 +40,15 @@ export type RiskLevel = 'low' | 'medium' | 'high'
 export type ReviewerBackend = 'agent' | 'phocinae'
 
 /**
+ * Reasoning effort for the generative reviewer, using the host's four effort
+ * ids. Unset (the default) inherits the host/model default; the plugin never
+ * invents an effort of its own. On the tool-less path this replaces the
+ * `temperature: 0` that thinking mode silently ignores; on the structured path
+ * it travels as the child's `agentOptions.reasoningEffort`.
+ */
+export type ReviewerReasoningEffort = 'off' | 'low' | 'high' | 'max'
+
+/**
  * The local Phocinae decision service (`phocinae-server`, model
  * `Phocinae-Largha-150M-v1`). The model answers typed decisions — boolean,
  * option index, 2..10 level — and never emits tokens, so a review costs one
@@ -229,6 +238,14 @@ export interface Config {
   /** LLM provider route for {@link reviewerModel}; unset inherits the session agent's provider. */
   reviewerModelProvider?: string
   /**
+   * Reasoning effort for the generative reviewer: `off` | `low` | `high` | `max`.
+   * Unset (the default) inherits the host/model default and sends nothing —
+   * neither the tool-less call nor the child carries an effort override.
+   * Relevant only to the generative backend; the Phocinae decision service
+   * never generates text and ignores it.
+   */
+  reviewerReasoningEffort?: ReviewerReasoningEffort
+  /**
    * Which engine answers an `ai`-policy review (see {@link ReviewerBackend}).
    * Unset infers from {@link reviewerModel}: a `Phocinae…` name selects the
    * local decision service, everything else keeps the generative reviewer.
@@ -315,6 +332,8 @@ export interface ResolvedConfig {
   readonly reviewerPreset?: string | undefined
   readonly reviewerModel: string | undefined
   readonly reviewerModelProvider: string | undefined
+  /** The reviewer's reasoning effort; unset means inherit the host/model default. */
+  readonly reviewerReasoningEffort: ReviewerReasoningEffort | undefined
   /** The resolved reviewer engine (see {@link ReviewerBackend}). */
   readonly reviewerBackend: ReviewerBackend
   /** The resolved Phocinae settings; relevant only when {@link reviewerBackend} is `'phocinae'`. */
@@ -384,6 +403,7 @@ export const Config: z<Config> = z.object({
   reviewerPreset: z.string(),
   reviewerModel: z.string(),
   reviewerModelProvider: z.string(),
+  reviewerReasoningEffort: z.union(['off', 'low', 'high', 'max'] as const),
   reviewerBackend: REVIEWER_BACKEND,
   phocinae: z.object({
     endpoint: z.string(),
@@ -573,6 +593,10 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
   if (rawBackend !== undefined && rawBackend !== 'agent' && rawBackend !== 'phocinae') {
     throw new TypeError(`reviewerBackend must be one of "agent", "phocinae", got ${JSON.stringify(rawBackend)}`)
   }
+  const rawEffort: unknown = config.reviewerReasoningEffort
+  if (rawEffort !== undefined && rawEffort !== 'off' && rawEffort !== 'low' && rawEffort !== 'high' && rawEffort !== 'max') {
+    throw new TypeError(`reviewerReasoningEffort must be one of "off", "low", "high", "max", got ${JSON.stringify(rawEffort)}`)
+  }
   // An explicit backend always wins; otherwise a Phocinae model id selects the
   // local decision service, which makes `reviewerModel: Phocinae-…` sufficient.
   const reviewerBackend: ReviewerBackend = rawBackend
@@ -604,6 +628,7 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     reviewerPreset: config.reviewerPreset,
     reviewerModel: config.reviewerModel ?? undefined,
     reviewerModelProvider: config.reviewerModelProvider ?? undefined,
+    reviewerReasoningEffort: config.reviewerReasoningEffort,
     reviewerBackend,
     phocinae,
     reviewerTimeoutMs: config.reviewerTimeoutMs ?? 60_000,
