@@ -72,6 +72,41 @@ describe('auto-review answerer', () => {
     })
   })
 
+  // Regression for #83: a PTC approval carries `<outer>:ptc:<n>` while the
+  // logged `tool/call` carries only `<outer>`, so the reviewer used to see no
+  // arguments at all and deny every ai-routed escalation from a PTC session.
+  it('reviews a PTC sub-call with the inner tool arguments (#83)', async () => {
+    const harness = await auditHarness({ toolsPolicy: { overrides: { write: 'ai' } } })
+    const outer = 'call_ptc_outer'
+    const child = `${outer}:ptc:1`
+    const append = harness.session.append as unknown as (type: string, data: unknown) => unknown
+    append.call(harness.session, 'tool/call', {
+      turn: 1, step: 1, callId: outer, name: 'run_code', arguments: '{"code":"await tools.write({})"}',
+    })
+    append.call(harness.session, 'tool/ptc-dispatch-start', {
+      rootCallId: outer,
+      parentCallId: outer,
+      subCallId: child,
+      name: 'write',
+      arguments: { file_path: '/tmp/ptc-inner.txt', content: 'inner call content' },
+    })
+    const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'write',
+      callId: CallId(child),
+      reason: 'PTC-folded write',
+    }, next)
+    expect(outcome).toBe('allowed-once')
+    const prompt = harness.subagents.starts.at(-1)!.request.prompt
+      .map(block => block.type === 'text' ? block.text : '')
+      .join('')
+    expect(prompt).toContain('"file_path": "/tmp/ptc-inner.txt"')
+    expect(prompt).toContain('"content": "inner call content"')
+    expect(prompt).toContain('PTC child-call record')
+    expect(prompt).not.toContain('could not be resolved')
+    expect(prompt).not.toContain('not found or unparseable')
+  })
+
   it('requests the ignorable envelope marker so any harness build can load the log', async () => {
     const harness = await auditHarness({ toolsPolicy: { overrides: { bash: 'ai' } } })
     const append = vi.spyOn(harness.session, 'append')

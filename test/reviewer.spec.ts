@@ -470,3 +470,74 @@ describe('sanitized arguments text', () => {
     expect(sanitizedArgumentsText(events as never, CallId('ghost'))).toBeUndefined()
   })
 })
+
+describe('PTC call evidence (#83)', () => {
+  const outer = 'call_00_jll5n78ecmoe8fcfmcihx10y'
+  const child = `${outer}:ptc:1`
+  const writeArgs = { file_path: '/tmp/ptc-regression.txt', content: 'inner call content' }
+  const outerCall = {
+    type: 'tool/call',
+    seq: 0,
+    time: 0,
+    data: { turn: 1, step: 1, callId: outer, name: 'run_code', arguments: '{"code":"await tools.write({...})"}' },
+  }
+  const outerCallOnly = [outerCall]
+  const childCall = {
+    type: 'tool/ptc-dispatch-start',
+    seq: 1,
+    time: 1,
+    data: { rootCallId: outer, parentCallId: outer, subCallId: child, name: 'write', arguments: writeArgs },
+  }
+
+  it('renders the inner tool arguments the approval carries, not a placeholder', () => {
+    // The exact shape from the issue: approval callId `<outer>:ptc:1`, the
+    // logged `tool/call` keyed by `<outer>`, the arguments on the child row.
+    const text = renderCallContext([outerCall, childCall] as never, CallId(child), 2000)
+    expect(text).toContain('"file_path": "/tmp/ptc-regression.txt"')
+    expect(text).toContain('"content": "inner call content"')
+    expect(text).toContain('PTC child-call record')
+    expect(text).toContain('tool/ptc-dispatch-start')
+    expect(text).not.toContain('could not be resolved')
+    expect(text).not.toContain('not found or unparseable')
+  })
+
+  it('labels an enclosing-call fallback as NOT the pending call\'s arguments', () => {
+    const text = renderCallContext(outerCallOnly as never, CallId(child), 2000)
+    expect(text).toContain('ENCLOSING tool call')
+    expect(text).toContain(outer)
+    expect(text).toContain("NOT the pending call's own")
+    expect(text).toContain('await tools.write')
+    // The fallback is disclosed as a fallback, never as the inner call's args.
+    expect(text).not.toContain('PTC child-call record')
+  })
+
+  it('keeps a lookup gap distinct from a row that carries no arguments', () => {
+    // No row carries the child id, and its enclosing call is missing too.
+    const unresolved = renderCallContext([outerCall] as never, CallId('call_absent:ptc:1'), 2000)
+    expect(unresolved).toContain('could not be resolved')
+    expect(unresolved).toContain('LOOKUP GAP')
+    expect(unresolved).toContain('call_absent')
+    const bare = renderCallContext([
+      { type: 'tool/ptc-dispatch-start', seq: 1, time: 1, data: { subCallId: child, name: 'write' } },
+    ] as never, CallId(child), 2000)
+    expect(bare).toContain('carries no parseable arguments payload')
+    expect(bare).not.toContain('could not be resolved')
+  })
+
+  it('feeds the child arguments to the risk-rule/cache surface', () => {
+    const text = sanitizedArgumentsText([outerCall, childCall] as never, CallId(child))
+    expect(text).toContain('"file_path": "/tmp/ptc-regression.txt"')
+  })
+
+  it('puts the child arguments in the reviewer prompt', () => {
+    const session = sessionWithEvents([
+      { type: 'tool/call', data: outerCall.data },
+      { type: 'tool/ptc-dispatch-start', data: childCall.data },
+    ])
+    const prompt = buildReviewPrompt({ agent: makeAgent(session), toolName: 'write', callId: CallId(child) }, promptConfig())
+    expect(prompt).toContain('Tool name: write')
+    expect(prompt).toContain('"file_path": "/tmp/ptc-regression.txt"')
+    expect(prompt).toContain('PTC child-call record')
+    expect(prompt).not.toContain('could not be resolved')
+  })
+})

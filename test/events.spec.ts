@@ -21,6 +21,7 @@ import {
   findPresentedCall,
   lastDeniedVerdicts,
   openTurnVerdicts,
+  resolvePresentedCall,
   reviewStats,
 } from '../src/index.ts'
 
@@ -119,6 +120,78 @@ describe('findPresentedCall', () => {
     )
     expect(findPresentedCall(session.snapshotEvents(), CallId('call-2'))).toBe('{"command":"rm"}')
     expect(findPresentedCall(session.snapshotEvents(), CallId('call-9'))).toBeUndefined()
+  })
+
+  // Regression for #83: a PTC approval carries `<outer>:ptc:<n>` while the
+  // logged `tool/call` carries only `<outer>`; the inner call's own arguments
+  // are on the `tool/ptc-dispatch-start` row keyed by `subCallId`.
+  const outer = 'call_00_jll5n78ecmoe8fcfmcihx10y'
+  const child = `${outer}:ptc:1`
+  const outerRow = { type: 'tool/call', data: { turn: 1, step: 1, callId: outer, name: 'run_code', arguments: '{"code":"await tools.write({})"}' } }
+  const writeArgs = { file_path: '/tmp/ptc.txt', content: 'hello from ptc' }
+  const childRow = { type: 'tool/ptc-dispatch-start', data: { rootCallId: outer, parentCallId: outer, subCallId: child, name: 'write', arguments: writeArgs } }
+
+  it('resolves a PTC child call through its sub-dispatch record', () => {
+    const session = sessionWith(outerRow, childRow)
+    expect(findPresentedCall(session.snapshotEvents(), CallId(child))).toBe(JSON.stringify(writeArgs))
+  })
+
+  it('falls back to the enclosing tool/call when no child record exists', () => {
+    const session = sessionWith(outerRow)
+    expect(findPresentedCall(session.snapshotEvents(), CallId(child))).toBe(outerRow.data.arguments)
+  })
+
+  it('walks out of nested PTC ids one level at a time', () => {
+    const session = sessionWith(outerRow)
+    expect(findPresentedCall(session.snapshotEvents(), CallId(`${child}:ptc:2`))).toBe(outerRow.data.arguments)
+  })
+
+  it('reads the settled tool/ptc-dispatch pair when the start row is absent', () => {
+    const session = sessionWith(outerRow, {
+      type: 'tool/ptc-dispatch',
+      data: { rootCallId: outer, parentCallId: outer, subCallId: child, name: 'write', arguments: writeArgs, isError: false, content: [] },
+    })
+    expect(findPresentedCall(session.snapshotEvents(), CallId(child))).toBe(JSON.stringify(writeArgs))
+  })
+})
+
+describe('resolvePresentedCall', () => {
+  const outer = 'call_ptc_outer'
+  const child = `${outer}:ptc:1`
+  const writeArgs = { file_path: '/tmp/ptc.txt', content: 'hi' }
+
+  it('prefers the PTC child record and names its source', () => {
+    const session = sessionWith(
+      { type: 'tool/call', data: { turn: 1, step: 1, callId: outer, name: 'run_code', arguments: '{"code":"x"}' } },
+      { type: 'tool/ptc-dispatch-start', data: { rootCallId: outer, parentCallId: outer, subCallId: child, name: 'write', arguments: writeArgs } },
+    )
+    const lookup = resolvePresentedCall(session.snapshotEvents(), CallId(child))
+    expect(lookup).toEqual({
+      outcome: 'found',
+      call: { callId: child, name: 'write', source: 'tool/ptc-dispatch-start', argumentsText: JSON.stringify(writeArgs) },
+    })
+  })
+
+  it('labels the enclosing record by the id it actually carries', () => {
+    const session = sessionWith(
+      { type: 'tool/call', data: { turn: 1, step: 1, callId: outer, name: 'run_code', arguments: '{"code":"x"}' } },
+    )
+    const lookup = resolvePresentedCall(session.snapshotEvents(), CallId(child))
+    expect(lookup.outcome).toBe('found')
+    expect(lookup.outcome === 'found' && lookup.call.callId).toBe(outer)
+    expect(lookup.outcome === 'found' && lookup.call.name).toBe('run_code')
+  })
+
+  it('separates "no row at all" from "row without arguments"', () => {
+    const nothing = sessionWith(
+      { type: 'tool/call', data: { turn: 1, step: 1, callId: 'other', name: 'bash', arguments: '{}' } },
+    )
+    expect(resolvePresentedCall(nothing.snapshotEvents(), CallId(child))).toEqual({ outcome: 'unresolved', parentCallId: outer })
+    expect(resolvePresentedCall(nothing.snapshotEvents(), CallId('native-missing'))).toEqual({ outcome: 'unresolved' })
+    const bare = sessionWith(
+      { type: 'tool/ptc-dispatch-start', data: { rootCallId: outer, parentCallId: outer, subCallId: child, name: 'write' } },
+    )
+    expect(resolvePresentedCall(bare.snapshotEvents(), CallId(child))).toEqual({ outcome: 'missing-arguments', source: 'tool/ptc-dispatch-start', callId: child })
   })
 })
 

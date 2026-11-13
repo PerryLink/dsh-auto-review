@@ -42,13 +42,13 @@ import {
   denyResultText,
   effectiveAutoReviewState,
   fallbackResultText,
-  findPresentedCall,
   lastDeniedVerdicts,
   neverResultText,
   plainCircuitResultText,
   plainDenyResultText,
   plainFallbackResultText,
   plainNeverResultText,
+  resolvePresentedCall,
   reviewStats,
   type AutoReviewFallback,
   type AutoReviewVerdictId,
@@ -729,8 +729,12 @@ export class AutoReviewRuntime {
     if (this.config.verdictCacheTtlMs <= 0) return undefined
     if (this.config.contextBudget.turns > 0) return undefined
     if (request.callId === undefined) return undefined
-    const raw = findPresentedCall(sessionEvents(request.agent.session), request.callId)
-    return fingerprint(request.toolName, raw)
+    const lookup = resolvePresentedCall(sessionEvents(request.agent.session), request.callId)
+    // Only the pending call's OWN row is replayable: an enclosing PTC
+    // `run_code` row is shared by every sub-call in the program, so two
+    // different inner calls would collide on one cached verdict.
+    if (lookup.outcome !== 'found' || lookup.call.callId !== String(request.callId)) return undefined
+    return fingerprint(request.toolName, lookup.call.argumentsText)
   }
 
   /**
