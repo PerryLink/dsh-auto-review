@@ -296,7 +296,9 @@ export class EvalEngine {
       agentOptions: { provider, model, ...(maxTokens !== undefined ? { maxTokens } : {}) },
       signal,
       setup: (agentCtx) => {
-        installModelSelection(agentCtx, { current: { provider, model }, assembled: undefined })
+        // 0.2.2 derives the initial selection from `agentOptions`; the old
+        // second argument (an explicit seed) no longer exists.
+        installModelSelection(agentCtx)
       },
     })
   }
