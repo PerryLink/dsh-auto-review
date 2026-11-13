@@ -12,7 +12,7 @@
  */
 
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { CallId } from './call-id.ts'
+import { CallId } from './call-id.ts'
 import type { SessionEvent, SessionEventMap, SessionId } from '@deepseek-ai/dsh-session'
 import type { ApprovalOutcome, ApprovalRequestId } from '@deepseek-ai/dsh-user-approval'
 import type { CircuitAction, RiskLevel } from './config.ts'
@@ -594,16 +594,229 @@ export function correlateApprovalId(
 }
 
 /**
- * Find the already-presented tool call the approval request refers to — the
- * `tool/call` event whose arguments the model produced and the UI streamed.
- * @param events - session events in log order.
- * @param callId - the exact call to find.
- * @returns the call's raw arguments JSON string, or undefined without one.
+ * Where a presented-call argument record came from.
+ *
+ * The host logs a native call as `tool/call` (arguments as a JSON string). A
+ * PTC-folded call is a sub-dispatch: the `tool/call` on the log carries the
+ * OUTER id (name `run_code`) while the approval carries the child id
+ * `<outer>:ptc:<n>`, and the child's own `name`/`arguments` live on the
+ * dispatch record — `tool/ptc-dispatch-start` when it starts, and its settled
+ * pair `tool/ptc-dispatch` afterwards. Both carry the same normalized payload.
  */
-export function findPresentedCall(events: readonly SessionEvent[], callId: CallId): string | undefined {
+export type PresentedCallSource = 'tool/call' | 'tool/ptc-dispatch-start' | 'tool/ptc-dispatch'
+
+/** One tool-call argument record resolved for a pending approval. */
+export interface PresentedCall {
+  /**
+   * The call id the RECORD carries. Equal to the requested id for the pending
+   * call's own record; different when only an enclosing (PTC parent) call
+   * resolved, which callers must disclose rather than present as the pending
+   * call's own arguments.
+   */
+  readonly callId: string
+  /** The tool name logged with the record ('' when the host omitted it). */
+  readonly name: string
+  /** Which event type supplied the arguments. */
+  readonly source: PresentedCallSource
+  /**
+   * The arguments as JSON text: the native call's own logged string, or the
+   * PTC dispatch record's already-normalized value re-serialized. Callers
+   * parse, redact and truncate it exactly like a native call's arguments.
+   */
+  readonly argumentsText: string
+}
+
+/**
+ * The outcome of resolving an approval request's call evidence from the log.
+ * The three outcomes stay distinct on purpose: the reviewer prompt — and so
+ * the deny reason quoted back to the model — must say WHICH gap it hit. A
+ * missing `tool/call` row for a PTC id used to render as "not found or
+ * unparseable", which read as "this call had no arguments" and made every
+ * PTC escalation indistinguishable from an empty-argument call.
+ */
+export type PresentedCallLookup =
+  /** The requested call's own record, or its nearest enclosing record. */
+  | { readonly outcome: 'found'; readonly call: PresentedCall }
+  /** No record in the log carries the requested id or any enclosing ancestor id. */
+  | { readonly outcome: 'unresolved'; readonly parentCallId?: CallId }
+  /** A record carries the id but no arguments payload at all. */
+  | { readonly outcome: 'missing-arguments'; readonly source: PresentedCallSource; readonly callId: string }
+
+/** The marker the host's PTC runtime puts between an outer call id and the sub-call number. */
+const PTC_SUBCALL_MARKER = ':ptc:'
+
+/** JSON text for one logged argument payload, or undefined when the payload is absent/serialization fails. */
+function argumentsTextOf(value: unknown): string | undefined {
+  if (value === undefined) return undefined
+  if (typeof value === 'string') return value
+  try {
+    const text = JSON.stringify(value)
+    return text === undefined ? undefined : text
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The enclosing call id of one PTC sub-call id (`<outer>:ptc:<n>` → `<outer>`),
+ * or undefined when the id is not PTC-folded. Each strip removes the LAST
+ * marker, so a nested sub-call walks out one level at a time.
+ * @param callId - the id to strip.
+ * @returns the enclosing id, or undefined when there is none.
+ */
+function enclosingCallId(callId: string): CallId | undefined {
+  const at = callId.lastIndexOf(PTC_SUBCALL_MARKER)
+  if (at <= 0) return undefined
+  return CallId(callId.slice(0, at))
+}
+
+/** One PTC sub-dispatch row read structurally (the event type is declared by the host's PTC runtime, not by this package). */
+interface PtcSubCallRecord {
+  readonly type: 'tool/ptc-dispatch-start' | 'tool/ptc-dispatch'
+  readonly subCallId: string
+  readonly name: string
+  readonly arguments: unknown
+}
+
+/**
+ * Read one log row as a PTC sub-call record, or undefined for any other event.
+ * `@deepseek-ai/dsh-tool-executor-ptc` owns the `SessionEventMap` entry and is
+ * not a dependency of this package (a consumer profile installs it, or does
+ * not), so the row is read by shape — the same approach the V3/V4 tool-result
+ * reader takes for rows whose declaration lives on the host side.
+ * @param event - one session event.
+ * @returns the structurally-read record, or undefined.
+ */
+function readPtcSubCall(event: SessionEvent): PtcSubCallRecord | undefined {
+  const type = (event as { type: string }).type
+  if (type !== 'tool/ptc-dispatch-start' && type !== 'tool/ptc-dispatch') return undefined
+  const data = (event as { data?: unknown }).data
+  if (typeof data !== 'object' || data === null) return undefined
+  const record = data as Record<string, unknown>
+  const subCallId = record['subCallId']
+  if (typeof subCallId !== 'string' || subCallId === '') return undefined
+  const name = record['name']
+  return { type, subCallId, name: typeof name === 'string' ? name : '', arguments: record['arguments'] }
+}
+
+/**
+ * The PTC dispatch record for one sub-call id, newest valid match first.
+ * `tool/ptc-dispatch-start` wins over its settled `tool/ptc-dispatch` pair:
+ * the started row is the one present while the approval is pending, and both
+ * carry the same normalized arguments.
+ * @param events - session events in log order.
+ * @param subCallId - the child id to match.
+ * @returns the record, or undefined.
+ */
+function findPtcSubCall(events: readonly SessionEvent[], subCallId: string): PtcSubCallRecord | undefined {
+  let settled: PtcSubCallRecord | undefined
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const record = readPtcSubCall(events[index] as SessionEvent)
+    if (record === undefined || record.subCallId !== subCallId) continue
+    if (record.type === 'tool/ptc-dispatch') {
+      settled ??= record
+      continue
+    }
+    return record
+  }
+  return settled
+}
+
+/** The result of looking up ONE exact id in the log. */
+type IdLookup =
+  | { readonly hit: 'found'; readonly call: PresentedCall }
+  | { readonly hit: 'missing-arguments'; readonly source: PresentedCallSource }
+  | { readonly hit: 'absent' }
+
+/**
+ * Look one exact call id up in the log: the PTC child-call record first, then
+ * the native `tool/call`. Preferring the child record is what keeps a PTC
+ * approval's evidence the INNER tool's own arguments instead of a fallback to
+ * its enclosing `run_code`.
+ * @param events - session events in log order.
+ * @param callId - the exact id to match.
+ * @returns the hit; `absent` when no row carries the id at all.
+ */
+function lookupCallId(events: readonly SessionEvent[], callId: string): IdLookup {
+  const ptc = findPtcSubCall(events, callId)
+  const ptcText = ptc === undefined ? undefined : argumentsTextOf(ptc.arguments)
+  if (ptc !== undefined && ptcText !== undefined) {
+    return { hit: 'found', call: { callId, name: ptc.name, source: ptc.type, argumentsText: ptcText } }
+  }
+  // A host that logs the inner call natively as well may carry the payload
+  // there, so try it before reporting the child record as empty.
+  let nativeWithoutPayload = false
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index] as SessionEvent
-    if (event.type === 'tool/call' && event.data.callId === callId) return event.data.arguments
+    if (event.type !== 'tool/call' || String(event.data.callId) !== callId) continue
+    const argumentsText = argumentsTextOf(event.data.arguments)
+    if (argumentsText === undefined) {
+      nativeWithoutPayload = true
+      break
+    }
+    return { hit: 'found', call: { callId, name: event.data.name, source: 'tool/call', argumentsText } }
   }
-  return undefined
+  if (ptc !== undefined) return { hit: 'missing-arguments', source: ptc.type }
+  if (nativeWithoutPayload) return { hit: 'missing-arguments', source: 'tool/call' }
+  return { hit: 'absent' }
+}
+
+/**
+ * Resolve the already-presented call the approval request refers to — the
+ * record whose arguments the model produced and the UI streamed.
+ *
+ * Lookup order:
+ * 1. the pending call's own PTC sub-dispatch record, keyed by `subCallId`
+ *    (a PTC approval carries the inner id there);
+ * 2. the pending call's own native `tool/call`;
+ * 3. for a PTC id `<outer>:ptc:<n>`, the nearest ENCLOSING row, walking out
+ *    one `:ptc:` level at a time (`<outer>` is normally the `run_code`
+ *    `tool/call` that dispatched the program). Callers see
+ *    `call.callId !== requested` and must label it as enclosing evidence.
+ *
+ * A row that exists but has no arguments payload is reported as
+ * `missing-arguments`, separately from `unresolved` (no row at all).
+ * @param events - session events in log order.
+ * @param callId - the approval request's call id.
+ * @returns the resolution, never a throw.
+ */
+export function resolvePresentedCall(events: readonly SessionEvent[], callId: CallId): PresentedCallLookup {
+  const requested = String(callId)
+  const own = lookupCallId(events, requested)
+  if (own.hit === 'found') return { outcome: 'found', call: own.call }
+  if (own.hit === 'missing-arguments') {
+    return { outcome: 'missing-arguments', source: own.source, callId: requested }
+  }
+  // PTC-folded: the approval carries the inner id, the logged row the outer
+  // one. Walk out to the nearest enclosing row and let the caller disclose it.
+  let enclosing = enclosingCallId(requested)
+  const firstParent = enclosing
+  while (enclosing !== undefined) {
+    const parentId = String(enclosing)
+    const parent = lookupCallId(events, parentId)
+    if (parent.hit === 'found') return { outcome: 'found', call: parent.call }
+    if (parent.hit === 'missing-arguments') {
+      return { outcome: 'missing-arguments', source: parent.source, callId: parentId }
+    }
+    enclosing = enclosingCallId(parentId)
+  }
+  return firstParent === undefined
+    ? { outcome: 'unresolved' }
+    : { outcome: 'unresolved', parentCallId: firstParent }
+}
+
+/**
+ * Find the already-presented tool call the approval request refers to — the
+ * record whose arguments the model produced and the UI streamed. A PTC
+ * sub-call (`<outer>:ptc:<n>`) resolves through its child dispatch record
+ * first and its enclosing `tool/call` second, exactly like
+ * {@link resolvePresentedCall}; use that function when the distinction
+ * between "no row" and "no payload" matters.
+ * @param events - session events in log order.
+ * @param callId - the exact call to find.
+ * @returns the call's arguments JSON string, or undefined without one.
+ */
+export function findPresentedCall(events: readonly SessionEvent[], callId: CallId): string | undefined {
+  const lookup = resolvePresentedCall(events, callId)
+  return lookup.outcome === 'found' ? lookup.call.argumentsText : undefined
 }

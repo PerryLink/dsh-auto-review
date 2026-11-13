@@ -19,8 +19,8 @@ import { readToolResult, toolResultText } from './session-message.ts'
 import type { ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-subagent'
 import { assertObjectJsonSchema, type ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
-import type { AutoReviewFallback } from './events.ts'
-import { AutoReviewCircuitId, AutoReviewRejectionId, AutoReviewVerdictId, findPresentedCall } from './events.ts'
+import type { AutoReviewFallback, PresentedCall, PresentedCallSource } from './events.ts'
+import { AutoReviewCircuitId, AutoReviewRejectionId, AutoReviewVerdictId, resolvePresentedCall } from './events.ts'
 import type { ContextBudgetConfig, ResolvedConfig, RiskLevel } from './config.ts'
 import type { ReviewerChildren } from './isolation.ts'
 import { runPhocinaeReview, type PhocinaeEvidence } from './phocinae.ts'
@@ -149,16 +149,13 @@ export function sanitizeArguments(value: unknown): unknown {
 }
 
 /**
- * The already-presented call arguments, parsed and key-redacted, as pretty
- * JSON — the raw material for both the reviewer prompt section and the
- * `arguments` risk-rule field.
- * @param events - the requesting session's log.
- * @param callId - the call to render.
- * @returns the sanitized JSON text, or undefined when the log lacks a parseable call.
+ * Parse one already-presented arguments payload and key-redact it, as pretty
+ * JSON. The PTC path hands this the same text the native path logs, so both
+ * verdict evidence and risk-rule fields see one shape.
+ * @param raw - the arguments JSON text.
+ * @returns the sanitized JSON text, or undefined when the payload is not JSON.
  */
-export function sanitizedArgumentsText(events: readonly SessionEvent[], callId: CallId): string | undefined {
-  const raw = findPresentedCall(events, callId)
-  if (raw === undefined) return undefined
+function sanitizedCallArguments(raw: string): string | undefined {
   let parsed: unknown
   try {
     parsed = JSON.parse(raw) as unknown
@@ -173,8 +170,65 @@ export function sanitizedArgumentsText(events: readonly SessionEvent[], callId: 
 }
 
 /**
+ * The already-presented call arguments, parsed and key-redacted, as pretty
+ * JSON — the raw material for both the reviewer prompt section and the
+ * `arguments` risk-rule field. A PTC sub-call resolves through its own
+ * dispatch record first (see {@link resolvePresentedCall}).
+ * @param events - the requesting session's log.
+ * @param callId - the call to render.
+ * @returns the sanitized JSON text, or undefined when the log lacks a parseable call.
+ */
+export function sanitizedArgumentsText(events: readonly SessionEvent[], callId: CallId): string | undefined {
+  const lookup = resolvePresentedCall(events, callId)
+  return lookup.outcome === 'found' ? sanitizedCallArguments(lookup.call.argumentsText) : undefined
+}
+
+/**
+ * The prompt header naming which record the arguments below came from. Only
+ * two cases are special: a PTC child-call record (the reviewer should read it
+ * as the inner call's own arguments), and an enclosing record used when the
+ * pending call's own row is missing (the reviewer must NOT read it as the
+ * pending call's arguments — it is the surrounding program, not the action).
+ * @param call - the resolved record.
+ * @param requested - the approval request's call id.
+ * @param truncated - whether the body below the header is cut.
+ * @returns the header line.
+ */
+function callArgumentsHeader(call: PresentedCall, requested: CallId, truncated: boolean): string {
+  const cut = truncated ? ', TRUNCATED' : ''
+  const name = call.name === '' ? '' : ` (${call.name})`
+  if (String(requested) !== call.callId) {
+    return `Tool call arguments (sensitive values redacted${cut}, resolved from the ENCLOSING `
+      + `${call.source === 'tool/call' ? 'tool call' : 'PTC dispatch record'} ${JSON.stringify(call.callId)}${name}: `
+      + "these are the enclosing call's arguments, NOT the pending call's own):"
+  }
+  if (call.source !== 'tool/call') {
+    return `Tool call arguments (sensitive values redacted${cut}, resolved from the PTC child-call record `
+      + `${call.source} for subCallId ${JSON.stringify(call.callId)}${name}):`
+  }
+  return `Tool call arguments (sensitive values redacted${cut}):`
+}
+
+/**
+ * The prompt note for a row that exists but carries no usable arguments — its
+ * own message, distinct from {@link renderCallContext}'s lookup-gap note, so
+ * the verdict reason names the gap the log actually has.
+ * @param source - the event type that was found.
+ * @param callId - the id it carries.
+ * @returns the prompt section text.
+ */
+function argumentsGapText(source: PresentedCallSource, callId: string): string {
+  return `Tool call arguments: (the ${source} record for call id ${JSON.stringify(callId)} carries no parseable `
+    + 'arguments payload — the arguments themselves are absent or unreadable in the log, not a call-id '
+    + 'lookup failure)'
+}
+
+/**
  * Render the tool-call context for the reviewer: the already-streamed call
- * arguments (parsed, redacted, truncated) or a note when the log lacks them.
+ * arguments (parsed, redacted, truncated) or a note naming WHICH evidence gap
+ * the log has — a missing argument payload on a row that exists, or no row at
+ * all for the id (a lookup gap, which for a PTC session means the parent
+ * `run_code` row was not found either).
  *
  * A truncated preview is DISCLOSED as truncated and matched with an explicit
  * deny rule (see {@link buildReviewPrompt}): previously the
@@ -188,10 +242,23 @@ export function sanitizedArgumentsText(events: readonly SessionEvent[], callId: 
  */
 export function renderCallContext(events: readonly SessionEvent[], callId: CallId | undefined, maxChars: number): string {
   if (callId === undefined) return 'Tool call arguments: (not available — the asker attached no call id)'
-  const text = sanitizedArgumentsText(events, callId)
-  if (text === undefined) return 'Tool call arguments: (not found or unparseable in the presented transcript)'
-  if (text.length <= maxChars) return `Tool call arguments (sensitive values redacted):\n${text}`
-  return `Tool call arguments (sensitive values redacted, TRUNCATED):\n${truncate(text, maxChars)}\n`
+  const lookup = resolvePresentedCall(events, callId)
+  if (lookup.outcome === 'unresolved') {
+    const tried = lookup.parentCallId === undefined
+      ? ''
+      : `, and its enclosing call ${JSON.stringify(String(lookup.parentCallId))}`
+    return `Tool call arguments: (call id ${JSON.stringify(String(callId))} could not be resolved in the presented `
+      + `transcript${tried}: no \`tool/call\` or PTC child-call record carries it. This is a LOOKUP GAP, not `
+      + 'evidence that the call had no arguments.)'
+  }
+  if (lookup.outcome === 'missing-arguments') {
+    return argumentsGapText(lookup.source, lookup.callId)
+  }
+  const call = lookup.call
+  const text = sanitizedCallArguments(call.argumentsText)
+  if (text === undefined) return argumentsGapText(call.source, call.callId)
+  if (text.length <= maxChars) return `${callArgumentsHeader(call, callId, false)}\n${text}`
+  return `${callArgumentsHeader(call, callId, true)}\n${truncate(text, maxChars)}\n`
     + `[TRUNCATED EVIDENCE: only the first ${maxChars} of ${text.length} characters are shown; the remainder is NOT visible to you. `
     + 'An action you cannot see in full is insufficient evidence — the verdict rules require DENY on insufficient evidence. Deny unless the visible part alone proves the action safe.]'
 }
