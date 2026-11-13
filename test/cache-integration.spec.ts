@@ -67,6 +67,42 @@ describe('verdict cache integration', () => {
     expect(verdicts[1]).toMatchObject({ cached: true, decision: 'allow', outcome: 'allowed-once' })
   })
 
+  // Regression for #83: the same lookup that renders the reviewer prompt
+  // feeds the fingerprint. A PTC approval carries `<outer>:ptc:<n>`, which
+  // used to match nothing, so every PTC review missed the cache and re-ran.
+  it('fingerprints a PTC sub-call from its own child record (#83)', async () => {
+    const harness = await auditHarness({ toolsPolicy: { overrides: { bash: 'ai' } } })
+    const outer = 'call_ptc_outer'
+    const append = harness.session.append as unknown as (type: string, data: unknown) => unknown
+    append.call(harness.session, 'tool/call', { turn: 1, step: 1, callId: outer, name: 'run_code', arguments: '{"code":"x"}' })
+    for (const n of [1, 2]) {
+      append.call(harness.session, 'tool/ptc-dispatch-start', {
+        rootCallId: outer,
+        parentCallId: outer,
+        subCallId: `${outer}:ptc:${n}`,
+        name: 'bash',
+        arguments: { command: 'ls -la' },
+      })
+    }
+    await review(harness, CallId(`${outer}:ptc:1`))
+    await review(harness, CallId(`${outer}:ptc:2`))
+    expect(harness.subagents.starts).toHaveLength(1)
+    expect(verdictData(harness)[1]).toMatchObject({ cached: true, decision: 'allow' })
+  })
+
+  it('never keys the cache from an enclosing row shared by every sub-call', async () => {
+    const harness = await auditHarness({ toolsPolicy: { overrides: { bash: 'ai' } } })
+    const outer = 'call_ptc_shared'
+    const append = harness.session.append as unknown as (type: string, data: unknown) => unknown
+    append.call(harness.session, 'tool/call', { turn: 1, step: 1, callId: outer, name: 'run_code', arguments: '{"code":"x"}' })
+    // No child records: both approvals fall back to the same `run_code` row,
+    // whose arguments say nothing about either inner call.
+    await review(harness, CallId(`${outer}:ptc:1`))
+    await review(harness, CallId(`${outer}:ptc:2`))
+    expect(harness.subagents.starts).toHaveLength(2)
+    expect(verdictData(harness).every(verdict => verdict['cached'] !== true)).toBe(true)
+  })
+
   it('misses the cache for a different tool+args fingerprint', async () => {
     const harness = await auditHarness({ toolsPolicy: { overrides: { bash: 'ai' } } })
     presentCall(harness, CallId('call-1'), '{"command":"ls"}')

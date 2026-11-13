@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400" role="img" aria-label="dsh-auto-review approval flow">
+<title>dsh-auto-review approval flow</title>
+<rect width="1200" height="400" rx="18" fill="#ffffff"/>
+<text x="60" y="58" fill="#1f2328" font-family="ui-sans-serif,system-ui,sans-serif" font-size="30" font-weight="700">dsh-auto-review</text>
+<text x="60" y="90" fill="#57606a" font-family="ui-monospace,monospace" font-size="15">approval/request · second-model review · fallbackPolicy: rejected</text>
+<line x1="60" y1="112" x2="1140" y2="112" stroke="#d0d7de"/>
+<rect x="60" y="140" width="190" height="96" rx="14" fill="#f6f8fa" stroke="#d0d7de" stroke-width="2"/>
+<text x="155" y="180" fill="#1f2328" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" font-weight="700">approval/request</text>
+<text x="155" y="208" fill="#57606a" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11">answerer waterfall</text>
+<path d="M255 188h30" stroke="#57606a" stroke-width="3"/>
+<path d="M283 181l10 7-10 7" fill="none" stroke="#57606a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="290" y="140" width="190" height="96" rx="14" fill="#f6f8fa" stroke="#d0d7de" stroke-width="2"/>
+<text x="385" y="180" fill="#1f2328" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" font-weight="700">riskRules+toolsPolicy</text>
+<text x="385" y="208" fill="#57606a" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11">ai / human / never</text>
+<path d="M485 188h30" stroke="#57606a" stroke-width="3"/>
+<path d="M513 181l10 7-10 7" fill="none" stroke="#57606a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="520" y="140" width="190" height="96" rx="14" fill="#f6f8fa" stroke="#4B67B4" stroke-width="2"/>
+<text x="615" y="180" fill="#1f2328" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" font-weight="700">reviewer subagent</text>
+<text x="615" y="208" fill="#57606a" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11">fork · read/glob/grep</text>
+<path d="M715 188h30" stroke="#57606a" stroke-width="3"/>
+<path d="M743 181l10 7-10 7" fill="none" stroke="#57606a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="750" y="140" width="190" height="96" rx="14" fill="#f6f8fa" stroke="#4B67B4" stroke-width="2"/>
+<text x="845" y="180" fill="#1f2328" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" font-weight="700">verdict</text>
+<text x="845" y="208" fill="#57606a" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11">{decision,reason,riskLevel}</text>
+<path d="M945 188h30" stroke="#57606a" stroke-width="3"/>
+<path d="M973 181l10 7-10 7" fill="none" stroke="#57606a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="980" y="140" width="190" height="96" rx="14" fill="#f6f8fa" stroke="#16a34a" stroke-width="2"/>
+<text x="1075" y="180" fill="#1f2328" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" font-weight="700">allow→allowed-once</text>
+<text x="1075" y="208" fill="#57606a" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11">deny→[auto-review]</text>
+<path d="M385 236v52" stroke="#bc4c00" stroke-width="2" stroke-dasharray="5 5"/>
+<rect x="255" y="288" width="260" height="52" rx="12" fill="#f6f8fa" stroke="#bc4c00" stroke-width="2"/>
+<text x="385" y="320" fill="#1f2328" text-anchor="middle" font-family="ui-monospace,monospace" font-size="12">policy≠ai → next() → human answerer</text>
+<path d="M845 236v52" stroke="#4B67B4" stroke-width="2" stroke-dasharray="5 5"/>
+<rect x="745" y="288" width="395" height="52" rx="12" fill="#f6f8fa" stroke="#4B67B4" stroke-width="2"/>
+<text x="942" y="320" fill="#1f2328" text-anchor="middle" font-family="ui-monospace,monospace" font-size="12">autoReview/verdict → approval/decided · log-only</text>
+<text x="60" y="378" fill="#57606a" font-family="ui-monospace,monospace" font-size="13">/auto-review on|off|status|approve [n] · verdict cache · circuitBreaker · riskPolicy · reviewerBackend: agent|phocinae</text>
+</svg>

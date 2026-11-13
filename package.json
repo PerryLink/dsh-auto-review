@@ -1,6 +1,6 @@
 {
   "name": "dsh-auto-review",
-  "version": "0.14.1",
+  "version": "0.15.1",
   "packageManager": "pnpm@11.7.0",
   "description": "Second-model AI auto-review for DeepSeek Harness approval requests: a read-only reviewer subagent or the local non-generative Phocinae-Largha-150M-v1 decision model decides allow/deny on the approval answerer chain, with fail-closed fallback and full session-log audit.",
   "private": false,
@@ -66,7 +66,9 @@
     "README-es.md",
     "README-pt.md",
     "README-hi.md",
-    "LICENSE"
+    "LICENSE",
+    "PRIVACY.md",
+    "icon.svg"
   ],
   "dsh": {
     "manifestVersion": 1,
@@ -81,7 +83,12 @@
         "@deepseek-ai/dsh-client-ui-slots",
         "@deepseek-ai/dsh-client-ui-conversation"
       ]
-    }
+    },
+    "capabilities": [
+      "network:egress",
+      "sessions:read"
+    ],
+    "labels": []
   },
   "dshWorkshop": {
     "schema": "omdsh-workshop-package/v1",
@@ -250,5 +257,6 @@
   "funding": {
     "type": "individual",
     "url": "https://github.com/sponsors/PerryLink"
-  }
+  },
+  "icon": "icon.svg"
 }

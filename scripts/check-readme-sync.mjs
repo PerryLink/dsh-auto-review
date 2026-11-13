@@ -7,7 +7,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
-const FILES = ['README.md', 'README-zh.md', 'README-es.md', 'README-pt.md', 'README-hi.md']
+const FILES = ['README.md', 'README.en.md', 'README.es.md', 'README.pt.md', 'README.hi.md']
 const INSTALL_COMMAND = 'dsh plugin --profile web add dsh-auto-review'
 
 const failures = []
@@ -26,7 +26,7 @@ const sectionCount = (text) => (text.match(/^## /gmu) ?? []).length
 // each row under the "## Configuration" section (until the next `## ` heading).
 const configKeysOf = (text) => {
   const lines = text.split(/\r?\n/u)
-  const start = lines.findIndex(line => /^##\s+Configuration\s*$/u.test(line))
+  const start = lines.findIndex(line => /^##\s+(Configuration|配置)\s*$/u.test(line))
   if (start === -1) return []
   const end = lines.findIndex((line, index) => index > start && /^##\s+/u.test(line))
   const section = lines.slice(start, end === -1 ? undefined : end)
@@ -35,7 +35,7 @@ const configKeysOf = (text) => {
     if (!line.startsWith('|')) continue
     const cells = line.split('|').map(cell => cell.trim())
     const key = cells[1]
-    if (key === undefined || key === '' || key === 'Key' || /^-+$/u.test(key)) continue
+    if (key === undefined || key === '' || key === 'Key' || key === '键' || /^-+$/u.test(key)) continue
     const tokens = [...key.matchAll(/`([^`]+)`/gu)].map(match => match[1])
     if (tokens.length > 0) keys.push(...tokens)
     else keys.push(key)
