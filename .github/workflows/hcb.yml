@@ -1,0 +1,13 @@
+name: hcb
+on:
+  push:
+  pull_request:
+  workflow_dispatch: {}
+jobs:
+  compat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: PerryLink/dsh-compat-baseline/.github/actions/check@main
+        with:
+          package: dsh-auto-review
