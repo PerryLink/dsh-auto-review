@@ -728,9 +728,10 @@ async function runReviewStructured(
  * validation. No `temperature` is sent — thinking mode ignores it silently, so
  * a value would only mislead a reader of the request; `reviewerReasoningEffort`
  * is forwarded when set, and omitted otherwise so the host default applies. No
- * child session exists, so there is nothing to isolate and no id to record; the
- * absence of tools is the isolation. Every failure still resolves to a
- * {@link ReviewFailure}.
+ * child session exists, so there is nothing to isolate and no reviewer session
+ * id to record; the delegating session's id rides along only as transport
+ * affinity. The absence of tools is the isolation. Every failure still resolves
+ * to a {@link ReviewFailure}.
  * @param llm - the host's `llm` service (feature-detected, never injected).
  * @param config - resolved config (model override, timeout, reason cap).
  * @param request - the pending approval request (parent session, signal, evidence).
@@ -766,6 +767,11 @@ async function runReviewInline(
     for await (const chunk of llm.stream({
       provider: config.reviewerModelProvider ?? route.provider,
       model,
+      // The call runs on the delegating session's route, so it carries that
+      // session's id: pi-ai only adds OpenCode's `x-opencode-session` header
+      // when a session id is present, and the gateway rejects the request with
+      // `MissingSessionID` without it.
+      sessionId: request.agent.session.id,
       system: REVIEW_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: [{ type: 'text', text: promptText }] }],
       ...config.reviewerReasoningEffort === undefined

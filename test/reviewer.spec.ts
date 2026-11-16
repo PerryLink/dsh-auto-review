@@ -23,7 +23,7 @@ import {
 } from '../src/index.ts'
 import { denyResultText, AutoReviewVerdictId, DENY_MARKER_PATTERN } from '../src/index.ts'
 import type { ResolvedConfig } from '../src/index.ts'
-import { dispatchAskedApproval, dispatchPostExecute, makeAgent, mountHarness } from './harness.ts'
+import { appendRequestHeader, dispatchAskedApproval, dispatchPostExecute, makeAgent, mountHarness } from './harness.ts'
 
 /** A portable absolute workspace path — `path.resolve` anchors it on every platform (the session header rejects non-absolute cwd). */
 const WORKSPACE = path.resolve('work')
@@ -282,6 +282,35 @@ describe('reviewer start request', () => {
       toolName: 'bash',
     }, async () => 'rejected')
     expect(harness.subagents.starts[0]!.request.agentOptions).toEqual({ reasoningEffort: 'high' })
+  })
+})
+
+describe('tool-less reviewer session affinity', () => {
+  it('stamps the delegating session id on the llm.stream options', async () => {
+    // A seam-less host (no `subagents.start`/`startActivation`) reviews through
+    // one tool-less `llm.stream` call. That call must carry the owning session
+    // id: pi-ai only adds OpenCode's `x-opencode-session` header when a session
+    // id is present, so without it the gateway answers
+    // INVALID_REQUEST/MissingSessionID and every review falls through
+    // fallbackPolicy.
+    const harness = await mountHarness(
+      { allowUnmarkedAudit: true, toolsPolicy: { overrides: { bash: 'ai' } } },
+      undefined,
+      {},
+      undefined,
+      'inline',
+    )
+    appendRequestHeader(harness.session, { provider: 'deepseek', model: 'deepseek-chat' })
+    const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+      reason: 'escalate sandbox',
+    }, async () => 'rejected')
+    expect(outcome).toBe('allowed-once')
+    expect(harness.subagents.starts).toHaveLength(0)
+    expect(harness.subagents.activations).toHaveLength(0)
+    expect(harness.llm.calls).toHaveLength(1)
+    expect(harness.llm.calls[0]?.sessionId).toBe(harness.session.id)
   })
 })
 
