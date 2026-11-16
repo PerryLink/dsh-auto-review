@@ -6,10 +6,17 @@
  * buttons for recent denials. Data arrives through the `autoReview` session
  * projection; switches and approves execute the `/auto-review` command
  * through the commands Remote.
+ *
+ * The popover is portalled to `document.body`: the owning
+ * `conversation.session.header.actions` slot lives inside the title cluster,
+ * which the host clips (`overflow: clip`) and fades (`mask-image`) from
+ * DSH 0.2.2 on, and the slot contract requires header overlays to portal to
+ * stay outside that clip.
  * @module dsh-auto-review/client/ReviewPanel
  */
 
 import { useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { AutoReviewProjection } from '../projection-types.ts'
 import { presentVerdict } from './present.ts'
@@ -33,6 +40,12 @@ export type ReviewPanelProps =
   // (alpha.2 serves useConversation/useInput standard props), so the panel
   // reads it as an optional seat and casts at the single call site.
   & { readonly useProjection?: unknown }
+
+/** Viewport-relative top/right of the portalled popover, measured from the button. */
+interface PanelOrigin {
+  readonly top: number
+  readonly right: number
+}
 
 /** Compact verdict-row badge label for the panel. */
 function verdictBadge(
@@ -66,8 +79,22 @@ export function ReviewPanel({ useProjection, approve, setEnabled, t }: ReviewPan
   const value = readProjection('autoReview')
   const [open, setOpen] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [origin, setOrigin] = useState<PanelOrigin | null>(null)
   const anchor = useRef<HTMLDivElement | null>(null)
-  const toggle = (): void => setOpen(previous => !previous)
+  const toggle = (): void => {
+    if (open) {
+      setOpen(false)
+      return
+    }
+    const rect = anchor.current?.getBoundingClientRect()
+    if (rect !== undefined) {
+      setOrigin({
+        top: Math.round(rect.bottom + 6),
+        right: Math.max(8, Math.round(window.innerWidth - rect.right)),
+      })
+      setOpen(true)
+    }
+  }
   const runApprove = async (n: number): Promise<void> => {
     try {
       const text = await approve(n)
@@ -89,8 +116,11 @@ export function ReviewPanel({ useProjection, approve, setEnabled, t }: ReviewPan
       <button type="button" data-dsh-auto-review-button onClick={toggle}>
         {t('label')}
       </button>
-      {open && (
-        <div data-dsh-auto-review-panel>
+      {open && origin !== null && createPortal(
+        <div
+          data-dsh-auto-review-panel
+          style={{ top: `${origin.top}px`, right: `${origin.right}px` }}
+        >
           <div data-dsh-auto-review-title>{t('title')}</div>
           {value === undefined
             ? <div data-dsh-auto-review-muted>{t('unavailable')}</div>
@@ -167,7 +197,8 @@ export function ReviewPanel({ useProjection, approve, setEnabled, t }: ReviewPan
               </div>
             )}
           {notice !== null && <div data-dsh-auto-review-muted>{notice}</div>}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

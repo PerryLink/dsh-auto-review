@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **The review popover was clipped to a strip under the conversation header on DSH 0.2.2.** The panel rendered in tree inside `conversation.session.header.actions`, but from DSH 0.2.2 the header's title cluster clips (`overflow: clip`) and fades (`mask-image`) its subtree, and the slot contract requires header overlays to portal; only the top of the panel survived the clip. The popover is now portalled to `document.body`, positioned viewport-fixed below the trigger (measured when it opens), and the theme custom properties are declared on the portalled node because it no longer inherits them from the header wrapper. Behaviour is unchanged on DSH 0.2.1.x, where a portal renders the same popover outside the unclipped header. No configuration change; `@types/react-dom` is the only dependency addition (build-time types for `createPortal`).
+
 ## [0.15.1] - 2026-11-13
 
 ### Fixed

@@ -2,13 +2,20 @@
  * Scoped stylesheet for the review panel. Standalone bundles cannot use the
  * in-repo CSS-module pipeline, so the panel injects one `<style>` element
  * whose selectors are all scoped under `[data-dsh-auto-review]`.
+ *
+ * The popover is portalled to `document.body` (the header slot's title
+ * cluster clips and fades its subtree from DSH 0.2.2 on), so the custom
+ * properties are declared on both the trigger wrapper and the panel: a
+ * portalled panel is outside `[data-dsh-auto-review]` and would otherwise
+ * inherit none of them.
  * @module dsh-auto-review/client/styles
  */
 
 const STYLE_ID = 'dsh-auto-review-panel-styles'
 
 const CSS = `
-[data-dsh-auto-review] {
+[data-dsh-auto-review],
+[data-dsh-auto-review-panel] {
   --ar-allow: var(--dsw-color-success, #16a34a);
   --ar-deny: var(--dsw-color-danger, #dc2626);
   --ar-fallback: var(--dsw-color-warning, #d97706);
@@ -21,10 +28,11 @@ const CSS = `
   color: var(--ar-fg);
 }
 [data-dsh-auto-review-panel] {
-  position: absolute;
-  z-index: 40;
+  position: fixed;
+  z-index: 1100;
+  box-sizing: border-box;
   min-width: 320px;
-  max-width: 420px;
+  max-width: min(420px, calc(100vw - 16px));
   max-height: 70vh;
   overflow-y: auto;
   background: var(--ar-bg);
