@@ -481,6 +481,66 @@ describe('auto-review answerer', () => {
     })
   })
 
+  it('keeps a deny verdict final under the default denyPolicy: reject', async () => {
+    const harness = await auditHarness(
+      { toolsPolicy: { overrides: { bash: 'ai' } } },
+      () => ({ verdict: { decision: 'deny', reason: 'destructive and irreversible' } }),
+    )
+    let downstreamCalled = false
+    const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+    }, async () => {
+      downstreamCalled = true
+      return 'allowed-once'
+    })
+    expect(outcome).toBe('rejected')
+    expect(downstreamCalled).toBe(false)
+    expect(lastEvent(harness.session.snapshotEvents(), 'autoReview/verdict')?.data).toMatchObject({
+      decision: 'deny',
+      outcome: 'rejected',
+    })
+  })
+
+  it('escalates a deny verdict to the human chain with denyPolicy: ask', async () => {
+    const harness = await auditHarness(
+      {
+        toolsPolicy: { overrides: { bash: 'ai' } },
+        denyPolicy: 'ask',
+      },
+      () => ({ verdict: { decision: 'deny', reason: 'destructive and irreversible', riskLevel: 'high' } }),
+    )
+    const callId = CallId('call-deny-ask')
+    let downstreamCalled = false
+    const { outcome } = await dispatchAskedApproval(harness.ctx, harness.session, {
+      agent: harness.agent,
+      toolName: 'bash',
+      callId,
+    }, async () => {
+      downstreamCalled = true
+      // The human chain's decision, not the reviewer's deny, settles the request.
+      return 'allowed-once'
+    })
+    expect(downstreamCalled).toBe(true)
+    expect(outcome).toBe('allowed-once')
+    expect(harness.subagents.starts).toHaveLength(1)
+    // The deny stays audited, but the answerer did not claim the request: the
+    // verdict records no outcome (the downstream answerer owns the decision).
+    const verdict = lastEvent(harness.session.snapshotEvents(), 'autoReview/verdict')
+    expect(verdict?.data).toMatchObject({
+      decision: 'deny',
+      reason: 'destructive and irreversible',
+      riskLevel: 'high',
+    })
+    expect(verdict?.data).not.toHaveProperty('outcome')
+    // The human decision governs: no deny-reason feedback is injected.
+    const decision = await dispatchPostExecute(harness.ctx, { callId } as never, {
+      isError: true,
+      content: [{ type: 'text', text: 'Error: the user rejected tool "bash"' }],
+    }, async () => ({ kind: 'accept' }))
+    expect(decision).toMatchObject({ kind: 'accept' })
+  })
+
   it('classifies an abort-rejected run as timeout when the timer already fired', async () => {
     const harness = await auditHarness(
       { toolsPolicy: { overrides: { bash: 'ai' } }, reviewerTimeoutMs: 20 },

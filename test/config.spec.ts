@@ -21,6 +21,7 @@ describe('config resolution', () => {
       reviewerTimeoutMs: 60_000,
       reviewerTools: ['read', 'glob', 'grep'],
       fallbackPolicy: 'rejected',
+      denyPolicy: 'reject',
       maxReviewsPerTurn: 10,
       maxFailuresPerTurn: 10,
       reasonMaxChars: 2000,
@@ -57,6 +58,17 @@ describe('config resolution', () => {
   it('accepts the renamed allow-once fallback and rejects the old spelling', () => {
     expect(resolveConfig({ fallbackPolicy: 'allow-once' }).fallbackPolicy).toBe('allow-once')
     expect(() => ConfigSchema({ fallbackPolicy: 'allow-readonly' } as never)).toThrow()
+  })
+
+  it('defaults denyPolicy to reject and resolves the opt-in ask value', () => {
+    // The default keeps a deny verdict final; 'ask' is the explicit opt-in
+    // that lets a reviewer denial escalate to the human approval chain.
+    expect(resolveConfig().denyPolicy).toBe('reject')
+    expect(ConfigSchema({}).denyPolicy).toBe('reject')
+    expect(resolveConfig({ denyPolicy: 'ask' }).denyPolicy).toBe('ask')
+    expect(ConfigSchema({ denyPolicy: 'ask' } as never).denyPolicy).toBe('ask')
+    expect(() => ConfigSchema({ denyPolicy: 'escalate' } as never)).toThrow()
+    expect(() => resolveConfig({ denyPolicy: 'escalate' as never })).toThrow(/denyPolicy/u)
   })
 
   it('defaults the Phase B tunables conservatively', () => {

@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **`denyPolicy`: opt-in escalation of a reviewer denial to the human approval chain.** A valid `deny` verdict used to be final — the answerer settled `rejected` and fed the deny reason back to the model. With `denyPolicy: 'ask'`, a deny verdict now continues down the answerer chain (`next()`) to the human answerer, so a human can override the reviewer. The `autoReview/verdict` audit event is still appended (with the deny decision/reason), but the verdict records no `outcome` because the downstream answerer owns the decision, and no deny-reason feedback is injected (the human decision governs). The default `'reject'` keeps the current fail-closed behaviour unchanged; the risk-policy override of an allow and every `fallbackPolicy` failure path are untouched.
+
 ## [0.15.1] - 2026-11-13
 
 ### Fixed
