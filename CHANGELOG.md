@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **The review panel was invisible on hosts whose conversation header clips overflow (issue #89).** The panel rendered `position: absolute` inside the `[data-dsh-auto-review]` container, which registers into `conversation.session.header.actions` and therefore lands inside the host header's `.titleCluster` — and the host gives that container `overflow: clip` plus a `mask-image` at a fixed 36px height (its long-title crop and fade, `dsh-client-ui-conversation/src/client/skeleton/ConversationRoot.module.css:91-102`). A 268px-tall panel whose top sits 5px above the container's bottom edge was cropped down to those 5px: it was rendered, `display: block`, `opacity: 1`, with a correct rect, and `document.elementFromPoint` at its centre hit the chat transcript row instead — so the panel looked like it never opened. The panel now renders through `createPortal(..., document.body)` and positions itself `position: fixed` from the anchor button's `getBoundingClientRect()`: `top` is the button's bottom edge plus 6px (flipped above the button when the space below is short), `left` is clamped into the viewport, and both are recomputed on `resize` and on capturing `scroll`. `[data-dsh-auto-review-panel]` moved from `absolute` to `fixed` (`z-index: 1000`, `width: 360px`, `max-width: calc(100vw - 16px)`, `box-sizing: border-box`), and the style-variable block now also targets the panel element itself, because a portalled panel no longer inherits the container's custom properties. `@types/react-dom` joined the dev dependencies so `typecheck`/`build` resolve the new import. Verified on DSH `0.2.2-rc.4` with `dsh-auto-review@0.15.3` and a headless probe: `hitIsPanel: true`, panel ancestor chain `BODY → HTML`, panel fully inside the viewport, and the header's crop/fade behaviour intact — the `overflow: visible` workaround is no longer needed.
+
 ## [0.15.1] - 2026-11-13
 
 ### Fixed

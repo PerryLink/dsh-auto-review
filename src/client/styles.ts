@@ -2,13 +2,18 @@
  * Scoped stylesheet for the review panel. Standalone bundles cannot use the
  * in-repo CSS-module pipeline, so the panel injects one `<style>` element
  * whose selectors are all scoped under `[data-dsh-auto-review]`.
+ *
+ * The panel itself is portalled onto `document.body`, outside that scope, so
+ * it repeats the custom-property block and positions itself `fixed` from the
+ * inline coordinates the component computes off the button's rect.
  * @module dsh-auto-review/client/styles
  */
 
 const STYLE_ID = 'dsh-auto-review-panel-styles'
 
 const CSS = `
-[data-dsh-auto-review] {
+[data-dsh-auto-review],
+[data-dsh-auto-review-panel] {
   --ar-allow: var(--dsw-color-success, #16a34a);
   --ar-deny: var(--dsw-color-danger, #dc2626);
   --ar-fallback: var(--dsw-color-warning, #d97706);
@@ -21,10 +26,10 @@ const CSS = `
   color: var(--ar-fg);
 }
 [data-dsh-auto-review-panel] {
-  position: absolute;
-  z-index: 40;
-  min-width: 320px;
-  max-width: 420px;
+  position: fixed;
+  z-index: 1000;
+  width: 360px;
+  max-width: calc(100vw - 16px);
   max-height: 70vh;
   overflow-y: auto;
   background: var(--ar-bg);
@@ -32,6 +37,7 @@ const CSS = `
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   padding: 12px;
+  box-sizing: border-box;
   font-size: 12px;
   line-height: 1.5;
 }
