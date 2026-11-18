@@ -20,6 +20,7 @@ import ApprovalService from '@deepseek-ai/dsh-user-approval'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { describe, expect, it } from 'vitest'
+import { auditEventTypeOf } from '../src/audit.ts'
 import * as plugin from '../src/index.ts'
 import { VERDICT_SCHEMA } from '../src/index.ts'
 import {
@@ -180,7 +181,7 @@ describe('reviewer with neither subagent seam nor llm', () => {
       reason: 'escalate sandbox',
     }, next)
     expect(outcome).toBe('rejected')
-    const verdict = harness.session.snapshotEvents().find(event => event.type === 'autoReview/verdict')
+    const verdict = harness.session.snapshotEvents().find(event => auditEventTypeOf(event.type) === 'autoReview/verdict')
     expect(verdict?.data).toMatchObject({ fallback: 'unavailable' })
     expect((verdict?.data as { error?: string }).error).toContain('neither')
     expect(harness.llm.calls).toHaveLength(0)

@@ -11,6 +11,7 @@
  * @module dsh-auto-review/events
  */
 
+import { auditEventTypeOf } from './audit.ts'
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import { CallId } from './call-id.ts'
 import type { SessionEvent, SessionEventMap, SessionId } from '@deepseek-ai/dsh-session'
@@ -330,7 +331,7 @@ export function plainNeverResultText(toolName: string, source: string): string {
 export function effectiveAutoReviewState(events: readonly SessionEvent[]): boolean | undefined {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index] as SessionEvent
-    if (event.type === 'autoReview/state') return event.data.enabled
+    if (auditEventTypeOf(event.type) === 'autoReview/state') return (event.data as SessionEventMap['autoReview/state']).enabled
   }
   return undefined
 }
@@ -357,7 +358,9 @@ export function openTurnVerdicts(events: readonly SessionEvent[]): SessionEventM
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index] as SessionEvent
     if (event.seq <= openSeq) break
-    if (event.type === 'autoReview/verdict') verdicts.push(event.data)
+    if (auditEventTypeOf(event.type) === 'autoReview/verdict') {
+      verdicts.push(event.data as SessionEventMap['autoReview/verdict'])
+    }
   }
   verdicts.reverse()
   return verdicts

@@ -8,6 +8,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { CallId } from './call-id.ts'
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
+import { auditEventTypeOf } from '../src/audit.ts'
 import { CIRCUIT_MARKER_PATTERN, DENY_MARKER_PATTERN, FALLBACK_MARKER_PATTERN, NEVER_MARKER_PATTERN, autoReviewFailuresInOpenTurn, autoReviewsInOpenTurn } from '../src/index.ts'
 import {
   dispatchApproval,
@@ -39,7 +40,7 @@ function auditHarness(
 function lastEvent<T extends { type: string; data: unknown }>(events: readonly T[], type: string): T | undefined {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index] as T
-    if (event.type === type) return event
+    if (auditEventTypeOf(event.type) === type) return event
   }
   return undefined
 }
@@ -107,18 +108,21 @@ describe('auto-review answerer', () => {
     expect(prompt).not.toContain('not found or unparseable')
   })
 
-  it('requests the ignorable envelope marker so any harness build can load the log', async () => {
+  it('routes audit through the plugin-record writer, which stamps ignorable itself', async () => {
     const harness = await auditHarness({ toolsPolicy: { overrides: { bash: 'ai' } } })
-    const append = vi.spyOn(harness.session, 'append')
     await dispatchAskedApproval(harness.ctx, harness.session, {
       agent: harness.agent,
       toolName: 'bash',
       callId: CallId('call-1'),
       reason: 'escalate sandbox',
     }, next)
-    const verdictCall = append.mock.calls.find(([type]) => type === 'autoReview/verdict')
-    expect(verdictCall).toBeDefined()
-    expect(verdictCall?.[2]).toEqual({ ignorable: true })
+    // A host that exposes `appendPluginRecord` gets the namespaced record type;
+    // that writer stamps `ignorable: true` itself, so no surface intent is owed
+    // and nothing needs to go through the public `append` signature.
+    const verdictEvent = harness.session.snapshotEvents().find(event => auditEventTypeOf(event.type) === 'autoReview/verdict')
+    expect(verdictEvent).toBeDefined()
+    expect(verdictEvent?.type).toBe('plugin:dsh-auto-review/verdict')
+    expect((verdictEvent as { ignorable?: boolean } | undefined)?.ignorable).toBe(true)
   })
 
   it('delegates tools not covered by the policy table (default human)', async () => {
@@ -436,10 +440,10 @@ describe('auto-review answerer', () => {
       reason: 'escalate sandbox',
     })
     expect(outcome).toBe('allowed-once')
-    const types = harness.session.snapshotEvents().map(event => event.type)
+    const types = harness.session.snapshotEvents().map(event => auditEventTypeOf(event.type))
     expect(types).toEqual(expect.arrayContaining(['approval/asked', 'autoReview/verdict', 'approval/decided']))
     const asked = harness.session.snapshotEvents().find(event => event.type === 'approval/asked')
-    const verdict = harness.session.snapshotEvents().find(event => event.type === 'autoReview/verdict')
+    const verdict = harness.session.snapshotEvents().find(event => auditEventTypeOf(event.type) === 'autoReview/verdict')
     const decided = harness.session.snapshotEvents().find(event => event.type === 'approval/decided')
     expect(dataOf(verdict).approvalId).toBe(dataOf(asked).id)
     expect(dataOf(decided).id).toBe(dataOf(asked).id)
@@ -729,7 +733,7 @@ describe('auto-review answerer', () => {
       toolName: 'bash',
     }, next)
     expect(second.outcome).toBe('rejected')
-    const circuit = harness.session.snapshotEvents().find(event => event.type === 'autoReview/circuit')
+    const circuit = harness.session.snapshotEvents().find(event => auditEventTypeOf(event.type) === 'autoReview/circuit')
     expect(circuit?.data).toMatchObject({ action: 'delegate', trip: { kind: 'consecutive', count: 2 } })
     let downstreamCalled = false
     const third = await dispatchAskedApproval(harness.ctx, harness.session, {
@@ -787,7 +791,7 @@ describe('auto-review answerer', () => {
       toolName: 'bash',
     }, next)
     expect(outcome).toBe('rejected')
-    const circuit = harness.session.snapshotEvents().find(event => event.type === 'autoReview/circuit')
+    const circuit = harness.session.snapshotEvents().find(event => auditEventTypeOf(event.type) === 'autoReview/circuit')
     expect(circuit?.data).toMatchObject({ action: 'abort-turn' })
     expect(harness.injected).toHaveLength(1)
     expect((harness.injected[0]!.content[0] as { text: string }).text).toContain('circuit breaker tripped')

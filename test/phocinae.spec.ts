@@ -10,6 +10,7 @@ import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterEach, describe, expect, it } from 'vitest'
+import { auditEventTypeOf } from '../src/audit.ts'
 import { CallId } from './call-id.ts'
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
 import {
@@ -449,7 +450,7 @@ describe('phocinae answerer integration', () => {
   /** The last event of one type in the session log. */
   function lastEvent(harness: Awaited<ReturnType<typeof mountHarness>>, type: string) {
     for (const event of [...harness.session.snapshotEvents()].reverse()) {
-      if (event.type === type) return event
+      if (auditEventTypeOf(event.type) === type) return event
     }
     return undefined
   }

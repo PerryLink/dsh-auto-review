@@ -22,7 +22,7 @@ import type { PostToolDecision, ToolExecution, ToolExecutionResult } from '@deep
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import type { UserMessage } from '@deepseek-ai/dsh-llm/message'
 import type { CallId } from './call-id.ts'
-import { isMarkedAuditEvent, isUnmarkedHostVersion, peerSessionVersion, type AuditSupport } from './audit.ts'
+import { auditRecordEventType, isMarkedAuditEvent, isUnmarkedHostVersion, loadAppendPluginRecord, peerSessionVersion, type AuditSupport } from './audit.ts'
 import { fingerprint, VerdictCache } from './cache.ts'
 import { hasAiPolicy, resolveConfig, riskExceeds } from './config.ts'
 import type { Config, ResolvedConfig, ToolReviewPolicy } from './config.ts'
@@ -52,11 +52,6 @@ import {
   reviewStats,
   type AutoReviewFallback,
   type AutoReviewVerdictId,
-  type CircuitAppend,
-  type OverrideAppend,
-  type RejectionAppend,
-  type StateAppend,
-  type VerdictAppend,
 } from './events.ts'
 import { isReviewFailure, newCircuitId, newRejectionId, newVerdictId, runReview, sanitizedArgumentsText, truncate } from './review.ts'
 import type { OverrideContext, ReviewFailure, ReviewResolution } from './review.ts'
@@ -305,6 +300,12 @@ export class AutoReviewRuntime {
   private auditMayAppend(): boolean {
     if (this.config.allowUnmarkedAudit) return true
     if (this.auditSupport === 'unsupported') return false
+    if (loadAppendPluginRecord() !== null) {
+      // 0.2.2-rc.4+ stamps `ignorable` inside `appendPluginRecord`, so the audit
+      // rides the plugin-record namespace instead of the append options bag.
+      this.auditSupport = 'supported'
+      return true
+    }
     if (this.auditSupport === 'unknown') {
       const version = peerSessionVersion()
       if (version === null || isUnmarkedHostVersion(version)) {
@@ -314,6 +315,38 @@ export class AutoReviewRuntime {
       }
     }
     return true // a recognized marker-aware future line: append once and probe the envelope
+  }
+
+  /**
+   * Append one audit record to the session log through whichever marked-write
+   * path this host offers: `appendPluginRecord` where it exists (the record
+   * lands as `plugin:dsh-auto-review/<kind>`, marked `ignorable` by the host
+   * itself), otherwise the legacy `append('autoReview/<kind>', …, { ignorable:
+   * true })` a marker-aware line would honor.
+   * @param session - the session the record belongs to.
+   * @param kind - the audit kind (`verdict`, `rejection`, `circuit`, `state`, `override`).
+   * @param data - the record payload.
+   * @returns the event to hand to {@link AutoReviewRuntime.probeAuditResult},
+   *   or undefined when the host refused the write.
+   */
+  private appendAuditRecord(session: Session, kind: string, data: unknown): unknown {
+    const append = loadAppendPluginRecord()
+    if (append === null) {
+      return (session.append as unknown as (type: string, data: unknown, options: { ignorable: boolean }) => unknown)(
+        `autoReview/${kind}`,
+        data,
+        { ignorable: true },
+      )
+    }
+    const type = auditRecordEventType(kind)
+    try {
+      append(session, type, data)
+      // The host stamped the envelope; mirror its shape so the probe sees the marker.
+      return { type, ignorable: true }
+    } catch (error) {
+      this.ctx.logger.warn(`auto-review: the host refused the ${type} audit record, so it was dropped (${String(error)})`)
+      return undefined
+    }
   }
 
   /** After the first append on an unversioned host, probe the returned envelope for the ignorable marker. */
@@ -692,14 +725,14 @@ export class AutoReviewRuntime {
     const memory = this.memoryFor(session)
     const auditOk = this.auditMayAppend()
     if (auditOk) {
-      const result = (session.append as unknown as RejectionAppend)('autoReview/rejection', {
+      const result = this.appendAuditRecord(session, 'rejection', {
         rejectionId,
         ...approvalId !== undefined ? { approvalId } : {},
         toolName: request.toolName,
         ...request.callId !== undefined ? { callId: request.callId } : {},
         reason,
         outcome: 'rejected',
-      }, { ignorable: true })
+      })
       this.probeAuditResult(result)
     } else {
       // Mirror of the event-mode semantics: a hard-disable rejection counts
@@ -813,7 +846,7 @@ export class AutoReviewRuntime {
     }
     const auditOk = this.auditMayAppend()
     if (auditOk) {
-      const result = (request.agent.session.append as unknown as VerdictAppend)('autoReview/verdict', {
+      const result = this.appendAuditRecord(request.agent.session, 'verdict', {
         reviewId,
         approvalId,
         toolName: request.toolName,
@@ -828,7 +861,7 @@ export class AutoReviewRuntime {
         ...overridden ? { escalation: 'risk-policy' } : {},
         ...outcome !== undefined ? { outcome } : {},
         ...cached ? { cached: true } : {},
-      }, { ignorable: true })
+      })
       this.probeAuditResult(result)
     } else {
       this.recordVerdictMemory(this.memoryFor(request.agent.session), {
@@ -913,7 +946,7 @@ export class AutoReviewRuntime {
         receipt.reviewId = String(reviewId)
       }
       if (auditOk) {
-        const result = (session.append as unknown as VerdictAppend)('autoReview/verdict', {
+        const result = this.appendAuditRecord(session, 'verdict', {
           reviewId,
           approvalId,
           toolName: request.toolName,
@@ -925,7 +958,7 @@ export class AutoReviewRuntime {
           fallback: failure.fallback,
           error: failure.error,
           ...outcome !== undefined ? { outcome } : {},
-        }, { ignorable: true })
+        })
         this.probeAuditResult(result)
       } else {
         const fallbackMemory = this.memoryFor(session)
@@ -1013,12 +1046,12 @@ export class AutoReviewRuntime {
     }
     const circuitId = newCircuitId()
     if (auditOk) {
-      const result = (session.append as unknown as CircuitAppend)('autoReview/circuit', {
+      const result = this.appendAuditRecord(session, 'circuit', {
         circuitId,
         action,
         trip,
         toolName: request.toolName,
-      }, { ignorable: true })
+      })
       this.probeAuditResult(result)
     } else {
       memory.circuit = { circuitId, action, trip, toolName: request.toolName }
@@ -1186,7 +1219,7 @@ export class AutoReviewRuntime {
       return { kind: 'success', text: t.already(input.toUpperCase()) }
     }
     if (this.auditMayAppend()) {
-      const result = (session.append as unknown as StateAppend)('autoReview/state', { enabled }, { ignorable: true })
+      const result = this.appendAuditRecord(session, 'state', { enabled })
       this.probeAuditResult(result)
     } else {
       memory.enabledOverride = enabled
@@ -1240,10 +1273,10 @@ export class AutoReviewRuntime {
       return { kind: 'error', text: t.approveNone(index, denies.length) }
     }
     if (auditOk) {
-      const result = (session.append as unknown as OverrideAppend)('autoReview/override', {
+      const result = this.appendAuditRecord(session, 'override', {
         reviewId: target.reviewId,
         toolName: target.toolName,
-      }, { ignorable: true })
+      })
       this.probeAuditResult(result)
     } else {
       memory.overrides.push({ reviewId: String(target.reviewId), toolName: target.toolName, at: Date.now() })

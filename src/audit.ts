@@ -30,6 +30,7 @@
  * @module dsh-auto-review/audit
  */
 
+import { realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
 
 /** Host audit-envelope capability: unknown until the first append (or the peer-version pre-check). */
@@ -123,4 +124,84 @@ export function peerSessionVersion(): string | null {
   } catch {
     return null
   }
+}
+
+/**
+ * Event-type prefix for audit events written through the host's
+ * `appendPluginRecord` entry point.
+ *
+ * `0.2.2-rc.4` ships a second, documented way to get a marked event into the
+ * log: `appendPluginRecord(session, type, data)` accepts any type matching
+ * `/^plugin:<scope>(\/<name>)*$/` and stamps `ignorable: true` on the envelope
+ * itself (`dsh-session/lib/index.js`, `#appendRecord`). That path is the one
+ * the host's own reader treats as an out-of-tree plugin record, so an
+ * `autoReview/*` payload can finally travel in a log without making the
+ * session unresumable — the same payloads, carried under a
+ * `plugin:dsh-auto-review/*` name. Readers normalize the two spellings back
+ * together with {@link auditEventTypeOf}, so logs written by older builds keep
+ * folding.
+ */
+export const PLUGIN_RECORD_PREFIX = 'plugin:dsh-auto-review/'
+
+/** The host's `appendPluginRecord`, as resolved from whichever module instance the host itself loaded. */
+export type AppendPluginRecord = (session: unknown, type: string, data: unknown) => unknown
+
+let appendPluginRecord: AppendPluginRecord | null | undefined
+
+/**
+ * The host's `appendPluginRecord`, or `null` when this host predates it.
+ *
+ * The peer is resolved from the plugin's own module first (a hoisted
+ * `node_modules` puts the host's copy there) and from the executable's
+ * realpath second — a profile installed with `autoInstallPeers: false` links
+ * no `@deepseek-ai/dsh-session` beside the plugin at all, and
+ * {@link peerSessionVersion} therefore returns `null` even though the running
+ * host does export the entry point. The result is cached: capability does not
+ * change within one process.
+ * @returns the appender, or null on hosts that cannot write plugin records.
+ */
+export function loadAppendPluginRecord(): AppendPluginRecord | null {
+  if (appendPluginRecord !== undefined) return appendPluginRecord
+  appendPluginRecord = null
+  const candidates = [import.meta.url]
+  const entry = process.argv[1]
+  if (entry !== undefined) {
+    try {
+      candidates.push(realpathSync(entry))
+    } catch {
+      // A virtual argv[1] (eval, test runner) simply yields no second candidate.
+    }
+  }
+  for (const candidate of candidates) {
+    try {
+      const mod = createRequire(candidate)('@deepseek-ai/dsh-session') as { appendPluginRecord?: unknown }
+      if (typeof mod.appendPluginRecord === 'function') {
+        appendPluginRecord = mod.appendPluginRecord as AppendPluginRecord
+        break
+      }
+    } catch {
+      // Not resolvable from this candidate; try the next.
+    }
+  }
+  return appendPluginRecord
+}
+
+/**
+ * The log event type an audit record of `kind` is written under.
+ * @param kind - the audit kind (`verdict`, `rejection`, `circuit`, `state`, `override`).
+ * @returns the `plugin:`-registered event type.
+ */
+export function auditRecordEventType(kind: string): string {
+  return `${PLUGIN_RECORD_PREFIX}${kind}`
+}
+
+/**
+ * The historical `autoReview/*` spelling of any audit event type, so the fold
+ * sees one vocabulary whichever way the event was written.
+ * @param type - an event type off the log.
+ * @returns `autoReview/<kind>` for plugin-record events, `type` unchanged otherwise.
+ */
+export function auditEventTypeOf(type: string): string {
+  if (!type.startsWith(PLUGIN_RECORD_PREFIX)) return type
+  return `autoReview/${type.slice(PLUGIN_RECORD_PREFIX.length)}`
 }

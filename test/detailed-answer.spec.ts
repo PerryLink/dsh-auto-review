@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
+import { auditEventTypeOf } from '../src/audit.ts'
 import type { DetailedAnswer, ReviewReceipt } from '../src/index.ts'
 import { appendRequestHeader, mountHarness } from './harness.ts'
 import { CallId } from './call-id.ts'
@@ -65,12 +66,15 @@ describe('request-local structured receipts', () => {
     runtime.dispose()
   })
 
-  it.each(['allow', 'deny'] as const)('records %s with public association and no custom audit writes', async decision => {
+  it.each(['allow', 'deny'] as const)('records %s with public association onto the audit event', async decision => {
     const harness = await mountHarness(ai, () => ({ verdict: { decision, reason: 'evidence' } }))
     const answer = await harness.ctx.autoReviewRuntime.answerDetailed(requestFor(harness), allow)
     expect(receiptOf(answer)).toMatchObject({ sessionId: 'harness-session', approvalId: 'asked-one', callId: 'one', category: 'review', decision, reason: 'evidence', configuredReviewerBackend: 'mock', cached: false })
     expect(answer.outcome).toBe(decision === 'allow' ? 'allowed-once' : 'rejected')
-    expect(harness.session.snapshotEvents().some(event => event.type.startsWith('autoReview/'))).toBe(false)
+    // The audit event is now written on every supported host, so the receipt's
+    // public association must survive onto it — not be skipped to stay clean.
+    const verdict = harness.session.snapshotEvents().find(event => auditEventTypeOf(event.type) === 'autoReview/verdict')
+    expect((verdict?.data as { approvalId?: string } | undefined)?.approvalId).toBe('asked-one')
   })
 
   it.each([

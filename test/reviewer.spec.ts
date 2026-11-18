@@ -10,6 +10,7 @@ import path from 'node:path'
 import { Session, SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { CallId } from './call-id.ts'
+import { auditEventTypeOf } from '../src/audit.ts'
 import { resolvePhocinaeConfig } from '../src/index.ts'
 import {
   buildContextSection,
@@ -448,7 +449,7 @@ describe('provider capability precheck', () => {
       toolName: 'bash',
     }, async () => 'allowed-once')
     expect(outcome).toBe('rejected')
-    const verdict = harness.session.snapshotEvents().find(event => event.type === 'autoReview/verdict')
+    const verdict = harness.session.snapshotEvents().find(event => auditEventTypeOf(event.type) === 'autoReview/verdict')
     expect(verdict?.data).toMatchObject({ fallback: 'unavailable' })
     expect((verdict?.data as { error?: string }).error).toContain('outputSchema')
     expect(harness.subagents.starts).toHaveLength(0)
@@ -466,7 +467,7 @@ describe('provider capability precheck', () => {
       toolName: 'bash',
     }, async () => 'allowed-once')
     expect(outcome).toBe('rejected')
-    const verdict = harness.session.snapshotEvents().find(event => event.type === 'autoReview/verdict')
+    const verdict = harness.session.snapshotEvents().find(event => auditEventTypeOf(event.type) === 'autoReview/verdict')
     expect((verdict?.data as { error?: string }).error).toContain('toolFilter')
   })
 })
