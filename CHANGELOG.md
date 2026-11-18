@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **The durable audit trail was never written on any released 0.2.x host, so the `autoReview` projection stayed at its baseline and the panel showed zeros.** `Session.append`'s third argument is a `SurfaceIntent` (`surfaceOp`/`sourceEventSeqs`), not the `ignorable` envelope marker, so no shipped host could stamp an `autoReview/*` event through it — `isUnmarkedHostVersion()` classified every `0.2.x` line as unmarked and the runtime deliberately stayed on the in-memory mirror. Budgets, the breaker and `/auto-review approve` kept working from that mirror, but nothing durable was logged, the projection folded no events, and `verdictsUsed`/`allows`/`denies`/`cacheHits` read as `0` forever. `dsh-session` exposes `appendPluginRecord(session, type, data)` for exactly this case: it stamps `ignorable: true` itself and requires a `plugin:<name>/<kind>` type. The runtime now resolves that writer (through the plugin's own module graph first, then through the running `dsh` binary) and prefers it; when it cannot be resolved the previous probe-and-degrade path is unchanged. Audit writes go through one `appendAuditRecord()` at all six call sites, and the read side folds `plugin:dsh-auto-review/*` back to the `autoReview/*` vocabulary in `sessionEvents()`, `applyAutoReview()` and `effectiveAutoReviewState()`/`openTurnVerdicts()`, so existing logs and new logs fold identically. Verified on DSH `0.2.2-rc.4`: a denied escalation persists as a `plugin:dsh-auto-review/verdict` record, the projection reports `denies=1`, `decided=1`, `recent=1` instead of zeros, and the panel renders that decision.
+
 ## [0.15.1] - 2026-11-13
 
 ### Fixed

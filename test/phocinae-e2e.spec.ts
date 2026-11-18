@@ -13,6 +13,7 @@
 import { describe, expect, it } from 'vitest'
 import { CallId } from './call-id.ts'
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
+import { auditEventTypeOf } from '../src/audit.ts'
 import { resolveConfig } from '../src/index.ts'
 import { isPhocinaeFailure, runPhocinaeReview } from '../src/phocinae.ts'
 import { dispatchAskedApproval, mountHarness } from './harness.ts'
@@ -122,7 +123,7 @@ suite('phocinae live service', () => {
     }, () => Promise.resolve<ApprovalOutcome>('allowed-once'))
     expect(outcome).toBe('rejected')
     expect(harness.subagents.starts).toHaveLength(0)
-    const verdicts = harness.session.snapshotEvents().filter(event => event.type === 'autoReview/verdict')
+    const verdicts = harness.session.snapshotEvents().filter(event => auditEventTypeOf(event.type) === 'autoReview/verdict')
     expect(verdicts.at(-1)?.data).toMatchObject({ provider: 'phocinae', decision: 'deny' })
   })
 })

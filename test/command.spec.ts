@@ -10,6 +10,7 @@ import { CommandId } from '@deepseek-ai/dsh-commands'
 import { Session } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { CommandDefinition } from '@deepseek-ai/dsh-commands'
+import { auditEventTypeOf } from '../src/audit.ts'
 import { effectiveAutoReviewState } from '../src/index.ts'
 import { makeAgent, mountHarness } from './harness.ts'
 
@@ -50,7 +51,7 @@ describe('/auto-review command', () => {
     const harness = await auditHarness()
     const result = invoke(harness.commands.registered[0], harness, 'off')
     expect(result).toMatchObject({ kind: 'success' })
-    const state = harness.session.snapshotEvents().find(event => event.type === 'autoReview/state')
+    const state = harness.session.snapshotEvents().find(event => auditEventTypeOf(event.type) === 'autoReview/state')
     expect(state?.data).toEqual({ enabled: false })
     expect(harness.injected).toHaveLength(1)
     expect(harness.injected[0]!.content[0]).toMatchObject({ type: 'text' })
@@ -82,7 +83,7 @@ describe('/auto-review command', () => {
     expect(effectiveAutoReviewState(restored.snapshotEvents())).toBe(false)
     // A fresh session created from the same durable events delegates too.
     const agent = makeAgent(restored)
-    expect(agent.session.snapshotEvents().some(event => event.type === 'autoReview/state')).toBe(true)
+    expect(agent.session.snapshotEvents().some(event => auditEventTypeOf(event.type) === 'autoReview/state')).toBe(true)
   })
 
   it('records a one-shot override for a recent denial', async () => {
@@ -102,7 +103,7 @@ describe('/auto-review command', () => {
     const result = invoke(harness.commands.registered[0], harness, 'approve')
     expect(result).toMatchObject({ kind: 'success' })
     expect((result as { text: string }).text).toContain('Authorized ONE retry')
-    const override = harness.session.snapshotEvents().find(event => event.type === 'autoReview/override')
+    const override = harness.session.snapshotEvents().find(event => auditEventTypeOf(event.type) === 'autoReview/override')
     expect(override?.data).toEqual({ reviewId: 'r1', toolName: 'bash' })
   })
 

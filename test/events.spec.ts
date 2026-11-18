@@ -1,3 +1,4 @@
+import { auditEventTypeOf } from '../src/audit.ts'
 /**
  * Audit-fold unit tests: state override folds, per-turn verdict counting,
  * approval/asked correlation, and presented-call lookup — the pure functions
@@ -257,7 +258,7 @@ describe('override folds', () => {
       { type: 'autoReview/verdict', data: { reviewId: 'r1', approvalId: 'a1', toolName: 'bash', provider: 'fork', durationMs: 1, decision: 'deny', reason: 'no' } },
       { type: 'autoReview/override', data: { reviewId: 'r1', toolName: 'bash' } },
     )
-    const overrideEvent = session.snapshotEvents().find(event => event.type === 'autoReview/override')!
+    const overrideEvent = session.snapshotEvents().find(event => auditEventTypeOf(event.type) === 'autoReview/override')!
     expect(activeOverride(session.snapshotEvents(), 'bash', 60_000, overrideEvent.time + 1)).toBe('r1')
     expect(activeOverride(session.snapshotEvents(), 'bash', 60_000, overrideEvent.time + 60_001)).toBeUndefined()
     expect(activeOverride(session.snapshotEvents(), 'write', 60_000, overrideEvent.time + 1)).toBeUndefined()
@@ -268,7 +269,7 @@ describe('override folds', () => {
       { type: 'autoReview/override', data: { reviewId: 'r1', toolName: 'bash' } },
       { type: 'autoReview/verdict', data: { reviewId: 'r2', approvalId: 'a2', toolName: 'bash', provider: 'fork', durationMs: 1, decision: 'allow', reason: 'ok' } },
     )
-    const verdictEvent = session.snapshotEvents().find(event => event.type === 'autoReview/verdict')!
+    const verdictEvent = session.snapshotEvents().find(event => auditEventTypeOf(event.type) === 'autoReview/verdict')!
     expect(activeOverride(session.snapshotEvents(), 'bash', 60_000, verdictEvent.time + 1)).toBeUndefined()
   })
 })

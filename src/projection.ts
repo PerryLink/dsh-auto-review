@@ -11,6 +11,7 @@ import { z } from 'zod'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { SessionEvent, SessionEventMap, SessionHeader } from '@deepseek-ai/dsh-session'
 import type { AutoReviewDenyView, AutoReviewProjection, AutoReviewProjectionState, AutoReviewVerdictView } from './projection-types.ts'
+import { auditEventTypeOf } from './audit.ts'
 
 /** How many verdict rows the panel carries. */
 const RECENT_CAP = 8
@@ -133,6 +134,11 @@ function denyView(data: SessionEventMap['autoReview/verdict']): AutoReviewDenyVi
  * @returns the next state (same reference when the event is not this unit's).
  */
 export function applyAutoReview(state: AutoReviewProjectionState, event: SessionEvent): AutoReviewProjectionState {
+  // `plugin:dsh-auto-review/*` and `autoReview/*` are the same record, written
+  // by whichever marked-write path the host offered. Rename first, then fold:
+  // re-dispatching keeps the discriminated union narrow inside the switch.
+  const auditType = auditEventTypeOf(event.type)
+  if (auditType !== event.type) return applyAutoReview(state, { ...event, type: auditType } as SessionEvent)
   switch (event.type) {
     case 'turn/start':
       return state.turnOpen
