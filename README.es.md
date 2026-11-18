@@ -352,7 +352,7 @@ Claves más usadas:
 | `reviewerTimeoutMs` | `60000` | Plazo del veredicto; al vencer se aplica la política de fallback |
 
 <details>
-<summary>Tabla de configuración completa (32 claves)</summary>
+<summary>Tabla de configuración completa (34 claves)</summary>
 
 | Clave | Por defecto | Significado |
 |---|---|---|
@@ -375,6 +375,7 @@ Claves más usadas:
 | `reviewerTimeoutMs` | `60000` | Plazo del veredicto; al vencer se aplica la política de fallback |
 | `reviewerTools` | `[read, glob, grep]` | Lista blanca de herramientas del hijo revisor (debe ser no vacía) |
 | `fallbackPolicy` | `rejected` | Ante fallo del revisor: `rejected` (cierre en fallo) / `delegate` / `allow-once` |
+| `denyPolicy` | `reject` | Veredicto de denegación del revisor: `reject` (rechazo final, por defecto) / `ask` (continúa a la cadena de aprobación humana; no se inyecta la razón de la denegación) |
 | `maxReviewsPerTurn` | `10` | Presupuesto de veredictos de IA reales por turno abierto; superado, las solicitudes delegan |
 | `maxFailuresPerTurn` | `10` | Presupuesto de fallos del revisor por turno abierto (por defecto igual a `maxReviewsPerTurn`) |
 | `reasonMaxChars` | `2000` | Límite para las razones del revisor y la vista previa de argumentos redactados |

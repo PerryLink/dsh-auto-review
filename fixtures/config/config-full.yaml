@@ -37,6 +37,7 @@ reviewerBackend: agent         # agent | phocinae; to try Phocinae set this to p
 reviewerTimeoutMs: 60000
 reviewerTools: [read, glob, grep]   # read-only allow-list for the reviewer child
 fallbackPolicy: rejected      # fail closed on reviewer failure (delegate | allow-once)
+denyPolicy: reject            # a reviewer deny is final (ask: continue to the human approval chain instead)
 maxReviewsPerTurn: 10         # real AI verdicts per open turn
 maxFailuresPerTurn: 3         # reviewer failures per open turn (defaults to maxReviewsPerTurn)
 reasonMaxChars: 2000

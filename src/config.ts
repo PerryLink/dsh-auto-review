@@ -140,6 +140,22 @@ export type RiskRuleField = 'reason' | 'toolName' | 'arguments'
 export type FallbackPolicy = 'rejected' | 'delegate' | 'allow-once'
 
 /**
+ * What a valid reviewer deny verdict settles with:
+ *
+ * - `'reject'` — the verdict is final: the answerer settles `rejected` and
+ *   feeds the deny reason back to the model (the current fail-closed
+ *   behaviour, and the default).
+ * - `'ask'` — the request continues down the answerer chain (`next()`) to the
+ *   human answerer; the `autoReview/verdict` audit event is still appended,
+ *   but the deny is not final and no deny-reason feedback is injected (the
+ *   human decision governs).
+ *
+ * Only a deny verdict is affected; reviewer failures keep resolving through
+ * {@link FallbackPolicy} and the risk-policy override of an allow is unchanged.
+ */
+export type DenyPolicy = 'reject' | 'ask'
+
+/**
  * How much of the session transcript the reviewer receives as compact
  * context (the calling session's recent user/assistant messages and tool
  * results, redacted and truncated). `turns: 0` disables the section.
@@ -267,6 +283,8 @@ export interface Config {
   reviewerTools?: string[]
   /** Reviewer failure policy (see {@link FallbackPolicy}). Default `'rejected'`. */
   fallbackPolicy?: FallbackPolicy
+  /** What a reviewer deny verdict settles with (see {@link DenyPolicy}). Default `'reject'`. */
+  denyPolicy?: DenyPolicy
   /** Maximum real AI verdicts per open turn; further requests delegate to humans. */
   maxReviewsPerTurn?: number
   /**
@@ -341,6 +359,8 @@ export interface ResolvedConfig {
   readonly reviewerTimeoutMs: number
   readonly reviewerTools: readonly string[]
   readonly fallbackPolicy: FallbackPolicy
+  /** What a deny verdict settles with; see {@link DenyPolicy}. */
+  readonly denyPolicy: DenyPolicy
   readonly maxReviewsPerTurn: number
   readonly maxFailuresPerTurn: number
   readonly reasonMaxChars: number
@@ -378,6 +398,7 @@ export interface ResolvedPhocinaeConfig {
 
 const POLICY = z.union(['ai', 'human', 'never'] as const)
 const FALLBACK = z.union(['rejected', 'delegate', 'allow-once'] as const)
+const DENY = z.union(['reject', 'ask'] as const)
 const RISK = z.union(['low', 'medium', 'high'] as const)
 const FIELD = z.union(['reason', 'toolName', 'arguments'] as const)
 const CIRCUIT_ACTION = z.union(['delegate', 'reject', 'abort-turn'] as const)
@@ -416,6 +437,7 @@ export const Config: z<Config> = z.object({
   reviewerTimeoutMs: z.number().default(60_000),
   reviewerTools: z.array(z.string()).default(['read', 'glob', 'grep']),
   fallbackPolicy: FALLBACK.default('rejected'),
+  denyPolicy: DENY.default('reject'),
   maxReviewsPerTurn: z.number().default(10),
   maxFailuresPerTurn: z.number(),
   reasonMaxChars: z.number().default(2000),
@@ -589,6 +611,10 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
   if (config.allowUnmarkedAudit !== undefined && typeof config.allowUnmarkedAudit !== 'boolean') {
     throw new TypeError(`allowUnmarkedAudit must be a boolean, got ${String(config.allowUnmarkedAudit)}`)
   }
+  const rawDenyPolicy: unknown = config.denyPolicy
+  if (rawDenyPolicy !== undefined && rawDenyPolicy !== 'reject' && rawDenyPolicy !== 'ask') {
+    throw new TypeError(`denyPolicy must be one of "reject", "ask", got ${JSON.stringify(rawDenyPolicy)}`)
+  }
   const rawBackend = config.reviewerBackend
   if (rawBackend !== undefined && rawBackend !== 'agent' && rawBackend !== 'phocinae') {
     throw new TypeError(`reviewerBackend must be one of "agent", "phocinae", got ${JSON.stringify(rawBackend)}`)
@@ -634,6 +660,7 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     reviewerTimeoutMs: config.reviewerTimeoutMs ?? 60_000,
     reviewerTools,
     fallbackPolicy: config.fallbackPolicy ?? 'rejected',
+    denyPolicy: config.denyPolicy ?? 'reject',
     maxReviewsPerTurn: config.maxReviewsPerTurn ?? 10,
     maxFailuresPerTurn: config.maxFailuresPerTurn ?? config.maxReviewsPerTurn ?? 10,
     reasonMaxChars: config.reasonMaxChars ?? 2000,

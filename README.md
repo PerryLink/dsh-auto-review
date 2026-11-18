@@ -352,7 +352,7 @@ Claude Desktop（`claude_desktop_config.json`）配置示例：
 | `reviewerTimeoutMs` | `60000` | 裁决截止时间；超时后应用 fallback 策略 |
 
 <details>
-<summary>完整配置表（32 个键）</summary>
+<summary>完整配置表（34 个键）</summary>
 
 | 键 | 默认值 | 含义 |
 |---|---|---|
@@ -375,6 +375,7 @@ Claude Desktop（`claude_desktop_config.json`）配置示例：
 | `reviewerTimeoutMs` | `60000` | 裁决截止时间；超时后应用 fallback 策略 |
 | `reviewerTools` | `[read, glob, grep]` | 审查器子代理的工具白名单（必须非空） |
 | `fallbackPolicy` | `rejected` | 审查器失败时的策略：`rejected`（失败关闭）/ `delegate` / `allow-once` |
+| `denyPolicy` | `reject` | 审查器 deny 裁决的处理：`reject`（最终拒绝，默认）/ `ask`（继续交给人类审批链；不注入拒绝理由反馈） |
 | `maxReviewsPerTurn` | `10` | 每个开放轮次真实 AI 裁决的预算；超出后请求委派给人类 |
 | `maxFailuresPerTurn` | `10` | 每个开放轮次审查器失败的预算（默认等于 `maxReviewsPerTurn`） |
 | `reasonMaxChars` | `2000` | 审查理由与脱敏参数预览的上限 |

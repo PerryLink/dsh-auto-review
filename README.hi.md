@@ -352,7 +352,7 @@ Claude Desktop (`claude_desktop_config.json`) उदाहरण:
 | `reviewerTimeoutMs` | `60000` | निर्णय समय-सीमा; समाप्ति पर fallback नीति लागू |
 
 <details>
-<summary>पूर्ण कॉन्फ़िगरेशन तालिका (32 कुंजियाँ)</summary>
+<summary>पूर्ण कॉन्फ़िगरेशन तालिका (34 कुंजियाँ)</summary>
 
 | कुंजी | डिफ़ॉल्ट | अर्थ |
 |---|---|---|
@@ -375,6 +375,7 @@ Claude Desktop (`claude_desktop_config.json`) उदाहरण:
 | `reviewerTimeoutMs` | `60000` | निर्णय समय-सीमा; समाप्ति पर fallback नीति लागू |
 | `reviewerTools` | `[read, glob, grep]` | समीक्षक बच्चे की टूल allow-list (रिक्त नहीं होनी चाहिए) |
 | `fallbackPolicy` | `rejected` | समीक्षक विफलता: `rejected` (फेल क्लोज़्ड) / `delegate` / `allow-once` |
+| `denyPolicy` | `reject` | समीक्षक का deny निर्णय: `reject` (अंतिम अस्वीकृति, डिफ़ॉल्ट) / `ask` (मानव अनुमोदन श्रृंखला तक जारी; अस्वीकृति का कारण इंजेक्ट नहीं होता) |
 | `maxReviewsPerTurn` | `10` | खुले टर्न पर वास्तविक AI-निर्णय बजट; उससे आगे अनुरोध सौंपे जाते हैं |
 | `maxFailuresPerTurn` | `10` | खुले टर्न पर समीक्षक-विफलता बजट (डिफ़ॉल्ट `maxReviewsPerTurn`) |
 | `reasonMaxChars` | `2000` | समीक्षक कारणों और रेडैक्टेड तर्क पूर्वावलोकन पर सीमा |

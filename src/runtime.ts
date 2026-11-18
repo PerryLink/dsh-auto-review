@@ -2,9 +2,10 @@
  * Runtime of `dsh-auto-review`: the `approval/request` answerer (claim when
  * the session and tool policy say `ai`, otherwise strictly `next()`), the
  * reviewer verdict handling with fail-closed fallback, the risk-policy
- * escalation, the rejection circuit breaker, the deny-reason injection into
- * the denied tool result, and the `/auto-review` session command. Every
- * registration is an effect (ctx.on / commands.register).
+ * escalation, the deny-policy escalation to the human chain, the rejection
+ * circuit breaker, the deny-reason injection into the denied tool result, and
+ * the `/auto-review` session command. Every registration is an effect
+ * (ctx.on / commands.register).
  * @module dsh-auto-review/runtime
  */
 
@@ -740,10 +741,12 @@ export class AutoReviewRuntime {
   /**
    * Run the reviewer for one claimed request, register the child for
    * anti-recursion, apply the risk policy, record the verdict, trip the
-   * circuit breaker on denials, and settle the answerer chain.
+   * circuit breaker on denials, and settle the answerer chain. A deny verdict
+   * delegates to the human chain when `denyPolicy` is `'ask'` (the verdict is
+   * audited, but the human decision governs and no deny feedback is injected).
    * @param request - the pending decision.
    * @param approvalId - the correlated `approval/asked` id.
-   * @param next - the downstream chain (used by risk-policy delegation).
+   * @param next - the downstream chain (used by risk-policy and deny-policy delegation).
    * @param override - a pending human one-shot override, when one applies.
    * @returns the closed approval outcome.
    */
@@ -784,6 +787,11 @@ export class AutoReviewRuntime {
     const overridden = resolution.decision === 'allow'
       && resolution.riskLevel !== undefined
       && riskExceeds(resolution.riskLevel, this.config.riskPolicy.maxAutoAllow)
+    // `denyPolicy: 'ask'` does not settle a deny verdict: the request
+    // continues down the answerer chain and the human decides. The verdict is
+    // still audited, but it must record no `outcome` — the downstream
+    // answerer owns the decision, exactly like a `delegate` fallback.
+    const denyEscalates = resolution.decision === 'deny' && this.config.denyPolicy === 'ask'
     const outcome: ApprovalOutcome | undefined = overridden
       ? this.config.riskPolicy.onHighRisk === 'deny' ? 'rejected' : undefined
       : resolution.decision === 'allow' ? 'allowed-once' : 'rejected'
@@ -807,8 +815,8 @@ export class AutoReviewRuntime {
         receipt.reviewerSessionId = String(resolution.reviewerSessionId)
       }
       receipt.durationMs = durationMs
-      if (outcome === undefined) {
-        receipt.delegationReason = 'risk-policy'
+      if (outcome === undefined || denyEscalates) {
+        receipt.delegationReason = denyEscalates ? 'deny-policy' : 'risk-policy'
       }
     }
     const auditOk = this.auditMayAppend()
@@ -826,7 +834,7 @@ export class AutoReviewRuntime {
         reason: resolution.reason,
         ...resolution.riskLevel !== undefined ? { riskLevel: resolution.riskLevel } : {},
         ...overridden ? { escalation: 'risk-policy' } : {},
-        ...outcome !== undefined ? { outcome } : {},
+        ...outcome !== undefined && !denyEscalates ? { outcome } : {},
         ...cached ? { cached: true } : {},
       }, { ignorable: true })
       this.probeAuditResult(result)
@@ -839,6 +847,12 @@ export class AutoReviewRuntime {
     }
     if (outcome === undefined) return next()
     if (resolution.decision === 'deny') {
+      if (denyEscalates) {
+        // denyPolicy: 'ask' — the denial is audited above, then the human
+        // approval chain decides. No deny-reason feedback is injected and no
+        // rejection count/circuit trip happens: the human decision governs.
+        return next()
+      }
       this.recordDenyReason(request.callId, request.toolName, reviewId, resolution.reason)
       const circuitTriggered = this.checkCircuit(request)
       if (receipt !== undefined) {

@@ -352,7 +352,7 @@ Chaves mais usadas:
 | `reviewerTimeoutMs` | `60000` | Prazo do veredito; na expiração a política de fallback se aplica |
 
 <details>
-<summary>Tabela de configuração completa (32 chaves)</summary>
+<summary>Tabela de configuração completa (34 chaves)</summary>
 
 | Chave | Padrão | Significado |
 |---|---|---|
@@ -375,6 +375,7 @@ Chaves mais usadas:
 | `reviewerTimeoutMs` | `60000` | Prazo do veredito; na expiração a política de fallback se aplica |
 | `reviewerTools` | `[read, glob, grep]` | Allow-list de ferramentas do filho revisor (deve ser não vazia) |
 | `fallbackPolicy` | `rejected` | Falha do revisor: `rejected` (falha fechada) / `delegate` / `allow-once` |
+| `denyPolicy` | `reject` | Veredito de negação do revisor: `reject` (rejeição final, padrão) / `ask` (segue para a cadeia de aprovação humana; o motivo da negação não é injetado) |
 | `maxReviewsPerTurn` | `10` | Orçamento real de vereditos de IA por turno aberto; além disso, requisições delegam |
 | `maxFailuresPerTurn` | `10` | Orçamento de falhas do revisor por turno aberto (padrão: `maxReviewsPerTurn`) |
 | `reasonMaxChars` | `2000` | Teto para motivos do revisor e a prévia de argumentos redigidos |

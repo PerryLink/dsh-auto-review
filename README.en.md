@@ -352,7 +352,7 @@ Most-used keys:
 | `reviewerTimeoutMs` | `60000` | Verdict deadline; on expiry the fallback policy applies |
 
 <details>
-<summary>Full configuration table (32 keys)</summary>
+<summary>Full configuration table (34 keys)</summary>
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -375,6 +375,7 @@ Most-used keys:
 | `reviewerTimeoutMs` | `60000` | Verdict deadline; on expiry the fallback policy applies |
 | `reviewerTools` | `[read, glob, grep]` | The reviewer child's tool allow-list (must be non-empty) |
 | `fallbackPolicy` | `rejected` | Reviewer failure: `rejected` (fail closed) / `delegate` / `allow-once` |
+| `denyPolicy` | `reject` | A reviewer deny verdict: `reject` (final rejection, the default) / `ask` (continue to the human approval chain; no deny-reason feedback is injected) |
 | `maxReviewsPerTurn` | `10` | Real AI-verdict budget per open turn; beyond it, requests delegate |
 | `maxFailuresPerTurn` | `10` | Reviewer-failure budget per open turn (defaults to `maxReviewsPerTurn`) |
 | `reasonMaxChars` | `2000` | Cap for reviewer reasons and the redacted argument preview |
