@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **The tool-less reviewer sent no `sessionId`, so every review failed closed on an OpenCode route.** When the host offers no usable child seam (`startActivation` without a `reviewerPreset`, or no legacy `start`) the reviewer falls back to one `ctx.llm.stream` call, and that call omitted `sessionId`. pi-ai only adds the OpenCode gateway's `x-opencode-session` header when the options carry a session id, so the stream ended with `INVALID_REQUEST … MissingSessionID`; every reviewed tool call then resolved through `fallbackPolicy` (denied by default, or handed to a human) instead of being reviewed. The same defect class as the built-in `dsh-experimental-auto-review` fix. The inline reviewer now passes `request.agent.session.id` — it already runs on the delegating session's route — so the gateway accepts the request. Regression test asserts the recorded `llm.stream` options carry the owning session id.
+
 ## [0.15.1] - 2026-11-13
 
 ### Fixed
