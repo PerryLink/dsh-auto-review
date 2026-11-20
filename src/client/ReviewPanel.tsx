@@ -6,14 +6,36 @@
  * buttons for recent denials. Data arrives through the `autoReview` session
  * projection; switches and approves execute the `/auto-review` command
  * through the commands Remote.
+ *
+ * The popover is portalled onto `document.body` and positioned `fixed` from
+ * the button's `getBoundingClientRect()`. Rendering it inline made it a
+ * descendant of the conversation header's title cluster, whose CSS sets
+ * `overflow: clip` plus a 36px height for long-title truncation — the panel
+ * was painted but clipped away, leaving only a thin sliver visible.
  * @module dsh-auto-review/client/ReviewPanel
  */
 
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { AutoReviewProjection } from '../projection-types.ts'
 import { presentVerdict } from './present.ts'
 import { NS } from './locales.ts'
+
+/** Panel width in px; fixed so the position is known before the first paint. Keep in sync with `styles.ts`. */
+const PANEL_WIDTH = 360
+/** Vertical gap between the button and the panel. */
+const PANEL_GAP = 6
+/** Minimum distance kept between the panel and the viewport edges. */
+const VIEWPORT_MARGIN = 8
+/** Assumed panel height when deciding whether to flip above the button. */
+const PANEL_ESTIMATED_HEIGHT = 320
+
+/** Viewport-space position of the portalled panel. */
+interface PanelPosition {
+  readonly top: number
+  readonly left: number
+}
 
 /** Registration-side injected face: the approve action for one recent denial. */
 export interface ReviewPanelInjected {
@@ -59,13 +81,14 @@ function verdictBadge(
 /**
  * Render the review panel action.
  * @param props - framework kit (sessionId, useProjection), locale, and the approve face.
- * @returns the header button with its popover.
+ * @returns the header button with its portalled popover.
  */
 export function ReviewPanel({ useProjection, approve, setEnabled, t }: ReviewPanelProps): ReactNode {
   const readProjection = useProjection as unknown as (unit: 'autoReview') => AutoReviewProjection | undefined
   const value = readProjection('autoReview')
   const [open, setOpen] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [position, setPosition] = useState<PanelPosition | null>(null)
   const anchor = useRef<HTMLDivElement | null>(null)
   const toggle = (): void => setOpen(previous => !previous)
   const runApprove = async (n: number): Promise<void> => {
@@ -84,13 +107,43 @@ export function ReviewPanel({ useProjection, approve, setEnabled, t }: ReviewPan
       setNotice(t('switchFailed').replace('{text}', error instanceof Error ? error.message : String(error)))
     }
   }
+  // Track the button while the popover is open: the header moves with the
+  // conversation scroll and the viewport, and the panel is out of flow.
+  useEffect(() => {
+    if (!open) {
+      setPosition(null)
+      return
+    }
+    const place = (): void => {
+      const button = anchor.current?.querySelector('[data-dsh-auto-review-button]')
+      if (!(button instanceof HTMLElement)) return
+      const rect = button.getBoundingClientRect()
+      const width = Math.min(PANEL_WIDTH, window.innerWidth - VIEWPORT_MARGIN * 2)
+      const maxLeft = Math.max(VIEWPORT_MARGIN, window.innerWidth - VIEWPORT_MARGIN - width)
+      const left = Math.min(Math.max(VIEWPORT_MARGIN, rect.right - width), maxLeft)
+      let top = rect.bottom + PANEL_GAP
+      if (top + PANEL_ESTIMATED_HEIGHT > window.innerHeight - VIEWPORT_MARGIN) {
+        top = Math.max(VIEWPORT_MARGIN, rect.top - PANEL_ESTIMATED_HEIGHT - PANEL_GAP)
+      }
+      setPosition(previous => (
+        previous !== null && previous.top === top && previous.left === left ? previous : { top, left }
+      ))
+    }
+    place()
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    return () => {
+      window.removeEventListener('resize', place)
+      window.removeEventListener('scroll', place, true)
+    }
+  }, [open])
   return (
     <div data-dsh-auto-review ref={anchor}>
       <button type="button" data-dsh-auto-review-button onClick={toggle}>
         {t('label')}
       </button>
-      {open && (
-        <div data-dsh-auto-review-panel>
+      {open && position !== null && createPortal(
+        <div data-dsh-auto-review-panel style={{ top: position.top, left: position.left }}>
           <div data-dsh-auto-review-title>{t('title')}</div>
           {value === undefined
             ? <div data-dsh-auto-review-muted>{t('unavailable')}</div>
@@ -167,7 +220,8 @@ export function ReviewPanel({ useProjection, approve, setEnabled, t }: ReviewPan
               </div>
             )}
           {notice !== null && <div data-dsh-auto-review-muted>{notice}</div>}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )
