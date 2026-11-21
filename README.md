@@ -551,7 +551,7 @@ config:
 
 | 方面 | 状态 |
 |---|---|
-| 宿主 | DeepSeek Harness `dsh-v0.2.2-rc.4`（2026-11-18 验证）：`engines.dsh >=0.2.1-0 <0.3.0 || >=0.2.2-0 <0.3.0`；P0 兼容路径已有回归测试。 |
+| 宿主 | DeepSeek Harness `dsh-v0.2.2-rc.4`（2026-11-18 验证）：`engines.dsh >=0.2.1-0 <0.3.0 \|\| >=0.2.2-0 <0.3.0`；P0 兼容路径已有回归测试。 |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | 平台 | 全部（宿主 answerer；可选 Web 审查面板，依赖会话投影能力） |
 | 模型 | 任意生成式模型（审查器默认继承会话代理的路由；`reviewerModel` 可覆盖），或本机非生成式的 `Phocinae-Largha-150M-v1` 决策模型（`reviewerBackend: phocinae`） |

@@ -552,7 +552,7 @@ Evidência estática: o `dsh-plugin-doctor` K10–K13 reporta `pass` em todas as
 
 | Superfície | Status |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.2.2-rc.4` (verificado 2026-11-18): `engines.dsh >=0.2.1-0 <0.3.0 || >=0.2.2-0 <0.3.0`; os caminhos de compatibilidade P0 têm testes de regressão. |
+| Harness | DeepSeek Harness `dsh-v0.2.2-rc.4` (verificado 2026-11-18): `engines.dsh >=0.2.1-0 <0.3.0 \|\| >=0.2.2-0 <0.3.0`; os caminhos de compatibilidade P0 têm testes de regressão. |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | Plataformas | Todas (answerer no host; painel de revisão Web opcional via a capacidade de projeção de sessão) |
 | Modelo | Qualquer modelo generativo (o revisor herda a rota do agente da sessão; `reviewerModel` sobrescreve), ou o modelo de decisão local não-generativo `Phocinae-Largha-150M-v1` (`reviewerBackend: phocinae`) |

@@ -551,7 +551,7 @@ Static evidence: `dsh-plugin-doctor` K10–K13 report `pass` for every check on 
 
 | Surface | Status |
 |---|---|
-| Harness | DeepSeek Harness `dsh-v0.2.2-rc.4` (verified 2026-11-18): `engines.dsh >=0.2.1-0 <0.3.0 || >=0.2.2-0 <0.3.0`; the P0 compatibility paths have regression tests. |
+| Harness | DeepSeek Harness `dsh-v0.2.2-rc.4` (verified 2026-11-18): `engines.dsh >=0.2.1-0 <0.3.0 \|\| >=0.2.2-0 <0.3.0`; the P0 compatibility paths have regression tests. |
 | Node | `^22.19.0 \|\| >=24.0.0` |
 | Platforms | All (host answerer; optional Web review panel via the session-projection capability) |
 | Model | Any generative model (the reviewer inherits the session agent's route; `reviewerModel` overrides), or the local non-generative `Phocinae-Largha-150M-v1` decision model (`reviewerBackend: phocinae`) |
