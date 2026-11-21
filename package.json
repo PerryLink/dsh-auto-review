@@ -68,6 +68,7 @@
     "README.hi.md",
     "LICENSE",
     "PRIVACY.md",
+    "docs/assets/*",
     "icon.svg"
   ],
   "dsh": {
