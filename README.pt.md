@@ -43,6 +43,11 @@ Quando uma ação cruza a fronteira do sandbox, o `dsh-auto-review` entrega a de
   <img src="docs/assets/dsh-auto-review-flow-v5-light.svg" width="100%" alt="Funil de reivindicação do dsh-auto-review: uma requisição que cruza a fronteira passa pelo portão de reivindicação, pela montagem de evidência, pela sala de revisão somente-leitura e pelo contrato de veredito, e termina em uma de três saídas (allow / deny / fallback); não-ai, orçamentos esgotados e delegate saem por next() para o aprovador humano, never e falhas do revisor fecham de forma determinística à direita, e a cadeia de auditoria somente-log corre embaixo">
 </picture>
 
+![dsh-auto-review: execução real de terminal](docs/assets/dsh-auto-review-demo.gif)
+
+*Repetição animada de uma execução real registrada neste repositório.*
+
+
 *Estrutura: um funil de reivindicação — quatro portões estreitam cada requisição que cruza a fronteira, só a política ai chega ao revisor somente-leitura (subagente agent ou Phocinae local) e o veredito se resolve em uma de três saídas (allow / deny / fallback); à direita ficam a delegação por next() e o fechamento determinístico, e embaixo a cadeia de auditoria somente-log.*
 
 ## Instalação em três passos

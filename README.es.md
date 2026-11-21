@@ -43,6 +43,11 @@ Cuando una acción cruza el límite del sandbox, `dsh-auto-review` entrega la de
   <img src="docs/assets/dsh-auto-review-flow-v5-light.svg" width="100%" alt="Embudo de reclamación de dsh-auto-review: una solicitud que cruza el límite pasa por la puerta de reclamación, el ensamblado de evidencia, la sala de revisión de solo lectura y el contrato de veredicto, y termina en una de tres salidas (allow / deny / fallback); lo no-ai, los presupuestos agotados y delegate salen por next() hacia el answerer humano, never y los fallos del revisor cierran de forma determinista a la derecha, y la cadena de auditoría solo-log corre debajo">
 </picture>
 
+![dsh-auto-review: ejecución real de terminal](docs/assets/dsh-auto-review-demo.gif)
+
+*Repetición animada de una ejecución real registrada en este repositorio.*
+
+
 *Estructura: un embudo de reclamación — cuatro puertas estrechan cada solicitud que cruza el límite, solo la política ai llega al revisor de solo lectura (subagente agent o Phocinae local) y el veredicto se resuelve en una de tres salidas (allow / deny / fallback); a la derecha corren la delegación por next() y el cierre determinista, y abajo la cadena de auditoría solo-log.*
 
 ## Instalación en tres pasos

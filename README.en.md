@@ -117,6 +117,10 @@ Pattern-based auto-approvers decide before dispatch, with no evidence. `dsh-auto
 
 ### Examples
 
+![dsh-auto-review: real terminal run](docs/assets/dsh-auto-review-demo.gif)
+
+*Animated replay of a real run recorded in this repository.*
+
 These are the plugin's real entry points; install once, then call one.
 
 **Detailed example** — command:

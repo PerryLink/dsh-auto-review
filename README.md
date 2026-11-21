@@ -36,6 +36,10 @@ dsh plugin --profile <name> add dsh-auto-review
 
 ## 它是什么
 
+![dsh-auto-review 真实终端运行](docs/assets/dsh-auto-review-demo.gif)
+
+*本仓库一次真实运行的动图回放。*
+
 当某个动作越过沙箱边界，`dsh-auto-review` 把审批决定交给第二个模型：一个只读审查子代理读取真实工作区（经 `read`/`glob`/`grep` 白名单）、已流式传出的工具调用参数（敏感值已脱敏）、请求理由与你的风险规则，返回结构化裁决 `{ decision, reason, riskLevel }`——人类无需批准任何事，也没有任何不安全的东西蒙混过关。拒绝裁决会把理由反馈给调用模型，让代理学会原因而不是盲目重试；每一次决策都能从会话日志重建。
 
 <picture>
