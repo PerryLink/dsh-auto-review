@@ -590,7 +590,7 @@ Topics：`deepseek-harness`、`dsh`、`dsh-plugin`、`cordis`、`approval`、`au
 
 ## 家族与致谢
 
-本项目是 [PerryLink](https://github.com/PerryLink) 维护的 DeepSeek Harness 插件家族成员（95 个，全部 Apache-2.0）。如果这个插件帮到了你，**给个 star**——它不解锁任何功能，但会让下一个人更容易找到它。
+本项目是 [PerryLink](https://github.com/PerryLink) 维护的 DeepSeek Harness 插件家族成员（99 个，全部 Apache-2.0）。如果这个插件帮到了你，**给个 star**——它不解锁任何功能，但会让下一个人更容易找到它。
 
 - [@PerryLink](https://github.com/PerryLink) —— 创建者与维护者：审批 answerer、审查子代理、风险策略与熔断器、会话投影审查面板、invariant 配套插件、dsh-eval，以及五语文档。
 - [@renleihaokun](https://github.com/renleihaokun) —— shell 参数密钥、截断证据、空审查面板（#65）与 0.2.1 激活恢复（#71）；修复随 0.13.4/0.13.5 发布。

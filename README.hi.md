@@ -591,7 +591,7 @@ Topics: `deepseek-harness`, `dsh`, `dsh-plugin`, `cordis`, `approval`, `auto-rev
 
 ## परिवार और आभार
 
-यह प्रोजेक्ट [PerryLink](https://github.com/PerryLink) के DeepSeek Harness प्लगइन परिवार का हिस्सा है (95 प्लगइन, सभी Apache-2.0)। अगर यह उपयोगी लगे, तो **एक स्टार अगले व्यक्ति को इसे खोजने में मदद करता है** — इसके पीछे कुछ भी लॉक नहीं है।
+यह प्रोजेक्ट [PerryLink](https://github.com/PerryLink) के DeepSeek Harness प्लगइन परिवार का हिस्सा है (99 प्लगइन, सभी Apache-2.0)। अगर यह उपयोगी लगे, तो **एक स्टार अगले व्यक्ति को इसे खोजने में मदद करता है** — इसके पीछे कुछ भी लॉक नहीं है।
 
 - [@PerryLink](https://github.com/PerryLink) — निर्माता और रखरखावकर्ता: अनुमोदन answerer, समीक्षक सबएजेंट, जोखिम नीति और सर्किट ब्रेकर, सत्र-प्रोजेक्शन समीक्षा पैनल, invariant companion, dsh-eval, और पाँच-भाषा दस्तावेज़।
 - [@renleihaokun](https://github.com/renleihaokun) — shell-तर्क रहस्य, कटा साक्ष्य, खाली समीक्षा पैनल (#65), और 0.2.1 सक्रियण पुनर्स्थापन (#71); 0.13.4/0.13.5 में भेजे गए सुधार।

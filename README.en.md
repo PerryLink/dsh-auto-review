@@ -590,7 +590,7 @@ Integrations can call `ctx.autoReviewRuntime.answerDetailed(request, next)` and 
 
 ## Family & thanks
 
-This project is part of the DeepSeek Harness plugin family from [PerryLink](https://github.com/PerryLink) (95 plugins, all Apache-2.0). If it is useful, **a star helps the next person find it** — nothing is gated behind it.
+This project is part of the DeepSeek Harness plugin family from [PerryLink](https://github.com/PerryLink) (99 plugins, all Apache-2.0). If it is useful, **a star helps the next person find it** — nothing is gated behind it.
 
 - [@PerryLink](https://github.com/PerryLink) — creator and maintainer: the approval answerer, the reviewer subagent, risk policy and circuit breaker, the session-projection review panel, the invariant companion, dsh-eval, and the five-language docs.
 - [@renleihaokun](https://github.com/renleihaokun) — shell-argument secrets, truncated evidence, empty review panel (#65), and the 0.2.1 activation restoration (#71); fixes shipped in 0.13.4/0.13.5.

@@ -591,7 +591,7 @@ Integrações podem chamar `ctx.autoReviewRuntime.answerDetailed(request, next)`
 
 ## Família e agradecimentos
 
-Este projeto faz parte da família de plugins DeepSeek Harness da [PerryLink](https://github.com/PerryLink) (95 plugins, todos Apache-2.0). Se for útil, **uma estrela ajuda a próxima pessoa a encontrá-lo** — nada fica bloqueado atrás dela.
+Este projeto faz parte da família de plugins DeepSeek Harness da [PerryLink](https://github.com/PerryLink) (99 plugins, todos Apache-2.0). Se for útil, **uma estrela ajuda a próxima pessoa a encontrá-lo** — nada fica bloqueado atrás dela.
 
 - [@PerryLink](https://github.com/PerryLink) — criador e mantenedor: o answerer de aprovação, o subagente revisor, política de risco e disjuntor, o painel de revisão por projeção de sessão, o companion de invariante, o dsh-eval e a documentação em cinco idiomas.
 - [@renleihaokun](https://github.com/renleihaokun) — segredos em argumentos shell, evidência truncada, painel de revisão vazio (#65) e a restauração de ativação 0.2.1 (#71); correções enviadas em 0.13.4/0.13.5.
