@@ -11,6 +11,8 @@
 
 Aprovação por segundo modelo de IA para o DeepSeek Harness: quando uma ação cruza a fronteira do sandbox, um subagente revisor somente-leitura lê as evidências e devolve um veredito com motivo, falhando fechado por padrão.
 
+Última verificação: DeepSeek Harness `dsh-v0.2.3-alpha.1` (2026-11-22).
+
 [Instalar](#instalação-em-três-passos) · [Configuração](#configuração) · [FAQ](#faq) · [简体中文](README.md) · [English](README.en.md) · [Español](README.es.md) · [Português](README.pt.md) · [हिन्दी](README.hi.md)
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-3366CC?style=flat-square&labelColor=2B3245)](LICENSE)
@@ -46,7 +48,6 @@ Quando uma ação cruza a fronteira do sandbox, o `dsh-auto-review` entrega a de
 ![dsh-auto-review: execução real de terminal](docs/assets/dsh-auto-review-demo.gif)
 
 *Repetição animada de uma execução real registrada neste repositório.*
-
 
 *Estrutura: um funil de reivindicação — quatro portões estreitam cada requisição que cruza a fronteira, só a política ai chega ao revisor somente-leitura (subagente agent ou Phocinae local) e o veredito se resolve em uma de três saídas (allow / deny / fallback); à direita ficam a delegação por next() e o fechamento determinístico, e embaixo a cadeia de auditoria somente-log.*
 

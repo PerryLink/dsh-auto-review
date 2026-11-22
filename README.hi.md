@@ -11,6 +11,8 @@
 
 DeepSeek Harness के लिए दूसरे-मॉडल AI अनुमोदन: जब कोई क्रिया sandbox सीमा पार करती है, एक केवल-पठन समीक्षक सबएजेंट साक्ष्य पढ़कर कारण सहित निर्णय लौटाता है, डिफ़ॉल्ट रूप से फेल-क्लोज़्ड।
 
+अंतिम सत्यापन: DeepSeek Harness `dsh-v0.2.3-alpha.1` (2026-11-22).
+
 [इंस्टॉल](#तीन-चरणों-में-शुरुआत) · [कॉन्फ़िगरेशन](#कॉन्फ़िगरेशन) · [FAQ](#faq) · [简体中文](README.md) · [English](README.en.md) · [Español](README.es.md) · [Português](README.pt.md) · [हिन्दी](README.hi.md)
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-3366CC?style=flat-square&labelColor=2B3245)](LICENSE)
@@ -46,7 +48,6 @@ dsh plugin --profile <name> add dsh-auto-review
 ![dsh-auto-review का असली टर्मिनल रन](docs/assets/dsh-auto-review-demo.gif)
 
 *इस रिपॉज़िटरी में दर्ज असली रन का एनिमेटेड रीप्ले।*
-
 
 *संरचना: एक claim फ़नल — चार गेट हर सीमा-पार करने वाले अनुरोध को संकीर्ण करते हैं, केवल ai नीति केवल-पठन समीक्षक (agent सबएजेंट या स्थानीय Phocinae) तक पहुँचती है, और निर्णय तीन निकासों (allow / deny / fallback) में से एक में तय होता है; दाईं ओर next() प्रत्यायोजन और नियतात्मक क्लोज़ हैं, नीचे केवल-लॉग ऑडिट श्रृंखला।*
 
