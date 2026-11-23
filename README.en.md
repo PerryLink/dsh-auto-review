@@ -7,6 +7,8 @@
 
 # dsh-auto-review
 
+Current version `0.15.5`.
+
 **Let a second model decide on the approval chain — humans approve nothing, and nothing unsafe slips through.**
 
 Second-model AI approval for DeepSeek Harness: when an action crosses the sandbox boundary, a read-only reviewer subagent reads the evidence and returns a verdict with a reason, fail-closed by default.

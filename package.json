@@ -1,6 +1,6 @@
 {
   "name": "dsh-auto-review",
-  "version": "0.15.4",
+  "version": "0.15.5",
   "packageManager": "pnpm@11.7.0",
   "description": "Second-model AI auto-review for DeepSeek Harness approval requests: a read-only reviewer subagent or the local non-generative Phocinae-Largha-150M-v1 decision model decides allow/deny on the approval answerer chain, with fail-closed fallback and full session-log audit.",
   "private": false,
@@ -50,7 +50,8 @@
       "types": "./lib/types/eval/cli.d.ts",
       "default": "./lib/eval-cli.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
     "lib",
@@ -69,7 +70,8 @@
     "LICENSE",
     "PRIVACY.md",
     "docs/assets/*",
-    "icon.svg"
+    "icon.svg",
+    "locale/*.json"
   ],
   "dsh": {
     "manifestVersion": 1,
@@ -87,7 +89,8 @@
     },
     "capabilities": [
       "network:egress",
-      "sessions:read"
+      "sessions:read",
+      "sessions:write"
     ],
     "labels": []
   },
